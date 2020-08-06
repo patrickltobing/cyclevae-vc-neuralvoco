@@ -1,0 +1,14 @@
+numpy
+h5py
+scipy
+scikit-learn
+scikit-image
+soundfile
+pysptk
+pyworld
+numba==0.48
+librosa
+dtw_c
+six
+yq
+tensorboardX
