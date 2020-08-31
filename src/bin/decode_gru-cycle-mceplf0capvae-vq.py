@@ -397,13 +397,13 @@ def main():
                         if config.ar_enc:
                             spk_trg_logits, lat_trg, _, _ = model_encoder_mcep(F.pad(torch.FloatTensor(feat_trg).cuda().unsqueeze(0).transpose(1,2), \
                                                                             (model_encoder_mcep.pad_left,model_encoder_mcep.pad_right), "replicate").transpose(1,2), yz_in=yz_in)
-                            spk_trg_logits_e, lat_trg_e, _, _ = model_encoder_mcep(F.pad(torch.FloatTensor(feat_trg).cuda().unsqueeze(0).transpose(1,2), \
-                                                                            (model_encoder_mcep.pad_left,model_encoder_mcep.pad_right), "replicate").transpose(1,2), yz_in=yz_in)
+                            spk_trg_logits_e, lat_trg_e, _, _ = model_encoder_excit(F.pad(torch.FloatTensor(feat_trg).cuda().unsqueeze(0).transpose(1,2), \
+                                                                            (model_encoder_excit.pad_left,model_encoder_excit.pad_right), "replicate").transpose(1,2), yz_in=yz_in)
                         else:
-                            spk_trg_logits, lat_trg, _ = model_encoder_excit(F.pad(torch.FloatTensor(feat_trg).cuda().unsqueeze(0).transpose(1,2), \
+                            spk_trg_logits, lat_trg, _ = model_encoder_mcep(F.pad(torch.FloatTensor(feat_trg).cuda().unsqueeze(0).transpose(1,2), \
                                                                             (model_encoder_mcep.pad_left,model_encoder_mcep.pad_right), "replicate").transpose(1,2))
                             spk_trg_logits_e, lat_trg_e, _ = model_encoder_excit(F.pad(torch.FloatTensor(feat_trg).cuda().unsqueeze(0).transpose(1,2), \
-                                                                            (model_encoder_mcep.pad_left,model_encoder_mcep.pad_right), "replicate").transpose(1,2))
+                                                                            (model_encoder_excit.pad_left,model_encoder_excit.pad_right), "replicate").transpose(1,2))
                         idx_vq = nn_search_batch(lat_trg, model_vq.weight)
                         lat_trg = model_vq(idx_vq)
                         unique, counts = np.unique(idx_vq.cpu().data.numpy(), return_counts=True)

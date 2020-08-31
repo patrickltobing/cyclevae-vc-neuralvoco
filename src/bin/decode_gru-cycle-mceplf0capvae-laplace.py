@@ -371,13 +371,13 @@ def main():
                         if config.ar_enc:
                             spk_trg_logits, _, lat_trg, _, _ = model_encoder_mcep(F.pad(torch.FloatTensor(feat_trg).cuda().unsqueeze(0).transpose(1,2), \
                                                                             (model_encoder_mcep.pad_left,model_encoder_mcep.pad_right), "replicate").transpose(1,2), yz_in=yz_in, sampling=False)
-                            spk_trg_logits_e, _, lat_trg_e, _, _ = model_encoder_mcep(F.pad(torch.FloatTensor(feat_trg).cuda().unsqueeze(0).transpose(1,2), \
-                                                                            (model_encoder_mcep.pad_left,model_encoder_mcep.pad_right), "replicate").transpose(1,2), yz_in=yz_in, sampling=False)
+                            spk_trg_logits_e, _, lat_trg_e, _, _ = model_encoder_excit(F.pad(torch.FloatTensor(feat_trg).cuda().unsqueeze(0).transpose(1,2), \
+                                                                            (model_encoder_excit.pad_left,model_encoder_excit.pad_right), "replicate").transpose(1,2), yz_in=yz_in, sampling=False)
                         else:
-                            spk_trg_logits, _, lat_trg, _ = model_encoder_excit(F.pad(torch.FloatTensor(feat_trg).cuda().unsqueeze(0).transpose(1,2), \
+                            spk_trg_logits, _, lat_trg, _ = model_encoder_mcep(F.pad(torch.FloatTensor(feat_trg).cuda().unsqueeze(0).transpose(1,2), \
                                                                             (model_encoder_mcep.pad_left,model_encoder_mcep.pad_right), "replicate").transpose(1,2), sampling=False)
                             spk_trg_logits_e, _, lat_trg_e, _ = model_encoder_excit(F.pad(torch.FloatTensor(feat_trg).cuda().unsqueeze(0).transpose(1,2), \
-                                                                            (model_encoder_mcep.pad_left,model_encoder_mcep.pad_right), "replicate").transpose(1,2), sampling=False)
+                                                                            (model_encoder_excit.pad_left,model_encoder_excit.pad_right), "replicate").transpose(1,2), sampling=False)
                         logging.info('target spkpost')
                         logging.info(torch.mean(F.softmax(spk_trg_logits, dim=-1), 1))
                         logging.info('target spkpost_e')

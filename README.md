@@ -4,8 +4,8 @@
 * It also provides neural vocoder implementations based on shallow WaveNet architecture [3,4] / compact WaveRNN (LPCNet-like [5]) with data-driven linear prediction (LPC) [4] for high-quality waveform synthesis (conversion / copy-synthesis).
 * The VC modeling further allows speaker interpolation of either spectral / excitation characteristics on a 2-dimensional space.
 * Default speech features and waveform synthesis are based on WORLD [6] (mel-cepstrum from spectral envelope, F0, aperiodicity).
+* Implementation of low-latency and high-fidelity multiband-WaveRNN using 16-bit output (coarse-fine) with data-driven linear prediction is under construction.
 * Modeling and synthesis with mel-spectrogram are under construction.
-* [Our group](https://www.toda.is.i.nagoya-u.ac.jp/) is located in Nagoya University, Japan
 
 ## Requirements
 
@@ -22,15 +22,12 @@ $ make
 ## Configs/pretrained models
 
 * Available
-    * VCC 2018 [7] [12 speakers] (VC) `egs/vcc18`
+    * [official\_link](https://doi.org/10.7488/ds/2337) VCC 2018 [7] [12 speakers] (VC) `egs/vcc18`
         * [download\_wavs](https://drive.google.com/file/d/1n_uRWMuXcXpwf1Mjuu-Eqm9Evea2Jy8S/view?usp=sharing) --> put in `egs/vcc18/wav_22.05kHz`
         * [download\_mdls](https://drive.google.com/file/d/15erWSja13MZj0UJZpfomwYAZfkc3AsfN/view?usp=sharing) --> put in `egs/vcc18/exp`
 * Under-construction
-    * VCC 2018 (Neural vocoder)
+    * VCC 2018 + ARCTIC [2 speakers] + VCTK [24 speakers] (VC + Neural vocoder)
     * VCC 2020 [14 speakers]
-    * VCC 2018 + ARCTIC [2 speakers]
-    * VCC 2020 + VCTK [24 speakers]
-    * VCC 2018 + VCC 2020 + ARCTIC + VCTK
 
 ## Type of models
 
@@ -48,6 +45,16 @@ $ make
 * Shallow WaveNet `[mdl_name_wave: wavenet]`
 * Compact WaveRNN with data driven LPC `[mdl_name_wave: wavernn_dualgru_compact_lpc]`
 * Compact WaveRNN with data driven LPC and multiple samples output `[mdl_name_wave: wavernn_dualgru_compact_lpcseg]`
+
+<em>Above two WaveRNN types will be replaced by 16-bit output multiband-WaveRNN with data-driven LPC</em>
+
+## To-do-list
+
+- VC pretrained models [VCC2018+ARCTIC+VCTK]
+- 16-bit output Multiband-WaveRNN
+- Neural vocoder pretrained models [VCC2018+ARCTIC+VCTK]
+- Demo script for speaker-space interpolation
+- Mel-spectrogram modeling
 
 ## Configurations
 
@@ -205,6 +212,10 @@ Promoting development of parallel and nonparallel methods,” in Proc. Speaker O
 [8] T. Toda, A. W. Black, and K. Tokuda, “Voice conversion based on maximum-likelihood estimation of spectral parameter trajectory,” IEEE Trans. Audio Speech Lang. Process., vol. 15, no. 8, pp.
 2222-–2235, 2007.
 
+## Advisor
+
+[Tomoki Toda](https://sites.google.com/site/tomokitoda/) @ Nagoya University
+
 ## Acknowledgements
 
 - [@kan-bayashi](https://github.com/kan-bayashi)
@@ -212,11 +223,3 @@ Promoting development of parallel and nonparallel methods,” in Proc. Speaker O
 - [@JeremyCCHsu](https://github.com/JeremyCCHsu)
 - [@k2kobayashi](https://github.com/k2kobayashi)
 - [@bigpon](https://github.com/bigpon)
-
-
-## To-do-list
-
-- Complete VC pretrained models
-- Complete neural vocoder decoding scripts
-- Complete neural vocoder models
-- Mel-spectrogram modeling
