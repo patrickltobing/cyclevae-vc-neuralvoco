@@ -69,7 +69,8 @@ def main():
     filenames = read_txt(args.feats)
     logging.info("number of training utterances = "+str(len(filenames)))
 
-    def calc_stats(filenames, cpu, feat_mceplf0cap_list, feat_orglf0_list, varmcep_list, f0_list, melsp_list, varmelsp_list):
+    def calc_stats(filenames, cpu, feat_mceplf0cap_list, feat_orglf0_list, varmcep_list, f0_list,
+            melsp_list, varmelsp_list):
         feat_mceplf0cap_arr = None
         feat_orglf0_arr = None
         varmcep_arr = None
@@ -98,7 +99,8 @@ def main():
             logging.info(feat_mceplf0cap_arr.shape)
             logging.info(feat_orglf0_arr.shape)
             if varmcep_arr is not None:
-                varmcep_arr = np.r_[varmcep_arr, np.var(feat_mceplf0cap[:,-args.mcep_dim:], axis=0, keepdims=True)]
+                varmcep_arr = np.r_[varmcep_arr, np.var(feat_mceplf0cap[:,-args.mcep_dim:], \
+                                        axis=0, keepdims=True)]
             else:
                 varmcep_arr = np.var(feat_mceplf0cap[:,-args.mcep_dim:], axis=0, keepdims=True)
             logging.info('var')
@@ -120,13 +122,16 @@ def main():
                 melsp_arr = melsp
             logging.info(melsp_arr.shape)
             if varmelsp_arr is not None:
-                varmelsp_arr = np.r_[varmelsp_arr, np.var((np.exp(melsp)-1)/10000, axis=0, keepdims=True)]
+                varmelsp_arr = np.r_[varmelsp_arr, np.var((np.exp(melsp)-1)/10000, axis=0, \
+                                        keepdims=True)]
             else:
                 varmelsp_arr = np.var((np.exp(melsp)-1)/10000, axis=0, keepdims=True)
             logging.info('var')
             logging.info(varmelsp_arr.shape)
             count += 1
-            logging.info("cpu %d %d %d %d %d %d %d %d" % (cpu, count, len(feat_mceplf0cap_arr), len(feat_orglf0_arr), len(varmcep_arr), len(f0_arr), len(melsp_arr), len(varmelsp_arr)))
+            logging.info("cpu %d %d %d %d %d %d %d %d" % (cpu, count, len(feat_mceplf0cap_arr),
+                    len(feat_orglf0_arr), len(varmcep_arr), len(f0_arr), len(melsp_arr),
+                        len(varmelsp_arr)))
             #if count >= 5:
             #    break
 
@@ -154,7 +159,8 @@ def main():
         melsp_list = manager.list()
         varmelsp_list = manager.list()
         for i, feat_list in enumerate(feat_lists):
-            p = mp.Process(target=calc_stats, args=(feat_list, i+1, feat_mceplf0cap_list, feat_orglf0_list, varmcep_list, f0_list, melsp_list, varmelsp_list,))
+            p = mp.Process(target=calc_stats, args=(feat_list, i+1, feat_mceplf0cap_list,
+                        feat_orglf0_list, varmcep_list, f0_list, melsp_list, varmelsp_list,))
             p.start()
             processes.append(p)
 
@@ -238,14 +244,39 @@ def main():
         scaler_feat_mceplf0cap = StandardScaler()
         scaler_feat_orglf0 = StandardScaler()
 
+        logging.info(feat_mceplf0cap.shape)
+        min_mcep = np.min(feat_mceplf0cap[:,-args.mcep_dim:], axis=0)
+        max_mcep = np.max(feat_mceplf0cap[:,-args.mcep_dim:], axis=0)
+        logging.info(min_mcep)
+        logging.info(max_mcep)
+        write_hdf5(args.stats, "/min_mcep", min_mcep)
+        write_hdf5(args.stats, "/max_mcep", max_mcep)
+
         scaler_feat_mceplf0cap.partial_fit(feat_mceplf0cap)
         scaler_feat_orglf0.partial_fit(feat_orglf0)
+
+        logging.info(melsp.shape)
+        min_melsp = np.min(melsp, axis=0)
+        max_melsp = np.max(melsp, axis=0)
+        logging.info(min_melsp)
+        logging.info(max_melsp)
+        write_hdf5(args.stats, "/min_melsp", min_melsp)
+        write_hdf5(args.stats, "/max_melsp", max_melsp)
 
         scaler_melsp = StandardScaler()
         scaler_melsp.partial_fit(melsp)
 
         mean_feat_mceplf0cap = scaler_feat_mceplf0cap.mean_
         scale_feat_mceplf0cap = scaler_feat_mceplf0cap.scale_
+
+        logging.info("mcep_bound")
+        min_mcep_bound = min_mcep-scale_feat_mceplf0cap[-args.mcep_dim:]
+        max_mcep_bound = max_mcep+scale_feat_mceplf0cap[-args.mcep_dim:]
+        logging.info(min_mcep_bound)
+        logging.info(max_mcep_bound)
+        write_hdf5(args.stats, "/min_mcep_bound", min_mcep_bound)
+        write_hdf5(args.stats, "/max_mcep_bound", max_mcep_bound)
+
         mean_feat_orglf0 = scaler_feat_orglf0.mean_
         scale_feat_orglf0 = scaler_feat_orglf0.scale_
         gv_range_mean = np.mean(np.array(var_range), axis=0)
@@ -278,6 +309,15 @@ def main():
 
         mean_melsp = scaler_melsp.mean_
         scale_melsp = scaler_melsp.scale_
+
+        logging.info("melsp_bound")
+        min_melsp_bound = min_melsp-scale_melsp
+        max_melsp_bound = max_melsp+scale_melsp
+        logging.info(min_melsp_bound)
+        logging.info(max_melsp_bound)
+        write_hdf5(args.stats, "/min_melsp_bound", min_melsp_bound)
+        write_hdf5(args.stats, "/max_melsp_bound", max_melsp_bound)
+
         gv_melsp_mean = np.mean(np.array(var_melsp), axis=0)
         gv_melsp_var = np.var(np.array(var_melsp), axis=0)
         logging.info(gv_melsp_mean)

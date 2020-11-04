@@ -81,7 +81,8 @@ def main():
 
     # create a histogram to visualize F0 range of the speaker
     f0histogrampath = os.path.join(args.expdir, spkr + '_f0histogram.png')
-    f0hist, f0bins, _ = plt.hist(f0s, bins=500, range=(50, 550), density=True, histtype="stepfilled")
+    f0hist, f0bins, _ = plt.hist(f0s, bins=500, range=(50, 550),
+        density=True, histtype="stepfilled")
     # plot with matplotlib
     plt.xlabel('Fundamental frequency [Hz]')
     plt.ylabel("Probability")
@@ -100,7 +101,8 @@ def main():
 
     # create a histogram to visualize npow range of the speaker
     npowhistogrampath = os.path.join(args.expdir, spkr + '_npowhistogram.png')
-    npowhist, npowbins, _ = plt.hist(npows, bins=120, range=(-50, 10), density=True, histtype="stepfilled")
+    npowhist, npowbins, _ = plt.hist(npows, bins=120, range=(-50, 10),
+        density=True, histtype="stepfilled")
     # plot with matplotlib
     plt.xlabel('Frame power [dB]')
     plt.ylabel("Probability")

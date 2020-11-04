@@ -224,12 +224,8 @@ def main():
     def gpu_decode(feat_list, gpu):
         with torch.cuda.device(gpu):
             with torch.no_grad():
-                if 'mel' in config.string_path:
-                    n_aux=config.mcep_dim
-                else:
-                    n_aux=config.mcep_dim+config.excit_dim
                 model_waveform = DSWNV(
-                    n_aux=n_aux,
+                    n_aux=config.mcep_dim+config.excit_dim,
                     upsampling_factor=config.upsampling_factor,
                     hid_chn=config.hid_chn,
                     skip_chn=config.skip_chn,
@@ -238,23 +234,11 @@ def main():
                     aux_dilation_size=config.dilation_size_wave,
                     dilation_depth=config.dilation_depth,
                     dilation_repeat=config.dilation_repeat,
-                    n_quantize=config.n_quantize)
-                #model_waveform = DSWNV(
-                #    n_quantize=config.n_quantize,
-                #    n_aux=config.n_aux,
-                #    hid_chn=config.hid_chn,
-                #    skip_chn=config.skip_chn,
-                #    dilation_depth=config.dilation_depth,
-                #    dilation_repeat=config.dilation_repeat,
-                #    kernel_size=config.kernel_size,
-                #    aux_kernel_size=config.aux_kernel_size,
-                #    aux_dilation_size=config.aux_dilation_size,
-                #    audio_in_flag=config.audio_in,
-                #    wav_conv_flag=config.wav_conv_flag,
-                #    upsampling_factor=config.upsampling_factor)
+                    n_quantize=config.n_quantize,
+                    right_size=config.right_size,
+                    pad_first=True)
                 logging.info(model_waveform)
                 model_waveform.cuda()
-                #model_waveform.load_state_dict(torch.load(args.checkpoint)["model"])
                 model_waveform.load_state_dict(torch.load(args.checkpoint)["model_waveform"])
                 model_waveform.remove_weight_norm()
                 model_waveform.eval()
@@ -304,7 +288,7 @@ def main():
                     #for feat_id, samples_src, samples, samples_len in zip(feat_ids, samples_src_list, samples_list, n_samples_list):
                     for feat_id, samples, samples_len in zip(feat_ids, samples_list, n_samples_list):
                         #wav_src = samples_src[:samples_len]
-                        wav = np.clip(decode_mu_law(samples[:samples_len], config.n_quantize), -1, 1)
+                        wav = np.clip(decode_mu_law(samples[:samples_len], config.n_quantize), -1, 0.999969482421875)
                         #outpath = args.outdir + "/" + feat_id + "_src.wav"
                         #sf.write(outpath, wav_src, args.fs, "PCM_16")
                         #logging.info("wrote %s." % (outpath))

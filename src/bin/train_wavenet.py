@@ -30,7 +30,8 @@ from utils import find_files
 from utils import read_hdf5
 from utils import read_txt
 from vcneuvoco import DSWNV, encode_mu_law
-from radam import RAdam
+#from radam import RAdam
+import torch_optimizer as optim
 
 from dataset import FeatureDatasetNeuVoco, padding
 
@@ -94,7 +95,7 @@ def train_generator(dataloader, device, batch_size, upsampling_factor, limit_cou
                     idx_select_full = torch.LongTensor(np.delete(np.arange(n_batch_utt), idx_select, axis=0)).to(device)
                     idx_select = torch.LongTensor(idx_select).to(device)
                 yield xs, feat, c_idx, idx, featfiles, x_bs, f_bs, x_ss, f_ss, n_batch_utt, del_index_utt, max_slen, \
-                    idx_select, idx_select_full, slens_acc
+                    max_flen, idx_select, idx_select_full, slens_acc
                 for i in range(n_batch_utt):
                     slens_acc[i] -= delta
                     flens_acc[i] -= delta_frm
@@ -117,11 +118,12 @@ def train_generator(dataloader, device, batch_size, upsampling_factor, limit_cou
             #if c_idx > 2:
             #    break
 
-        yield [], [], -1, -1, [], [], [], [], [], [], [], [], [], [], []
+        yield [], [], -1, -1, [], [], [], [], [], [], [], [], [], [], [], []
 
 
-def save_checkpoint(checkpoint_dir, model_waveform,
-        optimizer, numpy_random_state, torch_random_state, iterations):
+def save_checkpoint(checkpoint_dir, model_waveform, optimizer, min_eval_loss_ce, min_eval_loss_ce_std,
+        min_eval_loss_err, min_eval_loss_err_std, iter_idx, min_idx,
+            numpy_random_state, torch_random_state, iterations):
     """FUNCTION TO SAVE CHECKPOINT
 
     Args:
@@ -134,6 +136,12 @@ def save_checkpoint(checkpoint_dir, model_waveform,
     checkpoint = {
         "model_waveform": model_waveform.state_dict(),
         "optimizer": optimizer.state_dict(),
+        "min_eval_loss_ce": min_eval_loss_ce,
+        "min_eval_loss_ce_std": min_eval_loss_ce_std,
+        "min_eval_loss_err": min_eval_loss_err,
+        "min_eval_loss_err_std": min_eval_loss_err_std,
+        "iter_idx": iter_idx,
+        "min_idx": min_idx,
         "numpy_random_state": numpy_random_state,
         "torch_random_state": torch_random_state,
         "iterations": iterations}
@@ -205,6 +213,10 @@ def main():
                         type=strtobool, help="batch size (if set 0, utterance batch will be used)")
     parser.add_argument("--causal_conv_wave", default=False,
                         type=strtobool, help="batch size (if set 0, utterance batch will be used)")
+    parser.add_argument("--right_size", default=0,
+                        type=int, help="limit of lookup frame in input convolution")
+    parser.add_argument("--with_excit", default=False,
+                        type=strtobool, help="flag to use excit (U/V and F0) if using mel-spec")
     # other setting
     parser.add_argument("--init", default=False,
                         type=strtobool, help="seed number")
@@ -226,6 +238,8 @@ def main():
     parser.add_argument("--preconf", default=None,
                         type=str, help="model path to restart training")
     parser.add_argument("--string_path", default=None,
+                        type=str, help="model path to restart training")
+    parser.add_argument("--string_path_ft", default=None,
                         type=str, help="model path to restart training")
     parser.add_argument("--GPU_device", default=None,
                         type=int, help="selection of GPU device")
@@ -273,20 +287,34 @@ def main():
 
     torch.backends.cudnn.benchmark = True #faster
 
-    if args.pretrained is None:
-        if 'mel' in args.string_path:
+    if 'mel' in args.string_path:
+        if not args.with_excit:
             mean_stats = torch.FloatTensor(read_hdf5(args.stats, "/mean_melsp"))
             scale_stats = torch.FloatTensor(read_hdf5(args.stats, "/scale_melsp"))
             args.excit_dim = 0
+            with_excit = False
         else:
-            mean_stats = torch.FloatTensor(read_hdf5(args.stats, "/mean_feat_mceplf0cap"))
-            scale_stats = torch.FloatTensor(read_hdf5(args.stats, "/scale_feat_mceplf0cap"))
-            args.cap_dim = mean_stats.shape[0]-(args.mcep_dim+3)
-            args.excit_dim = 2+1+args.cap_dim
+            mean_stats = torch.FloatTensor(np.r_[read_hdf5(args.stats, "/mean_feat_mceplf0cap")[:2], read_hdf5(args.stats, "/mean_melsp")])
+            scale_stats = torch.FloatTensor(np.r_[read_hdf5(args.stats, "/scale_feat_mceplf0cap")[:2], read_hdf5(args.stats, "/scale_melsp")])
+            args.excit_dim = 2
+            with_excit = True
+        #mean_stats = torch.FloatTensor(np.r_[read_hdf5(args.stats, "/mean_feat_mceplf0cap")[:6], read_hdf5(args.stats, "/mean_melsp")])
+        #scale_stats = torch.FloatTensor(np.r_[read_hdf5(args.stats, "/scale_feat_mceplf0cap")[:6], read_hdf5(args.stats, "/scale_melsp")])
+        #args.excit_dim = 6
     else:
-        config = torch.load(args.preconf)
-        args.excit_dim = config.excit_dim
-        args.cap_dim = config.cap_dim
+        with_excit = False
+        mean_stats = torch.FloatTensor(read_hdf5(args.stats, "/mean_"+args.string_path.replace("/","")))
+        scale_stats = torch.FloatTensor(read_hdf5(args.stats, "/scale_"+args.string_path.replace("/","")))
+        if mean_stats.shape[0] > args.mcep_dim+2:
+            if 'feat_org_lf0' in args.string_path:
+                args.cap_dim = mean_stats.shape[0]-(args.mcep_dim+2)
+                args.excit_dim = 2+args.cap_dim
+            else:
+                args.cap_dim = mean_stats.shape[0]-(args.mcep_dim+3)
+                args.excit_dim = 2+1+args.cap_dim
+        else:
+            args.cap_dim = None
+            args.excit_dim = 2
 
     # save args as conf
     torch.save(args, args.expdir + "/model.conf")
@@ -303,6 +331,8 @@ def main():
         dilation_depth=args.dilation_depth,
         dilation_repeat=args.dilation_repeat,
         n_quantize=args.n_quantize,
+        right_size=args.right_size,
+        pad_first=True,
         do_prob=args.do_prob)
     logging.info(model_waveform)
     shift_rec_field = model_waveform.receptive_field
@@ -335,17 +365,6 @@ def main():
         model_waveform.scale_in.weight = torch.nn.Parameter(torch.unsqueeze(torch.diag(1.0/scale_stats.data),2))
         model_waveform.scale_in.bias = torch.nn.Parameter(-(mean_stats.data/scale_stats.data))
 
-    #if args.pretrained is not None:
-    #    checkpoint = torch.load(args.pretrained)
-    #    #model_waveform.remove_weight_norm()
-    #    #model_waveform.load_state_dict(checkpoint["model"])
-    #    model_waveform.load_state_dict(checkpoint["model_waveform"])
-    #    epoch_idx = checkpoint["iterations"]
-    #    logging.info("pretrained from %d-iter checkpoint." % epoch_idx)
-    #    epoch_idx = 0
-    #    #model_waveform.apply_weight_norm()
-    #    #torch.nn.utils.remove_weight_norm(model_waveform.scale_in)
-
     for param in model_waveform.parameters():
         param.requires_grad = True
     for param in model_waveform.scale_in.parameters():
@@ -355,7 +374,7 @@ def main():
     parameters = sum([np.prod(p.size()) for p in parameters]) / 1000000
     logging.info('Trainable Parameters (waveform): %.3f million' % parameters)
 
-    module_list = list(model_waveform.conv_aux.parameters()) + list(model_waveform.upsampling.parameters())
+    module_list = list(model_waveform.conv.parameters()) + list(model_waveform.conv_s_c.parameters()) + list(model_waveform.upsampling.parameters())
     if model_waveform.wav_conv_flag:
         module_list += list(model_waveform.wav_conv.parameters())
     module_list += list(model_waveform.causal.parameters())
@@ -363,30 +382,35 @@ def main():
     module_list += list(model_waveform.out_skip.parameters())
     module_list += list(model_waveform.out_1.parameters()) + list(model_waveform.out_2.parameters())
 
-    optimizer = RAdam(module_list, lr=args.lr)
+    # model = ...
+    optimizer = optim.RAdam(
+        module_list,
+        lr= args.lr,
+        betas=(0.9, 0.999),
+        eps=1e-8,
+        weight_decay=0,
+    )
+    #optimizer = RAdam(module_list, lr=args.lr)
     #optimizer = torch.optim.Adam(module_list, lr=args.lr)
 
     # resume
     if args.pretrained is not None and args.resume is None:
         checkpoint = torch.load(args.pretrained)
         model_waveform.load_state_dict(checkpoint["model_waveform"])
-    #    optimizer.load_state_dict(checkpoint["optimizer"])
         epoch_idx = checkpoint["iterations"]
         logging.info("pretrained from %d-iter checkpoint." % epoch_idx)
         epoch_idx = 0
     elif args.resume is not None:
-    #if args.resume is not None:
         checkpoint = torch.load(args.resume)
         model_waveform.load_state_dict(checkpoint["model_waveform"])
         optimizer.load_state_dict(checkpoint["optimizer"])
         epoch_idx = checkpoint["iterations"]
         logging.info("restored from %d-iter checkpoint." % epoch_idx)
-    #    epoch_idx = 2
     else:
         epoch_idx = 0
 
-    def zero_wav_pad(x): return padding(x, args.pad_len*args.upsampling_factor, value=0.0)  # noqa: E704
-    def zero_feat_pad(x): return padding(x, args.pad_len, value=0.0)  # noqa: E704
+    def zero_wav_pad(x): return padding(x, args.pad_len*args.upsampling_factor, value=args.n_quantize//2)
+    def zero_feat_pad(x): return padding(x, args.pad_len, value=None)
     pad_wav_transform = transforms.Compose([zero_wav_pad])
     pad_feat_transform = transforms.Compose([zero_feat_pad])
 
@@ -411,12 +435,10 @@ def main():
     assert len(wav_list) == len(feat_list)
     logging.info("number of training data = %d." % len(feat_list))
     dataset = FeatureDatasetNeuVoco(wav_list, feat_list, pad_wav_transform, pad_feat_transform, args.upsampling_factor, 
-                    args.string_path, wav_transform=wav_transform)
+                    args.string_path, wav_transform=wav_transform, with_excit=with_excit, string_path_ft=args.string_path_ft)
     dataloader = DataLoader(dataset, batch_size=args.batch_size_utt, shuffle=True, num_workers=args.n_workers)
     #generator = train_generator(dataloader, device, args.batch_size, args.upsampling_factor, limit_count=1)
     generator = train_generator(dataloader, device, args.batch_size, args.upsampling_factor, limit_count=None)
-    #generator = train_generator(dataloader, device, args.batch_size, args.upsampling_factor, limit_count=1, resume_c_idx=1426, max_c_idx=(len(feat_list)//args.batch_size_utt))
-    #generator = train_generator(dataloader, device, args.batch_size, args.upsampling_factor, limit_count=None, resume_c_idx=1426, max_c_idx=(len(feat_list)//args.batch_size_utt))
 
     # define generator evaluation
     if os.path.isdir(args.waveforms_eval):
@@ -437,10 +459,8 @@ def main():
     assert len(wav_list_eval) == len(feat_list_eval)
     logging.info("number of evaluation data = %d." % len(feat_list_eval))
     dataset_eval = FeatureDatasetNeuVoco(wav_list_eval, feat_list_eval, pad_wav_transform, pad_feat_transform, args.upsampling_factor, 
-                    args.string_path, wav_transform=wav_transform)
+                    args.string_path, wav_transform=wav_transform, with_excit=with_excit, string_path_ft=args.string_path_ft)
     dataloader_eval = DataLoader(dataset_eval, batch_size=args.batch_size_utt_eval, shuffle=False, num_workers=args.n_workers)
-    ##generator_eval = eval_generator(dataloader_eval, device, args.batch_size, args.upsampling_factor, limit_count=1)
-    #generator_eval = eval_generator(dataloader_eval, device, args.batch_size, args.upsampling_factor, limit_count=None)
     #generator_eval = train_generator(dataloader_eval, device, args.batch_size, args.upsampling_factor, limit_count=1)
     generator_eval = train_generator(dataloader_eval, device, args.batch_size, args.upsampling_factor, limit_count=None)
 
@@ -452,6 +472,8 @@ def main():
     logging.info(args.string_path)
     total = 0
     iter_count = 0
+    pad_left = model_waveform.pad_left
+    pad_right = model_waveform.pad_right
     loss_ce = []
     loss_err = []
     min_eval_loss_err = 99999999.99
@@ -459,21 +481,23 @@ def main():
     min_eval_loss_ce = 99999999.99
     min_eval_loss_ce_std = 99999999.99
     iter_idx = 0
-    min_idx = -1
-    #min_eval_loss_ce = 1.575400
-    #min_eval_loss_ce_std = 0.645726
-    #iter_idx = 8098898
-    #min_idx = 68 #resume70
+    min_idx = -1 
     change_min_flag = False
     if args.resume is not None:
         np.random.set_state(checkpoint["numpy_random_state"])
         torch.set_rng_state(checkpoint["torch_random_state"])
+        min_eval_loss_ce = checkpoint["min_eval_loss_ce"]
+        min_eval_loss_ce_std = checkpoint["min_eval_loss_ce_std"]
+        min_eval_loss_err = checkpoint["min_eval_loss_err"]
+        min_eval_loss_err_std = checkpoint["min_eval_loss_err_std"]
+        iter_idx = checkpoint["iter_idx"]
+        min_idx = checkpoint["min_idx"]
     logging.info("==%d EPOCH==" % (epoch_idx+1))
     logging.info("Training data")
     while epoch_idx < args.epoch_count:
         start = time.time()
         batch_x, batch_feat, c_idx, utt_idx, featfile, x_bs, f_bs, x_ss, f_ss, n_batch_utt, \
-            del_index_utt, max_slen, idx_select, idx_select_full, slens_acc = next(generator)
+            del_index_utt, max_slen, max_flen, idx_select, idx_select_full, slens_acc = next(generator)
         if args.init:
             c_idx = -1
         if c_idx < 0: # summarize epoch
@@ -501,7 +525,7 @@ def main():
                 with torch.no_grad():
                     start = time.time()
                     batch_x, batch_feat, c_idx, utt_idx, featfile, x_bs, f_bs, x_ss, f_ss, n_batch_utt, \
-                        del_index_utt, max_slen, idx_select, idx_select_full, slens_acc = next(generator_eval)
+                        del_index_utt, max_slen, max_flen, idx_select, idx_select_full, slens_acc = next(generator_eval)
                     if c_idx < 0:
                         break
 
@@ -511,18 +535,28 @@ def main():
                     if x_ss > 0:
                         if x_es <= max_slen:
                             batch_x_prev = batch_x[:,x_ss-shift_rec_field-1:x_es-1]
-                            batch_feat = batch_feat[:,f_ss-shift_rec_field_frm:f_es]
                             batch_x = batch_x[:,x_ss:x_es]
+                            f_es_pad_right = f_es+pad_right
                         else:
                             batch_x_prev = batch_x[:,x_ss-shift_rec_field-1:-1]
-                            batch_feat = batch_feat[:,f_ss-shift_rec_field_frm:]
                             batch_x = batch_x[:,x_ss:]
+                            f_es_pad_right = max_flen+pad_right
+                        f_ss_pad_left = f_ss-shift_rec_field_frm-pad_left
                     #    assert((batch_x_prev[:,shift_rec_field+1:] == batch_x[:,:-1]).all())
                     else:
                         batch_x_prev = F.pad(batch_x[:,:x_es-1], (model_waveform.receptive_field+1, 0), "constant", args.n_quantize // 2)
-                        batch_feat = batch_feat[:,:f_es]
                         batch_x = batch_x[:,:x_es]
+                        f_ss_pad_left = -pad_left
+                        f_es_pad_right = f_es+pad_right
                     #    assert((batch_x_prev[:,model_waveform.receptive_field+1:] == batch_x[:,:-1]).all())
+                    if f_ss_pad_left >= 0 and f_es_pad_right <= max_flen: # pad left and right available
+                        batch_feat = batch_feat[:,f_ss_pad_left:f_es_pad_right]
+                    elif f_es_pad_right <= max_flen: # pad right available, left need additional replicate
+                        batch_feat = F.pad(batch_feat[:,:f_es_pad_right].transpose(1,2), (-f_ss_pad_left,0), "replicate").transpose(1,2)
+                    elif f_ss_pad_left >= 0: # pad left available, right need additional replicate
+                        batch_feat = F.pad(batch_feat[:,f_ss_pad_left:max_flen].transpose(1,2), (0,f_es_pad_right-max_flen), "replicate").transpose(1,2)
+                    else: # pad left and right need additional replicate
+                        batch_feat = F.pad(batch_feat[:,:max_flen].transpose(1,2), (-f_ss_pad_left,f_es_pad_right-max_flen), "replicate").transpose(1,2)
 
                     if x_ss > 0:
                         batch_x_output = model_waveform(batch_feat, batch_x_prev)[:, shift_rec_field:]
@@ -595,7 +629,10 @@ def main():
                 "%.3f sec / batch)" % (epoch_idx + 1, eval_loss_ce, eval_loss_ce_std, \
                     eval_loss_err, eval_loss_err_std, total / 60.0, total / iter_count))
             if (eval_loss_ce+eval_loss_ce_std) <= (min_eval_loss_ce+min_eval_loss_ce_std) \
-                or (eval_loss_ce <= min_eval_loss_ce):
+                or (eval_loss_ce+eval_loss_ce_std+eval_loss_err+eval_loss_err_std) \
+                    <= (min_eval_loss_ce+min_eval_loss_ce_std+min_eval_loss_err+min_eval_loss_err_std) \
+                    or (eval_loss_ce+eval_loss_err <= min_eval_loss_ce+min_eval_loss_err) \
+                        or (eval_loss_ce <= min_eval_loss_ce):
                 min_eval_loss_ce = eval_loss_ce
                 min_eval_loss_ce_std = eval_loss_ce_std
                 min_eval_loss_err = eval_loss_err
@@ -613,7 +650,9 @@ def main():
             if args.init:
                exit()
             logging.info('save epoch:%d' % (epoch_idx+1))
-            save_checkpoint(args.expdir, model_waveform, optimizer, numpy_random_state, torch_random_state, epoch_idx + 1)
+            save_checkpoint(args.expdir, model_waveform, optimizer,
+                min_eval_loss_ce, min_eval_loss_ce_std, min_eval_loss_err, min_eval_loss_err_std,
+                    iter_idx, min_idx, numpy_random_state, torch_random_state, epoch_idx + 1)
             total = 0
             iter_count = 0
             loss_ce = []
@@ -632,7 +671,7 @@ def main():
                 logging.info("==%d EPOCH==" % (epoch_idx+1))
                 logging.info("Training data")
                 batch_x, batch_feat, c_idx, utt_idx, featfile, x_bs, f_bs, x_ss, f_ss, n_batch_utt, \
-                    del_index_utt, max_slen, idx_select, idx_select_full, slens_acc = next(generator)
+                    del_index_utt, max_slen, max_flen, idx_select, idx_select_full, slens_acc = next(generator)
         # feedforward and backpropagate current batch
         if epoch_idx < args.epoch_count:
             logging.info("%d iteration [%d]" % (iter_idx+1, epoch_idx+1))
@@ -643,18 +682,28 @@ def main():
             if x_ss > 0:
                 if x_es <= max_slen:
                     batch_x_prev = batch_x[:,x_ss-shift_rec_field-1:x_es-1]
-                    batch_feat = batch_feat[:,f_ss-shift_rec_field_frm:f_es]
                     batch_x = batch_x[:,x_ss:x_es]
+                    f_es_pad_right = f_es+pad_right
                 else:
                     batch_x_prev = batch_x[:,x_ss-shift_rec_field-1:-1]
-                    batch_feat = batch_feat[:,f_ss-shift_rec_field_frm:]
                     batch_x = batch_x[:,x_ss:]
+                    f_es_pad_right = max_flen+pad_right
+                f_ss_pad_left = f_ss-shift_rec_field_frm-pad_left
             #    assert((batch_x_prev[:,shift_rec_field+1:] == batch_x[:,:-1]).all())
             else:
                 batch_x_prev = F.pad(batch_x[:,:x_es-1], (model_waveform.receptive_field+1, 0), "constant", args.n_quantize // 2)
-                batch_feat = batch_feat[:,:f_es]
                 batch_x = batch_x[:,:x_es]
+                f_ss_pad_left = -pad_left
+                f_es_pad_right = f_es+pad_right
             #    assert((batch_x_prev[:,model_waveform.receptive_field+1:] == batch_x[:,:-1]).all())
+            if f_ss_pad_left >= 0 and f_es_pad_right <= max_flen: # pad left and right available
+                batch_feat = batch_feat[:,f_ss_pad_left:f_es_pad_right]
+            elif f_es_pad_right <= max_flen: # pad right available, left need additional replicate
+                batch_feat = F.pad(batch_feat[:,:f_es_pad_right].transpose(1,2), (-f_ss_pad_left,0), "replicate").transpose(1,2)
+            elif f_ss_pad_left >= 0: # pad left available, right need additional replicate
+                batch_feat = F.pad(batch_feat[:,f_ss_pad_left:max_flen].transpose(1,2), (0,f_es_pad_right-max_flen), "replicate").transpose(1,2)
+            else: # pad left and right need additional replicate
+                batch_feat = F.pad(batch_feat[:,:max_flen].transpose(1,2), (-f_ss_pad_left,f_es_pad_right-max_flen), "replicate").transpose(1,2)
 
             if x_ss > 0:
                 batch_x_output = model_waveform(batch_feat, batch_x_prev, do=True)[:, shift_rec_field:]
@@ -761,4 +810,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

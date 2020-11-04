@@ -21,11 +21,14 @@ from scipy.interpolate import interp1d
 import soundfile as sf
 from scipy.signal import firwin
 from scipy.signal import lfilter
+from scipy.signal import resample
 import librosa
 
 from utils import find_files
 from utils import read_txt
 from utils import write_hdf5, read_hdf5
+
+import torch
 
 from multiprocessing import Array
 
@@ -53,9 +56,12 @@ MAX_CODEAP = -8.6856974912498e-12
 def melsp(x, n_mels=MEL_DIM, n_fft=FFTL, shiftms=SHIFTMS, winms=WINMS, fs=FS):
     hop_length = int((fs/1000)*shiftms)
     win_length = int((fs/1000)*winms)
-    stft = librosa.core.stft(x, n_fft=n_fft, hop_length=hop_length, win_length=win_length, window='hann')
+    stft = librosa.core.stft(x, n_fft=n_fft, hop_length=hop_length,
+        win_length=win_length, window='hann')
     magspec = np.abs(stft)
-    melfb = librosa.filters.mel(fs, n_fft, n_mels=n_mels)
+    melfb = librosa.filters.mel(fs, n_fft, n_mels=n_mels, fmin=80, fmax=7600)
+    #melfb = librosa.filters.mel(fs, n_fft, n_mels=n_mels, fmin=70, fmax=8000)
+    #melfb = librosa.filters.mel(fs, n_fft, n_mels=n_mels)
 
     return np.dot(melfb, magspec).T
 
@@ -82,7 +88,8 @@ def low_cut_filter(x, fs, cutoff=HIGHPASS_CUTOFF):
     return lcf_x
 
 
-def analyze(wav, fs=FS, minf0=MINF0, maxf0=MAXF0, fperiod=SHIFTMS, fftl=FFTL, f0=None, time_axis=None):
+def analyze(wav, fs=FS, minf0=MINF0, maxf0=MAXF0, fperiod=SHIFTMS, fftl=FFTL,
+        f0=None, time_axis=None):
     if f0 is None or time_axis is None:
         _f0, time_axis = pw.harvest(wav, fs, f0_floor=60.0, frame_period=fperiod)
         f0 = pw.stonemask(wav, _f0, time_axis, fs) 
@@ -92,7 +99,8 @@ def analyze(wav, fs=FS, minf0=MINF0, maxf0=MAXF0, fperiod=SHIFTMS, fftl=FFTL, f0
     return time_axis, f0, sp, ap
 
 
-def analyze_range(wav, fs=FS, minf0=MINF0, maxf0=MAXF0, fperiod=SHIFTMS, fftl=FFTL, f0=None, time_axis=None):
+def analyze_range(wav, fs=FS, minf0=MINF0, maxf0=MAXF0, fperiod=SHIFTMS, fftl=FFTL,
+        f0=None, time_axis=None):
     if f0 is None or time_axis is None:
         _f0, time_axis = pw.harvest(wav, fs, f0_floor=minf0, f0_ceil=maxf0, frame_period=fperiod)
         f0 = pw.stonemask(wav, _f0, time_axis, fs) 
@@ -105,14 +113,14 @@ def analyze_range(wav, fs=FS, minf0=MINF0, maxf0=MAXF0, fperiod=SHIFTMS, fftl=FF
 def read_wav(wav_file, cutoff=HIGHPASS_CUTOFF):
     x, fs = sf.read(wav_file)
     if cutoff != 0:
-        x = low_cut_filter(x, fs, cutoff)
+        x = np.clip(low_cut_filter(x, fs, cutoff), -1, 0.999969482421875)
 
     return fs, x
 
 
 def convert_f0(f0, f0_mean_src, f0_std_src, f0_mean_trg, f0_std_trg):
     nonzero_indices = f0 > 0
-    cvf0 = np.zeros(len(f0))
+    cvf0 = np.zeros(f0.shape)
     cvf0[nonzero_indices] = \
             np.exp((f0_std_trg/f0_std_src)*(np.log(f0[nonzero_indices])-f0_mean_src)+f0_mean_trg)
 
@@ -316,6 +324,8 @@ def main():
 
     args = parser.parse_args()
 
+    os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
     # set log level
     if args.verbose == 1:
         logging.basicConfig(level=logging.INFO,
@@ -360,12 +370,15 @@ def main():
         max_frame = 0
         max_spc_frame = 0
         count = 1
-        melfb_t = np.linalg.pinv(librosa.filters.mel(args.fs, args.fftl, n_mels=args.mel_dim))
+        melfb_t = np.linalg.pinv(librosa.filters.mel(args.fs, args.fftl, n_mels=args.mel_dim, fmin=80, fmax=7600))
+        #melfb_t = np.linalg.pinv(librosa.filters.mel(args.fs, args.fftl, n_mels=args.mel_dim, fmin=70, fmax=8000))
+        #melfb_t = np.linalg.pinv(librosa.filters.mel(args.fs, args.fftl, n_mels=args.mel_dim))
         for wav_name in wav_list:
             # load wavfile and apply low cut filter
             fs, x = read_wav(wav_name, cutoff=args.highpass_cutoff)
             n_sample += x.shape[0]
-            logging.info("cpu-"+str(cpu+1)+" "+str(len(wav_list))+" "+wav_name+" "+str(x.shape[0])+" "+str(n_sample)+" "+str(count))
+            logging.info("cpu-"+str(cpu+1)+" "+str(len(wav_list))+" "+wav_name+" "+\
+                str(x.shape[0])+" "+str(n_sample)+" "+str(count))
             logging.info(wav_list)
 
             # check sampling frequency
@@ -377,15 +390,41 @@ def main():
 
             if not args.init:
                 if args.minf0 != 40 and args.maxf0 != 700:
-                    time_axis_range, f0_range, spc_range, ap_range = analyze_range(x, fs=fs, minf0=args.minf0, \
-                                                        maxf0=args.maxf0, fperiod=args.shiftms, fftl=args.fftl)
+                    time_axis_range, f0_range, spc_range, ap_range = analyze_range(x, fs=fs,
+                                minf0=args.minf0, maxf0=args.maxf0, fperiod=args.shiftms,
+                                    fftl=args.fftl)
+                    # ap. estimate for fs less than 16k
+                    if fs < 16000:
+                        x_up = resample(x, x.shape[0]*(16000//fs))
+                        _, _, _, ap_range = analyze_range(x_up, fs=16000,
+                                    minf0=args.minf0, maxf0=args.maxf0, fperiod=args.shiftms,
+                                        fftl=args.fftl)
+                        if len(f0_range) < ap_range.shape[0]:
+                            ap_range = ap_range[:len(f0_range)]
+                        elif len(f0_range) > ap_range.shape[0]:
+                            time_axis_range = time_axis_range[:ap_range.shape[0]]
+                            f0_range = f0_range[:ap_range.shape[0]]
+                            spc_range = spc_range[:ap_range.shape[0]]
                 else:
                     logging.info('open spk')
-                    time_axis_range, f0_range, spc_range, ap_range = analyze(x, fs=fs, fperiod=args.shiftms, fftl=args.fftl)
+                    time_axis_range, f0_range, spc_range, ap_range = analyze(x, fs=fs,
+                                fperiod=args.shiftms, fftl=args.fftl)
+                    # ap. estimate for fs less than 16k
+                    if fs < 16000:
+                        x_up = resample(x, x.shape[0]*(16000//fs))
+                        _, _, _, ap_range = analyze(x_up, fs=16000,
+                                    fperiod=args.shiftms, fftl=args.fftl)
+                        if len(f0_range) < ap_range.shape[0]:
+                            ap_range = ap_range[:len(f0_range)]
+                        elif len(f0_range) > ap_range.shape[0]:
+                            time_axis_range = time_axis_range[:ap_range.shape[0]]
+                            f0_range = f0_range[:ap_range.shape[0]]
+                            spc_range = spc_range[:ap_range.shape[0]]
                 write_hdf5(hdf5name, "/f0_range", f0_range)
                 write_hdf5(hdf5name, "/time_axis", time_axis_range)
 
-                melmagsp = melsp(x, n_mels=args.mel_dim, n_fft=args.fftl, shiftms=args.shiftms, winms=args.winms, fs=fs)
+                melmagsp = melsp(x, n_mels=args.mel_dim, n_fft=args.fftl, shiftms=args.shiftms,
+                                winms=args.winms, fs=fs)
                 logging.info(melmagsp.shape)
 
                 write_hdf5(hdf5name, "/log_1pmelmagsp", np.log(1+10000*melmagsp))
@@ -400,7 +439,10 @@ def main():
                 npow_range = spc2npow(spc_range)
                 _, spcidx_range = extfrm(mcep_range, npow_range, power_threshold=args.pow)
 
-                codeap_range = pw.code_aperiodicity(ap_range, fs)
+                if fs >= 16000:
+                    codeap_range = pw.code_aperiodicity(ap_range, fs)
+                else:
+                    codeap_range = pw.code_aperiodicity(ap_range, 16000)
 
                 cont_f0_lpf_range = np.expand_dims(cont_f0_lpf_range, axis=-1)
                 uv_range = np.expand_dims(uv_range, axis=-1)
@@ -417,8 +459,10 @@ def main():
                 n_codeap = codeap_range.shape[-1]
                 for i in range(n_codeap):
                     logging.info('codeap: %d' % (i+1))
-                    uv_codeap_i, cont_codeap_i = convert_continuos_codeap(np.array(codeap_range[:,i]))
-                    cont_codeap_i = np.log(-np.clip(cont_codeap_i, a_min=np.amin(cont_codeap_i), a_max=MAX_CODEAP))
+                    uv_codeap_i, cont_codeap_i \
+                        = convert_continuos_codeap(np.array(codeap_range[:,i]))
+                    cont_codeap_i = np.log(-np.clip(cont_codeap_i,
+                                        a_min=np.amin(cont_codeap_i), a_max=MAX_CODEAP))
                     if i > 0:
                         cont_codeap = np.c_[cont_codeap, np.expand_dims(cont_codeap_i, axis=-1)]
                     else:
@@ -431,7 +475,8 @@ def main():
                     logging.info((uv_codeap==uv_codeap_i).all())
                     logging.info(uv_codeap.shape)
                     logging.info(cont_codeap.shape)
-                feat_mceplf0cap = np.c_[uv_range, np.log(cont_f0_lpf_range), uv_codeap, cont_codeap, mcep_range]
+                feat_mceplf0cap = np.c_[uv_range, np.log(cont_f0_lpf_range), uv_codeap,
+                                            cont_codeap, mcep_range]
                 logging.info(feat_mceplf0cap.shape)
                 write_hdf5(hdf5name, "/feat_mceplf0cap", feat_mceplf0cap)
 
@@ -441,20 +486,22 @@ def main():
                 if max_spc_frame < spcidx_range[0].shape[0]:
                     max_spc_frame = spcidx_range[0].shape[0]
                 if args.highpass_cutoff != 0 and args.wavfiltdir is not None:
-                    sf.write(args.wavfiltdir + "/" + os.path.basename(wav_name), x, fs, 'PCM_16')
-                wavpath = args.wavdir + "/" + os.path.basename(wav_name)
+                    sf.write(os.path.join(args.wavfiltdir, os.path.basename(wav_name)),
+                        x, fs, 'PCM_16')
+                wavpath = os.path.join(args.wavdir, os.path.basename(wav_name))
                 logging.info("cpu-"+str(cpu+1)+" "+wavpath)
                 sp_rec = ps.mc2sp(mcep_range, args.mcep_alpha, args.fftl)
-                wav = np.clip(pw.synthesize(f0_range, sp_rec, ap_range, fs, frame_period=args.shiftms), \
-                               -1, 1)
+                wav = np.clip(pw.synthesize(f0_range, sp_rec, ap_range, fs,
+                            frame_period=args.shiftms), -1, 0.999969482421875)
                 logging.info(wavpath)
                 sf.write(wavpath, wav, fs, 'PCM_16')
 
                 recmagsp = np.matmul(melfb_t, melmagsp.T)
                 hop_length = int((args.fs/1000)*args.shiftms)
                 win_length = int((args.fs/1000)*args.winms)
-                wav = np.clip(librosa.core.griffinlim(recmagsp, hop_length=hop_length, win_length=win_length, window='hann'), -1, 1)
-                wavpath = args.wavgfdir + "/" + os.path.basename(wav_name)
+                wav = np.clip(librosa.core.griffinlim(recmagsp, hop_length=hop_length,
+                            win_length=win_length, window='hann'), -1, 0.999969482421875)
+                wavpath = os.path.join(args.wavgfdir, os.path.basename(wav_name))
                 logging.info(wavpath)
                 sf.write(wavpath, wav, fs, 'PCM_16')
             else:
@@ -474,7 +521,8 @@ def main():
         max_spc_frame_list.append(max_spc_frame)
         if (n_wav > 0):
             logging.info(str(arr[0])+" "+str(n_wav)+" "+str(arr[1])+" "+str(n_sample/n_wav)+" "+\
-                    str(arr[2])+" "+str(n_frame/n_wav)+" max_frame = "+str(max_frame)+" max_spc_frame = "+str(max_spc_frame))
+                    str(arr[2])+" "+str(n_frame/n_wav)+" max_frame = "+str(max_frame)+\
+                        " max_spc_frame = "+str(max_spc_frame))
 
     # divie list
     file_lists = np.array_split(file_list, args.n_jobs)
@@ -491,7 +539,8 @@ def main():
         max_spc_frame_list = manager.list()
         i = 0
         for f in file_lists:
-            p = mp.Process(target=feature_extract, args=(i, f,arr,max_frame_list,max_spc_frame_list))
+            p = mp.Process(target=feature_extract, args=(i, f, arr, max_frame_list,
+                        max_spc_frame_list))
             p.start()
             processes.append(p)
             i += 1
@@ -500,7 +549,8 @@ def main():
         for p in processes:
             p.join()
 
-        logging.info(str(arr[0])+" "+str(arr[1])+" "+str(arr[1]/arr[0])+" "+str(arr[2])+" "+str(arr[2]/arr[0]))
+        logging.info(str(arr[0])+" "+str(arr[1])+" "+str(arr[1]/arr[0])+" "+str(arr[2])+" "+\
+                    str(arr[2]/arr[0]))
         logging.info('max_frame: %ld' % (np.max(max_frame_list)))
         logging.info('max_spc_frame: %ld' % (np.max(max_spc_frame_list)))
 

@@ -92,7 +92,7 @@ def main():
             else:
                 x_ns = deemphasis(x, alpha=args.alpha)
             write_name = args.writedir + "/" + os.path.basename(wav_name)
-            sf.write(write_name, x_ns, args.fs, 'PCM_16')
+            sf.write(write_name, np.clip(x_ns, -1, 0.999969482421875), args.fs, 'PCM_16')
 
     # divie list
     file_lists = np.array_split(file_list, args.n_jobs)

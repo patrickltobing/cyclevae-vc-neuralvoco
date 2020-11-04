@@ -8,7 +8,7 @@ import numpy as np
 import torch
 import os
 import logging
-from utils import read_hdf5, check_hdf5, write_hdf5
+from utils import read_hdf5, check_hdf5, write_hdf5, shape_hdf5
 from torch.utils.data import Dataset
 import soundfile as sf
 
@@ -62,23 +62,140 @@ def validate_length(x, y, upsampling_factor=0):
     return x, y
 
 
+class FeatureDatasetNeuVocoVAE(Dataset):
+    """Dataset for neural vocoder with VAE
+    """
+
+    def __init__(self, wav_list, pad_wav_transform, upsampling_factor, spk_list,
+                    pad_wav_f_transform=None, wav_transform=None, wav_transform_in=None,
+                        wav_transform_out=None, n_bands=1):
+        self.wav_list = wav_list
+        self.pad_wav_transform = pad_wav_transform
+        self.upsampling_factor = upsampling_factor
+        self.pad_wav_f_transform = pad_wav_f_transform
+        self.wav_transform = wav_transform
+        self.wav_transform_in = wav_transform_in
+        self.wav_transform_out = wav_transform_out
+        self.n_bands = n_bands
+        self.upsampling_factor_bands = self.upsampling_factor // self.n_bands
+        self.spk_list = spk_list
+        self.n_spk = len(self.spk_list)
+
+    def __len__(self):
+        return len(self.wav_list)
+
+    def __getitem__(self, idx):
+        wavfile = self.wav_list[idx]
+        
+        if self.n_bands > 1:
+            #wavfile_pqmf_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(wavfile)))+"_pqmf", \
+            wavfile_pqmf_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(wavfile)))+"_pqmf_"+str(self.n_bands), \
+                os.path.basename(os.path.dirname(os.path.dirname(wavfile))), \
+                    os.path.basename(os.path.dirname(wavfile)))
+            for i in range(self.n_bands):
+                if self.n_bands >= 10:
+                    if i < self.n_bands - 1:
+                        wavfile_pqmf = os.path.join(wavfile_pqmf_dir, os.path.basename(wavfile).replace(".wav", "_B-0"+str(i+1)+".wav"))
+                    else:
+                        wavfile_pqmf = os.path.join(wavfile_pqmf_dir, os.path.basename(wavfile).replace(".wav", "_B-"+str(i+1)+".wav"))
+                else:
+                    wavfile_pqmf = os.path.join(wavfile_pqmf_dir, os.path.basename(wavfile).replace(".wav", "_B-"+str(i+1)+".wav"))
+                x_pqmf, _ = sf.read(wavfile_pqmf, dtype=np.float32)
+                if i > 0:
+                    x = np.c_[x, np.expand_dims(x_pqmf,-1)]
+                else:
+                    x = np.expand_dims(x_pqmf,-1)
+
+            if self.wav_transform_in is not None:
+                x_t = self.wav_transform_in(x) # cont -> disc in/trg n_bands
+            if self.wav_transform is not None:
+                if self.wav_transform_out is not None:
+                    x = self.wav_transform_out(self.wav_transform(x)) # cont -> disc -> cont trg n_bands
+                    x_f, _ = sf.read(wavfile, dtype=np.float32)
+                    x_f = self.wav_transform_out(self.wav_transform(x_f)) # cont -> disc -> cont trg full
+                    slen_f = x_f.shape[0]
+                else:
+                    x = self.wav_transform(x) # cont -> disc in/trg
+            
+            slen = x.shape[0]
+
+            if self.wav_transform is not None and self.wav_transform_out is None:
+                x = torch.LongTensor(self.pad_wav_transform(x)) # disc in/trg
+            else:
+                x = torch.FloatTensor(self.pad_wav_transform(x)) # cont trg_n_bands
+                x_f = torch.FloatTensor(self.pad_wav_f_transform(x_f)) # cont trg_full
+
+            c = torch.LongTensor(np.ones(1, dtype=np.int64)*self.spk_list.index(os.path.basename(os.path.dirname(wavfile))))
+
+            if self.wav_transform_in is not None: # laplace-disc
+                x_t = torch.LongTensor(self.pad_wav_transform(x_t)) # disc in/trg_n_bands
+                return {'x_t': x_t, 'x': x, 'x_f': x_f, 'c': c, 'slen': slen, 'slen_f': slen_f, 'wavfile': wavfile}
+            else: # disc
+                return {'x': x, 'c': c, 'slen': slen, 'wavfile': wavfile}
+        else:
+            x, _ = sf.read(wavfile, dtype=np.float32)
+
+            if self.wav_transform_in is not None:
+                x_t = self.wav_transform_in(x)
+            if self.wav_transform is not None:
+                if self.wav_transform_out is not None:
+                    x = self.wav_transform_out(self.wav_transform(x))
+                else:
+                    x = self.wav_transform(x)
+            
+            slen = x.shape[0]
+
+            if self.wav_transform is not None and self.wav_transform_out is None:
+                x = torch.LongTensor(self.pad_wav_transform(x))
+            else:
+                x = torch.FloatTensor(self.pad_wav_transform(x))
+
+            c = torch.LongTensor(np.ones(1, dtype=np.int64)*self.spk_list.index(os.path.basename(os.path.dirname(wavfile))))
+
+            if self.wav_transform_in is not None:
+                x_t = torch.LongTensor(self.pad_wav_transform(x_t))
+                return {'x_t': x_t, 'x': x, 'c': c, 'slen': slen, 'wavfile': wavfile}
+            else:
+                return {'x': x, 'c': c, 'slen': slen, 'wavfile': wavfile}
+
+
 class FeatureDatasetNeuVoco(Dataset):
     """Dataset for neural vocoder
     """
 
-    def __init__(self, wav_list, feat_list, pad_wav_transform, pad_feat_transform, upsampling_factor, \
-                    string_path, wav_transform=None, wav_transform_in=None, wav_transform_out=None):
+    def __init__(self, wav_list, feat_list, pad_wav_transform, pad_feat_transform, upsampling_factor,
+                    string_path, pad_wav_f_transform=None, wav_transform=None, wav_transform_in=None, spcidx=False, string_path_ft=None,
+                        wav_transform_out=None, with_excit=False, codeap_dim=None, n_bands=1, spk_list=None, cf_dim=None,
+                            pad_left=0, pad_right=0):
         self.wav_list = wav_list
         self.feat_list = feat_list
         self.pad_wav_transform = pad_wav_transform
         self.pad_feat_transform = pad_feat_transform
         self.upsampling_factor = upsampling_factor
-        self.string_path = string_path
-        self.string_path_org = '/feat_mceplf0cap'
+        #self.string_path_org = '/feat_mceplf0cap'
+        self.string_path_org = string_path
         #self.string_path_org = '/feat_org_lf0'
+        if string_path_ft is not None:
+            self.string_path = string_path_ft
+        else:
+            self.string_path = string_path
+        self.pad_wav_f_transform = pad_wav_f_transform
         self.wav_transform = wav_transform
         self.wav_transform_in = wav_transform_in
         self.wav_transform_out = wav_transform_out
+        self.with_excit = with_excit
+        self.codeap_dim = codeap_dim
+        if self.codeap_dim is not None:
+            self.excit_dim = 2+1+self.codeap_dim
+        else:
+            self.excit_dim = 2
+        self.n_bands = n_bands
+        self.upsampling_factor_bands = self.upsampling_factor // self.n_bands
+        self.spk_list = spk_list
+        self.cf_dim = cf_dim
+        self.spcidx = spcidx
+        self.pad_left = pad_left
+        self.pad_right = pad_right
 
     def __len__(self):
         return len(self.wav_list)
@@ -87,36 +204,163 @@ class FeatureDatasetNeuVoco(Dataset):
         wavfile = self.wav_list[idx]
         featfile = self.feat_list[idx]
         
-        x, _ = sf.read(wavfile, dtype=np.float32)
-        if check_hdf5(featfile, self.string_path):
-            h = read_hdf5(featfile, self.string_path)
-        else:
-            h = read_hdf5(featfile, self.string_path_org)
-
-        x, h = validate_length(x, h, self.upsampling_factor)
-
-        if self.wav_transform_in is not None:
-            x_t = self.wav_transform_in(x)
-        if self.wav_transform is not None:
-            if self.wav_transform_out is not None:
-                x = self.wav_transform_out(self.wav_transform(x))
+        if self.spcidx:
+            if not check_hdf5(featfile, '/spcidx_range'):
+                dirname = os.path.dirname(os.path.dirname(featfile))
+                spk = os.path.basename(os.path.dirname(featfile)).split("-")[0]
+                filename = os.path.basename(featfile)
+                spcidx = read_hdf5(os.path.join(dirname, spk, filename), '/spcidx_range')[0]
             else:
-                x = self.wav_transform(x)
-        
-        slen = x.shape[0]
-        flen = h.shape[0]
+                spcidx = read_hdf5(featfile, '/spcidx_range')[0]
+            #frm_len = len(read_hdf5(featfile, '/f0_range'))
+            frm_len = shape_hdf5(featfile, self.string_path)[0]
+            f_ss = spcidx[0]-self.pad_left
+            f_es = spcidx[-1]+self.pad_right
+            if f_ss < 0:
+                f_ss = 0
+            if f_es > frm_len:
+                f_es = frm_len
+            spcidx_s_e = [f_ss, f_es]
+            spcidx_s_e_smpl = [f_ss*self.upsampling_factor_bands, f_es*self.upsampling_factor_bands]
 
-        h = torch.FloatTensor(self.pad_feat_transform(h))
-        if self.wav_transform is not None and self.wav_transform_out is None:
-            x = torch.LongTensor(self.pad_wav_transform(x))
-        else:
-            x = torch.FloatTensor(self.pad_wav_transform(x))
+        if self.n_bands > 1:
+            wavfile_pqmf_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(wavfile)))+"_pqmf_"+str(self.n_bands), \
+                os.path.basename(os.path.dirname(os.path.dirname(wavfile))), os.path.basename(os.path.dirname(wavfile)))
+            for i in range(self.n_bands):
+                if self.n_bands >= 10:
+                    if i < self.n_bands - 1:
+                        wavfile_pqmf = os.path.join(wavfile_pqmf_dir, os.path.basename(wavfile).replace(".wav", "_B-0"+str(i+1)+".wav"))
+                    else:
+                        wavfile_pqmf = os.path.join(wavfile_pqmf_dir, os.path.basename(wavfile).replace(".wav", "_B-"+str(i+1)+".wav"))
+                else:
+                    wavfile_pqmf = os.path.join(wavfile_pqmf_dir, os.path.basename(wavfile).replace(".wav", "_B-"+str(i+1)+".wav"))
+                x_pqmf, _ = sf.read(wavfile_pqmf, dtype=np.float32)
+                if i > 0:
+                    x_pqmf, _ = validate_length(x_pqmf, h, self.upsampling_factor_bands)
+                    x = np.c_[x, np.expand_dims(x_pqmf,-1)]
+                else:
+                    if not self.with_excit:
+                        if check_hdf5(featfile, self.string_path):
+                            h = read_hdf5(featfile, self.string_path)
+                        else:
+                            h = read_hdf5(featfile, self.string_path_org)
+                    else:
+                        h = np.c_[read_hdf5(featfile, self.string_path_org)[:,:self.excit_dim], read_hdf5(featfile, self.string_path)]
+                    x_pqmf, h = validate_length(x_pqmf, h, self.upsampling_factor_bands)
+                    x = np.expand_dims(x_pqmf,-1)
 
-        if self.wav_transform_in is not None:
-            x_t = torch.LongTensor(self.pad_wav_transform(x_t))
-            return {'x_t': x_t, 'x': x, 'feat': h, 'slen': slen, 'flen': flen, 'featfile': featfile}
+            if self.wav_transform_in is not None:
+                x_t = self.wav_transform_in(x) # cont -> disc in/trg n_bands
+            if self.wav_transform is not None:
+                if self.wav_transform_out is not None:
+                    x = self.wav_transform_out(self.wav_transform(x)) # cont -> disc -> cont trg n_bands
+                    x_f, _ = sf.read(wavfile, dtype=np.float32)
+                    x_f, _ = validate_length(x_f, h, self.upsampling_factor)
+                    x_f = self.wav_transform_out(self.wav_transform(x_f)) # cont -> disc -> cont trg full
+                    slen_f = x_f.shape[0]
+                else:
+                    x = self.wav_transform(x) # cont -> disc in/trg
+            
+            assert(x.shape[0]==h.shape[0]*(self.upsampling_factor//self.n_bands))
+            if self.spcidx:
+                x = x[spcidx_s_e_smpl[0]:spcidx_s_e_smpl[-1]]
+                h = h[spcidx_s_e[0]:spcidx_s_e[-1]]
+            assert(x.shape[0]==h.shape[0]*(self.upsampling_factor//self.n_bands))
+            slen = x.shape[0]
+            flen = h.shape[0]
+
+            h = torch.FloatTensor(self.pad_feat_transform(h))
+            if self.wav_transform is not None and self.wav_transform_out is None:
+                x = torch.LongTensor(self.pad_wav_transform(x)) # disc in/trg
+            else:
+                x = torch.FloatTensor(self.pad_wav_transform(x)) # cont trg_n_bands
+                x_f = torch.FloatTensor(self.pad_wav_f_transform(x_f)) # cont trg_full
+
+            if self.spk_list is not None:
+                featfile_spk = os.path.basename(os.path.dirname(featfile)).split("-")[0]
+                spk_idx = (torch.ones(h.shape[0])*self.spk_list.index(featfile_spk)).long()
+
+            if self.wav_transform_in is not None: # laplace-disc
+                x_t = torch.LongTensor(self.pad_wav_transform(x_t)) # disc in/trg_n_bands
+                if self.spk_list is not None:
+                    if self.cf_dim is not None and self.wav_transform is not None and self.wav_transform_out is None:
+                        return {'x_t_c': x_t // self.cf_dim, 'x_t_f': x_t % self.cf_dim, 'x': x, 'x': x_f, 'feat': h, \
+                                    'slen': slen, 'slen_f': slen_f, 'flen': flen, 'featfile': featfile, 'c': spk_idx}
+                    else:
+                        return {'x_t': x_t, 'x': x, 'x_f': x_f, 'feat': h, 'slen': slen, 'slen_f': slen_f, 'flen': flen, 'featfile': featfile, 'c': spk_idx}
+                else:
+                    if self.cf_dim is not None and self.wav_transform is not None and self.wav_transform_out is None:
+                        return {'x_t_c': x_t // self.cf_dim, 'x_t_f': x_t % self.cf_dim, 'x': x, 'x_f': x_f, 'feat': h, \
+                                    'slen': slen, 'slen_f': slen_f, 'flen': flen, 'featfile': featfile}
+                    else:
+                        return {'x_t': x_t, 'x': x, 'x_f': x_f, 'feat': h, 'slen': slen, 'slen_f': slen_f, 'flen': flen, 'featfile': featfile}
+            else: # disc
+                if self.spk_list is not None:
+                    if self.cf_dim is not None and self.wav_transform is not None and self.wav_transform_out is None:
+                        return {'x_c': x // self.cf_dim, 'x_f': x % self.cf_dim, 'feat': h, 'slen': slen, 'flen': flen, 'featfile': featfile, 'c': spk_idx}
+                    else:
+                        return {'x': x, 'feat': h, 'slen': slen, 'flen': flen, 'featfile': featfile, 'c': spk_idx}
+                else:
+                    if self.cf_dim is not None and self.wav_transform is not None and self.wav_transform_out is None:
+                        return {'x_c': x // self.cf_dim, 'x_f': x % self.cf_dim, 'feat': h, 'slen': slen, 'flen': flen, 'featfile': featfile}
+                    else:
+                        return {'x': x, 'feat': h, 'slen': slen, 'flen': flen, 'featfile': featfile}
         else:
-            return {'x': x, 'feat': h, 'slen': slen, 'flen': flen, 'featfile': featfile}
+            x, _ = sf.read(wavfile, dtype=np.float32)
+            if not self.with_excit:
+                if check_hdf5(featfile, self.string_path):
+                    h = read_hdf5(featfile, self.string_path)
+                else:
+                    h = read_hdf5(featfile, self.string_path_org)
+            else:
+                h = np.c_[read_hdf5(featfile, self.string_path_org)[:,:self.excit_dim], read_hdf5(featfile, self.string_path)]
+
+            x, h = validate_length(x, h, self.upsampling_factor)
+
+            if self.wav_transform_in is not None:
+                x_t = self.wav_transform_in(x)
+            if self.wav_transform is not None:
+                if self.wav_transform_out is not None:
+                    x = self.wav_transform_out(self.wav_transform(x))
+                else:
+                    x = self.wav_transform(x)
+            
+            slen = x.shape[0]
+            flen = h.shape[0]
+
+            h = torch.FloatTensor(self.pad_feat_transform(h))
+            if self.wav_transform is not None and self.wav_transform_out is None:
+                x = torch.LongTensor(self.pad_wav_transform(x))
+            else:
+                x = torch.FloatTensor(self.pad_wav_transform(x))
+
+            if self.spk_list is not None:
+                featfile_spk = os.path.basename(os.path.dirname(featfile))
+                spk_idx = (torch.ones(h.shape[0])*self.spk_list.index(featfile_spk)).long()
+
+            if self.wav_transform_in is not None:
+                x_t = torch.LongTensor(self.pad_wav_transform(x_t))
+                if self.spk_list is not None:
+                    if self.cf_dim is not None and self.wav_transform is not None and self.wav_transform_out is None:
+                        return {'x_t_c': x_t // self.cf_dim, 'x_t_f': x_t % self.cf_dim, 'x': x, 'feat': h, 'slen': slen, 'flen': flen, 'featfile': featfile, 'c': spk_idx}
+                    else:
+                        return {'x_t': x_t, 'x': x, 'feat': h, 'slen': slen, 'flen': flen, 'featfile': featfile, 'c': spk_idx}
+                else:
+                    if self.cf_dim is not None and self.wav_transform is not None and self.wav_transform_out is None:
+                        return {'x_t_c': x_t // self.cf_dim, 'x_t_f': x_t % self.cf_dim, 'x': x, 'feat': h, 'slen': slen, 'flen': flen, 'featfile': featfile}
+                    else:
+                        return {'x_t': x_t, 'x': x, 'feat': h, 'slen': slen, 'flen': flen, 'featfile': featfile}
+            else:
+                if self.spk_list is not None:
+                    if self.cf_dim is not None and self.wav_transform is not None and self.wav_transform_out is None:
+                        return {'x_c': x // self.cf_dim, 'x_f': x % self.cf_dim, 'feat': h, 'slen': slen, 'flen': flen, 'featfile': featfile, 'c': spk_idx}
+                    else:
+                        return {'x': x, 'feat': h, 'slen': slen, 'flen': flen, 'featfile': featfile, 'c': spk_idx}
+                else:
+                    if self.cf_dim is not None and self.wav_transform is not None and self.wav_transform_out is None:
+                        return {'x_c': x // self.cf_dim, 'x_f': x % self.cf_dim, 'feat': h, 'slen': slen, 'flen': flen, 'featfile': featfile}
+                    else:
+                        return {'x': x, 'feat': h, 'slen': slen, 'flen': flen, 'featfile': featfile}
 
 
 def proc_random_spkcv_statcvexcit(src_idx, spk_list, n_cv, n_frm, n_spk, stat_spk_list, mean_path, scale_path):
@@ -141,7 +385,8 @@ class FeatureDatasetCycMceplf0WavVAE(Dataset):
     """
 
     def __init__(self, feat_list, pad_feat_transform, spk_list, stat_spk_list, n_cyc, string_path, excit_dim=None, cap_exc_dim=None,
-            upsampling_factor=None, wav_list=None, pad_wav_transform=None, wav_transform=None, logits=False, spcidx=True, uvcap_flag=True):
+            upsampling_factor=None, wav_list=None, pad_wav_transform=None, wav_transform=None, logits=False, spcidx=True, uvcap_flag=True,
+                n_quantize=None, min_spec_bound=None, max_spec_bound=None, n_bands=1, cf_dim=None, pad_left=0, pad_right=0):
         self.wav_list = wav_list
         self.feat_list = feat_list
         self.pad_wav_transform = pad_wav_transform
@@ -156,7 +401,7 @@ class FeatureDatasetCycMceplf0WavVAE(Dataset):
         self.string_path = string_path
         self.logits = logits
         self.excit_dim = excit_dim
-        self.cap_exc_dim = cap_exc_dim
+        self.cap_exc_dim = cap_exc_dim #to exclude cap
         self.spcidx = spcidx
         if 'mel' in self.string_path:
             self.mean_path = "/mean_feat_mceplf0cap"
@@ -172,45 +417,124 @@ class FeatureDatasetCycMceplf0WavVAE(Dataset):
             else:
                 self.uvcap = False
             self.mel = False
+        if n_quantize is not None:
+            self.n_quantize = n_quantize // 2
+        else:
+            self.n_quantize = None
+        self.min_spec_bound = min_spec_bound
+        self.max_spec_bound = max_spec_bound
+        if self.min_spec_bound is not None and self.max_spec_bound is not None:
+            self.diff_spec_bound = self.max_spec_bound - self.min_spec_bound
+        else:
+            self.diff_spec_bound = None
+        self.n_bands = n_bands
+        if self.upsampling_factor is not None:
+            self.upsampling_factor_bands = self.upsampling_factor // self.n_bands
+        self.cf_dim = cf_dim
+        self.pad_left = pad_left
+        self.pad_right = pad_right
 
     def __len__(self):
         return len(self.feat_list)
 
     def __getitem__(self, idx):
         featfile = self.feat_list[idx]
-        #if not check_hdf5(featfile, self.string_path):
-        #    logging.info('%s %s' % (featfile, self.string_path))
-        if self.mel:
-            if self.excit_dim is not None:
-                feat = np.c_[read_hdf5(featfile, '/feat_mceplf0cap')[:,:self.excit_dim], read_hdf5(featfile, self.string_path)]
+        if self.n_quantize is not None:
+            if self.mel:
+                feat = ((2*(read_hdf5(featfile, self.string_path)-self.min_spec_bound)/self.diff_spec_bound - 1) * self.n_quantize + self.n_quantize + 0.5).astype(np.int64)
+                if self.excit_dim is not None:
+                    feat = np.c_[read_hdf5(featfile, '/feat_mceplf0cap')[:,:self.excit_dim], feat]
             else:
-                feat = read_hdf5(featfile, self.string_path)
+                if self.cap_exc_dim is None:
+                    feat = ((2*(read_hdf5(featfile, self.string_path)[:,self.excit_dim:]-self.min_spec_bound)/self.diff_spec_bound - 1) * self.n_quantize + self.n_quantize + 0.5).astype(np.int64)
+                    feat = np.c_[read_hdf5(featfile, self.string_path)[:,:self.excit_dim], feat]
+                else:
+                    feat = ((2*(read_hdf5(featfile, '/feat_mceplf0cap')[:,self.cap_exc_dim:]-self.min_spec_bound)/self.diff_spec_bound - 1) * self.n_quantize + self.n_quantize + 0.5).astype(np.int64)
+                    feat = np.c_[read_hdf5(featfile, '/feat_mceplf0cap')[:,:2], feat]
         else:
-            if self.cap_exc_dim is None:
-                feat = read_hdf5(featfile, self.string_path)
+            if self.mel:
+                if self.excit_dim is not None:
+                    feat = np.c_[read_hdf5(featfile, '/feat_mceplf0cap')[:,:self.excit_dim], read_hdf5(featfile, self.string_path)]
+                else:
+                    feat = read_hdf5(featfile, self.string_path)
             else:
-                feat = np.c_[read_hdf5(featfile, '/feat_mceplf0cap')[:,:2], read_hdf5(featfile, '/feat_mceplf0cap')[:,self.cap_exc_dim:]]
+                if self.cap_exc_dim is None:
+                    feat = read_hdf5(featfile, self.string_path)
+                else:
+                    feat = np.c_[read_hdf5(featfile, '/feat_mceplf0cap')[:,:2], read_hdf5(featfile, '/feat_mceplf0cap')[:,self.cap_exc_dim:]]
+        frm_len = len(read_hdf5(featfile, '/f0_range'))
         featfile_spk = os.path.basename(os.path.dirname(featfile))
         src_idx = self.spk_list.index(featfile_spk)
 
-        if self.spcidx:
-            spcidx = read_hdf5(featfile, '/spcidx_range')[0]
-            if self.wav_list is not None:
-                feat = feat[:spcidx[-1]+1]
-            else:
-                feat = feat[spcidx[0]:spcidx[-1]+1]
-
         if self.wav_list is not None:
-            wavfile = self.wav_list[idx]
-            x, _ = sf.read(wavfile, dtype=np.float32)
-            if self.spcidx:
-                x = x[:-(x.shape[0]-feat.shape[0]*self.upsampling_factor)]
-            x, feat = validate_length(x, feat, self.upsampling_factor)
-            if self.wav_transform is not None:
-                x = self.wav_transform(x)
-            slen = x.shape[0]
+            wavfile = self.wav_list[idx]            
+            if self.n_bands > 1:
+                wavfile_pqmf_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(wavfile)))+"_pqmf_"+str(self.n_bands), \
+                    os.path.basename(os.path.dirname(os.path.dirname(wavfile))), os.path.basename(os.path.dirname(wavfile)))
+                for i in range(self.n_bands):
+                    if self.n_bands >= 10:
+                        if i < self.n_bands - 1:
+                            wavfile_pqmf = os.path.join(wavfile_pqmf_dir, os.path.basename(wavfile).replace(".wav", "_B-0"+str(i+1)+".wav"))
+                        else:
+                            wavfile_pqmf = os.path.join(wavfile_pqmf_dir, os.path.basename(wavfile).replace(".wav", "_B-"+str(i+1)+".wav"))
+                    else:
+                        wavfile_pqmf = os.path.join(wavfile_pqmf_dir, os.path.basename(wavfile).replace(".wav", "_B-"+str(i+1)+".wav"))
+                    x_pqmf, _ = sf.read(wavfile_pqmf, dtype=np.float32)
+                    if i > 0:
+                        x_pqmf, _ = validate_length(x_pqmf, feat, self.upsampling_factor_bands)
+                        x = np.c_[x, np.expand_dims(x_pqmf,-1)]
+                    else:
+                        x_pqmf, feat = validate_length(x_pqmf, feat, self.upsampling_factor_bands)
+                        x = np.expand_dims(x_pqmf,-1)
 
-        flen = feat.shape[0]
+                x = self.wav_transform(x)
+                assert(x.shape[0]==feat.shape[0]*(self.upsampling_factor//self.n_bands))
+                if self.spcidx:
+                    spcidx = read_hdf5(featfile, '/spcidx_range')[0]
+                    f_ss = spcidx[0]-self.pad_left
+                    f_es = spcidx[-1]+self.pad_right
+                    if f_ss < 0:
+                        f_ss = 0
+                    if f_es > frm_len:
+                        f_es = frm_len
+                    spcidx_s_e = [f_ss, f_es]
+                    spcidx_s_e_smpl = [f_ss*self.upsampling_factor_bands, f_es*self.upsampling_factor_bands]
+                    x = x[spcidx_s_e_smpl[0]:spcidx_s_e_smpl[-1]]
+                    feat = feat[spcidx_s_e[0]:spcidx_s_e[-1]]
+                    assert(x.shape[0]==feat.shape[0]*(self.upsampling_factor//self.n_bands))
+                slen = x.shape[0]
+                flen = feat.shape[0]
+            else:
+                x, _ = sf.read(wavfile, dtype=np.float32)
+                x, feat = validate_length(x, feat, self.upsampling_factor)
+                assert(x.shape[0]==feat.shape[0]*(self.upsampling_factor))
+                if self.spcidx:
+                    spcidx = read_hdf5(featfile, '/spcidx_range')[0]
+                    f_ss = spcidx[0]-self.pad_left
+                    f_es = spcidx[-1]+self.pad_right
+                    if f_ss < 0:
+                        f_ss = 0
+                    if f_es > frm_len:
+                        f_es = frm_len
+                    spcidx_s_e = [f_ss, f_es]
+                    spcidx_s_e_smpl = [f_ss*self.upsampling_factor_bands, f_es*self.upsampling_factor_bands]
+                    x = x[spcidx_s_e_smpl[0]:spcidx_s_e_smpl[-1]]
+                    feat = feat[spcidx_s_e[0]:spcidx_s_e[-1]]
+                    assert(x.shape[0]==feat.shape[0]*(self.upsampling_factor))
+                x = self.wav_transform(x)
+                slen = x.shape[0]
+                flen = feat.shape[0]
+        elif self.spcidx:
+            spcidx = read_hdf5(featfile, '/spcidx_range')[0]
+            f_ss = spcidx[0]-self.pad_left
+            f_es = spcidx[-1]+self.pad_right
+            if f_ss < 0:
+                f_ss = 0
+            if f_es > frm_len:
+                f_es = frm_len
+            spcidx_s_e = [f_ss, f_es]
+            feat = feat[spcidx_s_e[0]:spcidx_s_e[-1]]
+            flen = feat.shape[0]
 
         mean_trg_list, std_trg_list, trg_code_list, pair_spk_list = \
             proc_random_spkcv_statcvexcit(src_idx, self.spk_list, self.n_cv, flen, self.n_spk, \
@@ -269,14 +593,15 @@ class FeatureDatasetCycMceplf0WavVAE(Dataset):
                         'pair_spk_list': pair_spk_list, 'feat_cv_list': cv_src_list, 'featfile_spk': featfile_spk, \
                             'featfile': featfile, 'feat': feat, 'py_logits': py_logits}
         else:
-            if self.wav_transform is not None:
-                x = torch.LongTensor(self.pad_wav_transform(x))
+            x = torch.LongTensor(self.pad_wav_transform(x))
+            if self.cf_dim is not None:
+                return {'x_c': x // self.cf_dim, 'x_f': x % self.cf_dim, 'slen': slen, 'flen': flen, 'src_codes': src_codes, 'src_trg_codes_list': trg_code_list, \
+                        'pair_spk_list': pair_spk_list, 'feat_cv_list': cv_src_list, 'featfile_spk': featfile_spk, \
+                            'featfile': featfile, 'feat': feat}
             else:
-                x = torch.FloatTensor(self.pad_wav_transform(x))
-
-            return {'x': x, 'slen': slen, 'flen': flen, 'src_codes': src_codes, 'src_trg_codes_list': trg_code_list, \
-                    'pair_spk_list': pair_spk_list, 'feat_cv_list': cv_src_list, 'featfile_spk': featfile_spk, \
-                        'featfile': featfile, 'feat': feat}
+                return {'x': x, 'slen': slen, 'flen': flen, 'src_codes': src_codes, 'src_trg_codes_list': trg_code_list, \
+                        'pair_spk_list': pair_spk_list, 'feat_cv_list': cv_src_list, 'featfile_spk': featfile_spk, \
+                            'featfile': featfile, 'feat': feat}
 
 
 class FeatureDatasetEvalCycMceplf0WavVAE(Dataset):
@@ -284,7 +609,8 @@ class FeatureDatasetEvalCycMceplf0WavVAE(Dataset):
     """
 
     def __init__(self, file_list, pad_transform, spk_list, stat_spk_list, string_path, excit_dim=None, cap_exc_dim=None,
-            upsampling_factor=None, wav_list=None, pad_wav_transform=None, wav_transform=None, spcidx=True, uvcap_flag=True):
+            upsampling_factor=None, wav_list=None, pad_wav_transform=None, wav_transform=None, spcidx=True, uvcap_flag=True,
+                n_quantize=None, min_spec_bound=None, max_spec_bound=None, n_bands=1, cf_dim=None, pad_left=0, pad_right=0):
         self.wav_list = wav_list
         self.file_list = file_list
         self.pad_transform = pad_transform
@@ -304,6 +630,22 @@ class FeatureDatasetEvalCycMceplf0WavVAE(Dataset):
         self.spcidx = spcidx
         eval_exist = False
         self.uvcap_flag = uvcap_flag
+        if n_quantize is not None:
+            self.n_quantize = n_quantize // 2
+        else:
+            self.n_quantize = None
+        self.min_spec_bound = min_spec_bound
+        self.max_spec_bound = max_spec_bound
+        if self.min_spec_bound is not None and self.max_spec_bound is not None:
+            self.diff_spec_bound = self.max_spec_bound - self.min_spec_bound
+        else:
+            self.diff_spec_bound = None
+        self.n_bands = n_bands
+        if self.upsampling_factor is not None:
+            self.upsampling_factor_bands = self.upsampling_factor // self.n_bands
+        self.cf_dim = cf_dim
+        self.pad_left = 0
+        self.pad_right = 0
         if 'mel' in self.string_path:
             self.mean_path = "/mean_feat_mceplf0cap"
             self.scale_path = "/scale_feat_mceplf0cap"
@@ -412,39 +754,109 @@ class FeatureDatasetEvalCycMceplf0WavVAE(Dataset):
         featfile_src_trg = self.file_list_src_trg[idx]
         file_src_trg_flag = self.list_src_trg_flag[idx]
 
-        if self.mel:
-            if self.excit_dim is not None:
-                h_src = np.c_[read_hdf5(featfile_src, '/feat_mceplf0cap')[:,:self.excit_dim], read_hdf5(featfile_src, self.string_path)]
+        if self.n_quantize is not None:
+            if self.mel:
+                h_src = ((2*(read_hdf5(featfile_src, self.string_path)-self.min_spec_bound)/self.diff_spec_bound - 1) * self.n_quantize + self.n_quantize + 0.5).astype(np.int64)
+                if self.excit_dim is not None:
+                    h_src = np.c_[read_hdf5(featfile_src, '/feat_mceplf0cap')[:,:self.excit_dim], h_src]
             else:
-                h_src = read_hdf5(featfile_src, self.string_path)
+                if self.cap_exc_dim is None:
+                    h_src = ((2*(read_hdf5(featfile_src, self.string_path)[:,self.excit_dim:]-self.min_spec_bound)/self.diff_spec_bound - 1) * self.n_quantize + self.n_quantize + 0.5).astype(np.int64)
+                    h_src = np.c_[read_hdf5(featfile_src, self.string_path)[:,:self.excit_dim], h_src]
+                else:
+                    h_src = ((2*(read_hdf5(featfile_src, '/feat_mceplf0cap')[:,self.cap_exc_dim:]-self.min_spec_bound)/self.diff_spec_bound - 1) * self.n_quantize + self.n_quantize + 0.5).astype(np.int64)
+                    h_src = np.c_[read_hdf5(featfile_src, '/feat_mceplf0cap')[:,:2], h_src]
         else:
-            if self.cap_exc_dim is None:
-                h_src = read_hdf5(featfile_src, self.string_path)
+            if self.mel:
+                if self.excit_dim is not None:
+                    h_src = np.c_[read_hdf5(featfile_src, '/feat_mceplf0cap')[:,:self.excit_dim], read_hdf5(featfile_src, self.string_path)]
+                else:
+                    h_src = read_hdf5(featfile_src, self.string_path)
             else:
-                h_src = np.c_[read_hdf5(featfile_src, '/feat_mceplf0cap')[:,:2], read_hdf5(featfile_src, '/feat_mceplf0cap')[:,self.cap_exc_dim:]]
+                if self.cap_exc_dim is None:
+                    h_src = read_hdf5(featfile_src, self.string_path)
+                else:
+                    h_src = np.c_[read_hdf5(featfile_src, '/feat_mceplf0cap')[:,:2], read_hdf5(featfile_src, '/feat_mceplf0cap')[:,self.cap_exc_dim:]]
         spk_src = os.path.basename(os.path.dirname(featfile_src))
         spk_trg = os.path.basename(os.path.dirname(featfile_src_trg))
         idx_src = self.spk_list.index(spk_src)
         idx_trg = self.spk_list.index(spk_trg)
 
-        spcidx_src = read_hdf5(featfile_src, "/spcidx_range")[0]
-        if self.spcidx:
+        spcidx_src = read_hdf5(featfile_src, '/spcidx_range')[0]
+        frm_len = len(read_hdf5(featfile_src, '/f0_range'))
+        if self.wav_list is not None:
+            wavfile = self.wav_list_src[idx]            
+            if self.n_bands > 1:
+                wavfile_pqmf_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(wavfile)))+"_pqmf_"+str(self.n_bands), \
+                    os.path.basename(os.path.dirname(os.path.dirname(wavfile))), os.path.basename(os.path.dirname(wavfile)))
+                for i in range(self.n_bands):
+                    if self.n_bands >= 10:
+                        if i < self.n_bands - 1:
+                            wavfile_pqmf = os.path.join(wavfile_pqmf_dir, os.path.basename(wavfile).replace(".wav", "_B-0"+str(i+1)+".wav"))
+                        else:
+                            wavfile_pqmf = os.path.join(wavfile_pqmf_dir, os.path.basename(wavfile).replace(".wav", "_B-"+str(i+1)+".wav"))
+                    else:
+                        wavfile_pqmf = os.path.join(wavfile_pqmf_dir, os.path.basename(wavfile).replace(".wav", "_B-"+str(i+1)+".wav"))
+                    x_pqmf, _ = sf.read(wavfile_pqmf, dtype=np.float32)
+                    if i > 0:
+                        x_pqmf, _ = validate_length(x_pqmf, h_src, self.upsampling_factor_bands)
+                        x = np.c_[x, np.expand_dims(x_pqmf,-1)]
+                    else:
+                        x_pqmf, h_src = validate_length(x_pqmf, h_src, self.upsampling_factor_bands)
+                        x = np.expand_dims(x_pqmf,-1)
+
+                x = self.wav_transform(x)
+                
+                assert(x.shape[0]==h_src.shape[0]*(self.upsampling_factor//self.n_bands))
+                if self.spcidx:
+                    h_src_full = h_src
+                    flen_src_full = h_src_full.shape[0]
+                    f_ss = spcidx_src[0]-self.pad_left
+                    f_es = spcidx_src[-1]+self.pad_right
+                    if f_ss < 0:
+                        f_ss = 0
+                    if f_es > frm_len:
+                        f_es = frm_len
+                    spcidx_s_e = [f_ss, f_es]
+                    spcidx_s_e_smpl = [f_ss*self.upsampling_factor_bands, f_es*self.upsampling_factor_bands]
+                    x = x[spcidx_s_e_smpl[0]:spcidx_s_e_smpl[-1]]
+                    h_src = h_src[spcidx_s_e[0]:spcidx_s_e[-1]]
+                    assert(x.shape[0]==h_src.shape[0]*(self.upsampling_factor//self.n_bands))
+                slen = x.shape[0]
+                flen = h_src.shape[0]
+            else:
+                x, _ = sf.read(wavfile, dtype=np.float32)
+                x, h_src = validate_length(x, h_src, self.upsampling_factor)
+                assert(x.shape[0]==h_src.shape[0]*self.upsampling_factor)
+                if self.spcidx:
+                    h_src_full = h_src
+                    flen_src_full = h_src_full.shape[0]
+                    f_ss = spcidx_src[0]-self.pad_left
+                    f_es = spcidx_src[-1]+self.pad_right
+                    if f_ss < 0:
+                        f_ss = 0
+                    if f_es > frm_len:
+                        f_es = frm_len
+                    spcidx_s_e = [f_ss, f_es]
+                    spcidx_s_e_smpl = [f_ss*self.upsampling_factor_bands, f_es*self.upsampling_factor_bands]
+                    x = x[spcidx_s_e_smpl[0]:spcidx_s_e_smpl[-1]]
+                    h_src = h_src[spcidx_s_e[0]:spcidx_s_e[-1]]
+                    assert(x.shape[0]==h_src.shape[0]*self.upsampling_factor)
+                x = self.wav_transform(x)
+                slen = x.shape[0]
+                flen = h_src.shape[0]
+        elif self.spcidx:
             h_src_full = h_src
             flen_src_full = h_src_full.shape[0]
-            if self.wav_list is not None:
-                h_src = h_src[:spcidx_src[-1]+1]
-            else:
-                h_src = h_src[spcidx_src[0]:spcidx_src[-1]+1]
-
-        if self.wav_list is not None:
-            wavfile = self.wav_list_src[idx]
-            x, _ = sf.read(wavfile, dtype=np.float32)
-            if self.spcidx:
-                x = x[:-(x.shape[0]-h_src.shape[0]*self.upsampling_factor)]
-            x, h_src = validate_length(x, h_src, self.upsampling_factor)
-            if self.wav_transform is not None:
-                x = self.wav_transform(x)
-            slen = x.shape[0]
+            f_ss = spcidx_src[0]-self.pad_left
+            f_es = spcidx_src[-1]+self.pad_right
+            if f_ss < 0:
+                f_ss = 0
+            if f_es > frm_len:
+                f_es = frm_len
+            spcidx_s_e = [f_ss, f_es]
+            h_src = h_src[spcidx_s_e[0]:spcidx_s_e[-1]]
+            flen = h_src.shape[0]
 
         if not self.mel or (self.mel and self.excit_dim is not None):
             mean_src = read_hdf5(self.stat_spk_list[idx_src], self.mean_path)[1:2]
@@ -463,22 +875,38 @@ class FeatureDatasetEvalCycMceplf0WavVAE(Dataset):
             if self.excit_dim is not None:
                 if self.cap_exc_dim is None:
                     cv_src = np.c_[h_src[:,:1], (std_trg/std_src)*(h_src[:,1:2]-mean_src)+mean_trg, h_src[:,2:self.excit_dim]]
+                    cv_src_full = np.c_[h_src_full[:,:1], (std_trg/std_src)*(h_src_full[:,1:2]-mean_src)+mean_trg, h_src_full[:,2:self.excit_dim]]
                 else:
                     cv_src = np.c_[h_src[:,:1], (std_trg/std_src)*(h_src[:,1:2]-mean_src)+mean_trg]
+                    cv_src_full = np.c_[h_src_full[:,:1], (std_trg/std_src)*(h_src_full[:,1:2]-mean_src)+mean_trg]
             else:
                 cv_src = np.c_[h_src[:,:1], (std_trg/std_src)*(h_src[:,1:2]-mean_src)+mean_trg]
+                cv_src_full = np.c_[h_src_full[:,:1], (std_trg/std_src)*(h_src_full[:,1:2]-mean_src)+mean_trg]
 
         if file_src_trg_flag:
-            if self.mel:
-                if self.excit_dim is not None:
-                    h_src_trg = np.c_[read_hdf5(featfile_src_trg, '/feat_mceplf0cap')[:,:self.excit_dim], read_hdf5(featfile_src_trg, self.string_path)]
+            if self.n_quantize is not None:
+                if self.mel:
+                    h_src_trg = ((2*(read_hdf5(featfile_src_trg, self.string_path)-self.min_spec_bound)/self.diff_spec_bound - 1) * self.n_quantize + self.n_quantize + 0.5).astype(np.int64)
+                    if self.excit_dim is not None:
+                        h_src_trg = np.c_[read_hdf5(featfile_src_trg, '/feat_mceplf0cap')[:,:self.excit_dim], h_src_trg]
                 else:
-                    h_src_trg = read_hdf5(featfile_src_trg, self.string_path)
+                    if self.cap_exc_dim is None:
+                        h_src_trg = ((2*(read_hdf5(featfile_src_trg, self.string_path)[:,self.excit_dim:]-self.min_spec_bound)/self.diff_spec_bound - 1) * self.n_quantize + self.n_quantize + 0.5).astype(np.int64)
+                        h_src_trg = np.c_[read_hdf5(featfile_src_trg, self.string_path)[:,:self.excit_dim], h_src_trg]
+                    else:
+                        h_src_trg = ((2*(read_hdf5(featfile_src_trg, '/feat_mceplf0cap')[:,self.cap_exc_dim:]-self.min_spec_bound)/self.diff_spec_bound - 1) * self.n_quantize + self.n_quantize + 0.5).astype(np.int64)
+                        h_src_trg = np.c_[read_hdf5(featfile_src_trg, '/feat_mceplf0cap')[:,:2], h_src_trg]
             else:
-                if self.cap_exc_dim is None:
-                    h_src_trg = read_hdf5(featfile_src_trg, self.string_path)
+                if self.mel:
+                    if self.excit_dim is not None:
+                        h_src_trg = np.c_[read_hdf5(featfile_src_trg, '/feat_mceplf0cap')[:,:self.excit_dim], read_hdf5(featfile_src_trg, self.string_path)]
+                    else:
+                        h_src_trg = read_hdf5(featfile_src_trg, self.string_path)
                 else:
-                    h_src_trg = np.c_[read_hdf5(featfile_src_trg, '/feat_mceplf0cap')[:,:2], read_hdf5(featfile_src_trg, '/feat_mceplf0cap')[:,self.cap_exc_dim:]]
+                    if self.cap_exc_dim is None:
+                        h_src_trg = read_hdf5(featfile_src_trg, self.string_path)
+                    else:
+                        h_src_trg = np.c_[read_hdf5(featfile_src_trg, '/feat_mceplf0cap')[:,:2], read_hdf5(featfile_src_trg, '/feat_mceplf0cap')[:,self.cap_exc_dim:]]
             spcidx_src_trg = read_hdf5(featfile_src_trg, "/spcidx_range")[0]
             flen_src_trg = h_src_trg.shape[0]
             flen_spc_src_trg = spcidx_src_trg.shape[0]
@@ -512,6 +940,7 @@ class FeatureDatasetEvalCycMceplf0WavVAE(Dataset):
             src_trg_code_full = torch.LongTensor(self.pad_transform(src_trg_code_full))
         if not self.mel or (self.mel and self.excit_dim is not None):
             cv_src = torch.FloatTensor(self.pad_transform(cv_src))
+            cv_src_full = torch.FloatTensor(self.pad_transform(cv_src_full))
 
         if not file_src_trg_flag:
             flen_src_trg = flen_src
@@ -526,7 +955,7 @@ class FeatureDatasetEvalCycMceplf0WavVAE(Dataset):
                             'cv_src': cv_src, 'h_src_trg': h_src_trg, 'flen_src_trg': flen_src_trg, 'featfile': featfile_src, \
                             'file_src_trg_flag': file_src_trg_flag, 'spk_trg': spk_trg, 'spcidx_src': spcidx_src, \
                             'spcidx_src_trg': spcidx_src_trg, 'flen_spc_src': flen_spc_src, 'flen_spc_src_trg': flen_spc_src_trg, \
-                            'h_src_full': h_src_full, 'flen_src_full': flen_src_full, \
+                            'h_src_full': h_src_full, 'cv_src_full': cv_src_full, 'flen_src_full': flen_src_full, \
                             'src_code_full': src_code_full, 'src_trg_code_full': src_trg_code_full}
                 else:
                     return {'h_src': h_src, 'flen_src': flen_src, 'src_code': src_code, 'src_trg_code': src_trg_code, \
@@ -541,18 +970,23 @@ class FeatureDatasetEvalCycMceplf0WavVAE(Dataset):
                         'file_src_trg_flag': file_src_trg_flag, 'spk_trg': spk_trg, 'spcidx_src': spcidx_src, \
                         'spcidx_src_trg': spcidx_src_trg, 'flen_spc_src': flen_spc_src, 'flen_spc_src_trg': flen_spc_src_trg}
         else:
-            if self.wav_transform is not None:
-                x = torch.LongTensor(self.pad_wav_transform(x))
-            else:
-                x = torch.FloatTensor(self.pad_wav_transform(x))
-
+            x = torch.LongTensor(self.pad_wav_transform(x))
             if self.spcidx:
-                return {'x': x, 'slen': slen, 'h_src': h_src, 'flen_src': flen_src, 'src_code': src_code, 'src_trg_code': src_trg_code, \
-                        'cv_src': cv_src, 'h_src_trg': h_src_trg, 'flen_src_trg': flen_src_trg, 'featfile': featfile_src, \
-                        'file_src_trg_flag': file_src_trg_flag, 'spk_trg': spk_trg, 'spcidx_src': spcidx_src, \
-                        'spcidx_src_trg': spcidx_src_trg, 'flen_spc_src': flen_spc_src, 'flen_spc_src_trg': flen_spc_src_trg, \
-                        'h_src_full': h_src_full, 'flen_src_full': flen_src_full, \
-                        'src_code_full': src_code_full, 'src_trg_code_full': src_trg_code_full}
+                if self.cf_dim is not None:
+                    return {'x_c': x // self.cf_dim, 'x_f': x % self.cf_dim, 'slen_src': slen, 'h_src': h_src, 'flen_src': flen_src, 'src_code': src_code, 'src_trg_code': src_trg_code, \
+                            'cv_src': cv_src, 'h_src_trg': h_src_trg, 'flen_src_trg': flen_src_trg, 'featfile': featfile_src, \
+                            'file_src_trg_flag': file_src_trg_flag, 'spk_trg': spk_trg, 'spcidx_src': spcidx_src, \
+                            'spcidx_src_trg': spcidx_src_trg, 'flen_spc_src': flen_spc_src, 'flen_spc_src_trg': flen_spc_src_trg, \
+                            'h_src_full': h_src_full, 'flen_src_full': flen_src_full, \
+                            'src_code_full': src_code_full, 'src_trg_code_full': src_trg_code_full}
+                else:
+                    return {'x': x, 'slen_src': slen, 'h_src': h_src, 'flen_src': flen_src, 'src_code': src_code, 'src_trg_code': src_trg_code, \
+                            'cv_src': cv_src, 'h_src_trg': h_src_trg, 'flen_src_trg': flen_src_trg, 'featfile': featfile_src, \
+                            'file_src_trg_flag': file_src_trg_flag, 'spk_trg': spk_trg, 'spcidx_src': spcidx_src, \
+                            'spcidx_src_trg': spcidx_src_trg, 'flen_spc_src': flen_spc_src, 'flen_spc_src_trg': flen_spc_src_trg, \
+                            'h_src_full': h_src_full, 'flen_src_full': flen_src_full, \
+                            'src_code_full': src_code_full, 'src_trg_code_full': src_trg_code_full}
+
             else:
                 return {'x': x, 'slen': slen, 'h_src': h_src, 'flen_src': flen_src, 'src_code': src_code, 'src_trg_code': src_trg_code, \
                         'cv_src': cv_src, 'h_src_trg': h_src_trg, 'flen_src_trg': flen_src_trg, 'featfile': featfile_src, \

@@ -1,37 +1,32 @@
+PYTHON_VERSION_MIN=3.6
+PYTHON_VERSION=$(shell python -c "import sys;t='{v[0]}.{v[1]}'.format(v=list(sys.version_info[:2]));sys.stdout.write(t)")
+PYTHON_VERSION_OK=$(shell python -c 'import sys; print(int(float(${PYTHON_VERSION}) >= ${PYTHON_VERSION_MIN}))')
+
+ifeq ($(PYTHON_VERSION_OK),0)
+  $(error "Need python $(PYTHON_VERSION) >= $(PYTHON_VERSION_MIN)")
+endif
+PYTHON_VERSION_WITHOUT_DOT = $(strip $(subst .,,$(PYTHON_VERSION)))
+
+CUDA_VERSION := 10.1
+CUDA_VERSION_WITHOUT_DOT = $(strip $(subst .,,$(CUDA_VERSION)))
+
+PYTORCH_VERSION := 1.7.0
+TORCHVISION_VERSION := 0.8.1
+
 .PHONY: all clean
 
-#all: venv36cu101v151/bin/activate venv36cu101v151/lib/python3.6/site-packages/torch
-all: venv37cu100v141/bin/activate venv37cu100v141/lib/python3.7/site-packages/torch
-#all: venv37cu101v151/bin/activate venv37cu101v151/lib/python3.7/site-packages/torch
+all: activate torch
 
-#venv36cu101v151/bin/activate:
-	#test -d venv36cu101v151 || virtualenv -p python3.6 venv36cu101v151
-	#. venv36cu101v151/bin/activate; pip install -r requirements.txt; pip install matplotlib;
-	#touch venv36cu101v151/bin/activate
-venv37cu100v141/bin/activate:
-	test -d venv37cu100v141 || virtualenv -p python3.7 venv37cu100v141
-	. venv37cu100v141/bin/activate; pip install -r requirements.txt; pip install matplotlib;
-	touch venv37cu100v141/bin/activate
-#venv37cu101v151/bin/activate:
-#	test -d venv37cu101v151 || virtualenv -p python3.7 venv37cu101v151
-#	. venv37cu101v151/bin/activate; pip install -r requirements.txt; pip install matplotlib;
-#	touch venv37cu101v151/bin/activate
+activate:
+	test -d venv || virtualenv -p python$(PYTHON_VERSION) venv
+	. venv/bin/activate; pip install pip --upgrade; pip install -r requirements.txt; pip install matplotlib;
+	touch venv/bin/activate
 
-#venv36cu101v151/lib/python3.6/site-packages/torch: venv36cu101v151/bin/activate
-#	. venv36cu101v151/bin/activate; pip install pip --upgrade; \
-#		pip3 install https://download.pytorch.org/whl/cu101/torch-1.5.1%2Bcu101-cp36-cp36m-linux_x86_64.whl; \
-#			pip3 install https://download.pytorch.org/whl/cu101/torchvision-0.6.1%2Bcu101-cp36-cp36m-linux_x86_64.whl
-venv37cu100v141/lib/python3.7/site-packages/torch: venv37cu100v141/bin/activate
-	. venv37cu100v141/bin/activate; pip install pip --upgrade; \
-        pip3 install https://download.pytorch.org/whl/cu100/torch-1.4.0%2Bcu100-cp37-cp37m-linux_x86_64.whl; \
-            pip3 install https://download.pytorch.org/whl/cu100/torchvision-0.5.0%2Bcu100-cp37-cp37m-linux_x86_64.whl
-#venv37cu101v151/lib/python3.7/site-packages/torch: venv37cu101v151/bin/activate
-#	. venv37cu101v151/bin/activate; pip install pip --upgrade; \
-#		pip3 install https://download.pytorch.org/whl/cu101/torch-1.5.1%2Bcu101-cp37-cp37m-linux_x86_64.whl; \
-#			pip3 install https://download.pytorch.org/whl/cu101/torchvision-0.6.1%2Bcu101-cp37-cp37m-linux_x86_64.whl
+torch: activate
+	. venv/bin/activate; pip install pip --upgrade; \
+        pip3 install https://download.pytorch.org/whl/cu$(CUDA_VERSION_WITHOUT_DOT)/torch-$(PYTORCH_VERSION)%2Bcu$(CUDA_VERSION_WITHOUT_DOT)-cp$(PYTHON_VERSION_WITHOUT_DOT)-cp$(PYTHON_VERSION_WITHOUT_DOT)m-linux_x86_64.whl; pip3 install torch-optimizer; \
+            pip3 install https://download.pytorch.org/whl/cu$(CUDA_VERSION_WITHOUT_DOT)/torchvision-$(TORCHVISION_VERSION)%2Bcu$(CUDA_VERSION_WITHOUT_DOT)-cp$(PYTHON_VERSION_WITHOUT_DOT)-cp$(PYTHON_VERSION_WITHOUT_DOT)m-linux_x86_64.whl
 
 clean:
-	#rm -fr venv36cu101v151
-	rm -fr venv37cu100v141
-	#rm -fr venv37cu101v151
+	rm -fr venv
 	find -iname "*.pyc" -delete
