@@ -59,7 +59,10 @@ def melsp(x, n_mels=MEL_DIM, n_fft=FFTL, shiftms=SHIFTMS, winms=WINMS, fs=FS):
     stft = librosa.core.stft(x, n_fft=n_fft, hop_length=hop_length,
         win_length=win_length, window='hann')
     magspec = np.abs(stft)
-    melfb = librosa.filters.mel(fs, n_fft, n_mels=n_mels, fmin=80, fmax=7600)
+    if fs >= 16000:
+        melfb = librosa.filters.mel(fs, n_fft, n_mels=n_mels, fmin=80, fmax=7600)
+    else:
+        melfb = librosa.filters.mel(fs, n_fft, n_mels=n_mels, fmin=80, fmax=4000)
     #melfb = librosa.filters.mel(fs, n_fft, n_mels=n_mels, fmin=70, fmax=8000)
     #melfb = librosa.filters.mel(fs, n_fft, n_mels=n_mels)
 
@@ -370,7 +373,10 @@ def main():
         max_frame = 0
         max_spc_frame = 0
         count = 1
-        melfb_t = np.linalg.pinv(librosa.filters.mel(args.fs, args.fftl, n_mels=args.mel_dim, fmin=80, fmax=7600))
+        if args.fs >= 16000:
+            melfb_t = np.linalg.pinv(librosa.filters.mel(args.fs, args.fftl, n_mels=args.mel_dim, fmin=80, fmax=7600))
+        else:
+            melfb_t = np.linalg.pinv(librosa.filters.mel(args.fs, args.fftl, n_mels=args.mel_dim, fmin=80, fmax=4000))
         #melfb_t = np.linalg.pinv(librosa.filters.mel(args.fs, args.fftl, n_mels=args.mel_dim, fmin=70, fmax=8000))
         #melfb_t = np.linalg.pinv(librosa.filters.mel(args.fs, args.fftl, n_mels=args.mel_dim))
         for wav_name in wav_list:

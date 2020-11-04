@@ -325,7 +325,10 @@ def main():
             outpad_rights[3] = outpad_rights[2]-model_encoder_melsp.pad_right
             outpad_lefts[4] = outpad_lefts[3]-model_decoder_melsp.pad_left
             outpad_rights[4] = outpad_rights[3]-model_decoder_melsp.pad_right
-            melfb_t = np.linalg.pinv(librosa.filters.mel(args.fs, args.fftl, n_mels=config.mel_dim))
+            if args.fs >= 16000:
+                melfb_t = np.linalg.pinv(librosa.filters.mel(args.fs, args.fftl, n_mels=config.mel_dim, fmin=80, fmax=7600))
+            else:
+                melfb_t = np.linalg.pinv(librosa.filters.mel(args.fs, args.fftl, n_mels=config.mel_dim, fmin=80, fmax=4000))
             for feat_file in feat_list:
                 # convert melsp
                 spk_src = os.path.basename(os.path.dirname(feat_file))
