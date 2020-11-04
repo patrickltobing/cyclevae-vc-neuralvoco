@@ -749,8 +749,8 @@ def main():
     dataset = FeatureDatasetCycMceplf0WavVAE(feat_list, pad_feat_transform, spk_list, stats_list, \
                     args.n_half_cyc, args.string_path, excit_dim=args.full_excit_dim)
     dataloader = DataLoader(dataset, batch_size=args.batch_size_utt, shuffle=True, num_workers=args.n_workers)
-    generator = train_generator(dataloader, device, args.batch_size, n_cv, limit_count=1)
-    #generator = train_generator(dataloader, device, args.batch_size, n_cv, limit_count=None)
+    #generator = train_generator(dataloader, device, args.batch_size, n_cv, limit_count=1)
+    generator = train_generator(dataloader, device, args.batch_size, n_cv, limit_count=None)
 
     # define generator evaluation
     feat_list_eval_src_list = [None]*n_spk
@@ -767,8 +767,8 @@ def main():
     n_eval_data = len(dataset_eval.file_list_src)
     logging.info("number of evaluation data = %d." % n_eval_data)
     dataloader_eval = DataLoader(dataset_eval, batch_size=args.batch_size_utt_eval, shuffle=False, num_workers=args.n_workers)
-    generator_eval = eval_generator(dataloader_eval, device, args.batch_size, limit_count=1)
-    #generator_eval = eval_generator(dataloader_eval, device, args.batch_size, limit_count=None)
+    #generator_eval = eval_generator(dataloader_eval, device, args.batch_size, limit_count=1)
+    generator_eval = eval_generator(dataloader_eval, device, args.batch_size, limit_count=None)
 
     writer = SummaryWriter(args.expdir)
     total_train_loss = defaultdict(list)
