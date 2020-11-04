@@ -8,7 +8,7 @@ pysptk
 pyworld
 numba==0.48
 librosa
-dtw-c>=1.0.1
+dtw-c>=1.0.2
 six
 yq
 tensorboardX
