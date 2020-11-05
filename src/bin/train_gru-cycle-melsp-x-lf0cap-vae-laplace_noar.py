@@ -31,7 +31,7 @@ from utils import read_hdf5
 from utils import read_txt
 from vcneuvoco import GRU_VAE_ENCODER, GRU_SPEC_DECODER, GRU_LAT_FEAT_CLASSIFIER
 from vcneuvoco import GRU_EXCIT_DECODER, SPKID_TRANSFORM_LAYER, RevGrad
-from vcneuvoco import kl_laplace, ModulationSpectrumLoss
+from vcneuvoco import kl_laplace, ModulationSpectrumLoss, kl_categorical_categorical_logits
 #from radam import RAdam
 import torch_optimizer as optim
 
@@ -557,7 +557,7 @@ def main():
         lat_dim=args.lat_dim+args.lat_dim_e,
         feat_dim=args.mel_dim,
         n_spk=n_spk,
-        hidden_units=64,
+        hidden_units=16,
         hidden_layers=1)
     logging.info(model_classifier)
     criterion_ms = ModulationSpectrumLoss(args.fftsize)
@@ -565,6 +565,8 @@ def main():
     revgrad = RevGrad()
     criterion_l1 = torch.nn.L1Loss(reduction='none')
     criterion_l2 = torch.nn.MSELoss(reduction='none')
+
+    p_spk = torch.ones(n_spk)/n_spk
 
     # send to gpu
     if torch.cuda.is_available():
@@ -584,9 +586,14 @@ def main():
         scale_stats = scale_stats.cuda()
         mean_cap = mean_cap.cuda()
         scale_cap = scale_cap.cuda()
+        p_spk = p_spk.cuda()
     else:
         logging.error("gpu is not available. please check the setting.")
         sys.exit(1)
+    logits_p_spk = torch.log(p_spk)
+
+    logging.info(p_spk)
+    logging.info(logits_p_spk)
 
     model_encoder_melsp.train()
     model_decoder_melsp.train()
@@ -927,6 +934,7 @@ def main():
     batch_loss_qy_py_e_rev = [None]*n_rec
     batch_loss_qy_py_err_e = [None]*n_rec
     batch_loss_qz_pz_e = [None]*n_rec
+    batch_loss_sc_z = [None]*n_rec
     batch_loss_sc_z_rev = [None]*n_rec
     batch_loss_sc_z_cv_rev = [None]*n_cv
     batch_loss_elbo = [None]*args.n_half_cyc
@@ -1434,18 +1442,30 @@ def main():
                         _, _, trj_lat_src_e, _ = model_encoder_excit(batch_melsp_data_full, sampling=False)
                         batch_sc_data_full = F.pad(batch_sc_data_full.unsqueeze(1).float(), (dec_pad_left*2,dec_pad_right*2), "replicate").squeeze(1).long()
                         batch_sc_cv_data_full = F.pad(batch_sc_cv_data_full.unsqueeze(1).float(), (dec_pad_left*2,dec_pad_right*2), "replicate").squeeze(1).long()
-                        trj_src_src_uvlf0, _ = model_decoder_excit(batch_sc_data_full, trj_lat_src_e)
-                        trj_src_trg_uvlf0, _ = model_decoder_excit(batch_sc_cv_data_full, trj_lat_src_e)
+                        if args.spkidtr_dim > 0:
+                            trj_src_src_uvlf0, _ = model_decoder_excit(model_spkidtr(batch_sc_data_full), trj_lat_src_e)
+                            trj_src_trg_uvlf0, _ = model_decoder_excit(model_spkidtr(batch_sc_cv_data_full), trj_lat_src_e)
+                        else:
+                            trj_src_src_uvlf0, _ = model_decoder_excit(batch_sc_data_full, trj_lat_src_e)
+                            trj_src_trg_uvlf0, _ = model_decoder_excit(batch_sc_cv_data_full, trj_lat_src_e)
                         if dec_pad_right > 0:
                             z_cat = torch.cat((trj_lat_src_e[:,dec_pad_left:-dec_pad_right], trj_lat_src[:,dec_pad_left:-dec_pad_right]), 2)
-                            trj_src_src, _ = model_decoder_melsp(batch_sc_data_full[:,dec_pad_left:-dec_pad_right], z_cat, e=trj_src_src_uvlf0[:,:,:args.excit_dim])
-                            trj_src_trg, _ = model_decoder_melsp(batch_sc_cv_data_full[:,dec_pad_left:-dec_pad_right], z_cat, e=trj_src_trg_uvlf0[:,:,:args.excit_dim])
+                            if args.spkidtr_dim > 0:
+                                trj_src_src, _ = model_decoder_melsp(model_spkidtr(batch_sc_data_full[:,dec_pad_left:-dec_pad_right]), z_cat, e=trj_src_src_uvlf0[:,:,:args.excit_dim])
+                                trj_src_trg, _ = model_decoder_melsp(model_spkidtr(batch_sc_cv_data_full[:,dec_pad_left:-dec_pad_right]), z_cat, e=trj_src_trg_uvlf0[:,:,:args.excit_dim])
+                            else:
+                                trj_src_src, _ = model_decoder_melsp(batch_sc_data_full[:,dec_pad_left:-dec_pad_right], z_cat, e=trj_src_src_uvlf0[:,:,:args.excit_dim])
+                                trj_src_trg, _ = model_decoder_melsp(batch_sc_cv_data_full[:,dec_pad_left:-dec_pad_right], z_cat, e=trj_src_trg_uvlf0[:,:,:args.excit_dim])
                             trj_lat_src = trj_lat_src[:,dec_pad_left*2:-dec_pad_right*2]
                             trj_lat_src_e = trj_lat_src_e[:,dec_pad_left*2:-dec_pad_right*2]
                         else:
                             z_cat = torch.cat((trj_lat_src_e[:,dec_pad_left:], trj_lat_src[:,dec_pad_left:]), 2)
-                            trj_src_src, _ = model_decoder_melsp(batch_sc_data_full[:,dec_pad_left:], z_cat, e=trj_src_src_uvlf0[:,:,:args.excit_dim])
-                            trj_src_trg, _ = model_decoder_melsp(batch_sc_cv_data_full[:,dec_pad_left:], z_cat, e=trj_src_trg_uvlf0[:,:,:args.excit_dim])
+                            if args.spkidtr_dim > 0:
+                                trj_src_src, _ = model_decoder_melsp(model_spkidtr(batch_sc_data_full[:,dec_pad_left:]), z_cat, e=trj_src_src_uvlf0[:,:,:args.excit_dim])
+                                trj_src_trg, _ = model_decoder_melsp(model_spkidtr(batch_sc_cv_data_full[:,dec_pad_left:]), z_cat, e=trj_src_trg_uvlf0[:,:,:args.excit_dim])
+                            else:
+                                trj_src_src, _ = model_decoder_melsp(batch_sc_data_full[:,dec_pad_left:], z_cat, e=trj_src_src_uvlf0[:,:,:args.excit_dim])
+                                trj_src_trg, _ = model_decoder_melsp(batch_sc_cv_data_full[:,dec_pad_left:], z_cat, e=trj_src_trg_uvlf0[:,:,:args.excit_dim])
                             trj_lat_src = trj_lat_src[:,dec_pad_left*2:]
                             trj_lat_src_e = trj_lat_src_e[:,dec_pad_left*2:]
                         for k in range(n_batch_utt):
@@ -1781,6 +1801,8 @@ def main():
                             batch_loss_sc_feat_kl = batch_loss_sc_feat_.sum()
                         batch_loss_qz_pz_ = torch.mean(torch.sum(kl_laplace(qz_alpha[i]), -1), -1)
                         batch_loss_qz_pz[i] = batch_loss_qz_pz_.mean()
+                        batch_loss_sc_z_ = torch.mean(kl_categorical_categorical_logits(p_spk, logits_p_spk, batch_z_sc[i]), -1)
+                        batch_loss_sc_z[i] = batch_loss_sc_z_.mean()
                         batch_loss_sc_z_rev_ = torch.mean(criterion_ce(batch_z_sc[i].reshape(-1, n_spk), batch_sc.reshape(-1)).reshape(batch_sc.shape[0], -1), -1)
                         batch_loss_sc_z_rev[i] = batch_loss_sc_z_rev_.mean()
                         if i % 2 == 0:
@@ -1792,7 +1814,7 @@ def main():
                                 batch_loss_qy_py_e[i+1] = torch.mean(criterion_ce(qy_logits_e[i+1].reshape(-1, n_spk), batch_sc_cv[i//2].reshape(-1)).reshape(batch_sc_cv[i//2].shape[0], -1), -1).mean()
                                 batch_loss_qy_py_err_e[i+1] = torch.mean(100*torch.sum(criterion_l1(F.softmax(qy_logits_e[i+1], dim=-1), F.one_hot(batch_sc_cv[i//2], num_classes=n_spk).float()), -1), -1).mean()
                                 batch_loss_qz_pz_e[i+1] = torch.mean(torch.sum(kl_laplace(qz_alpha_e[i+1]), -1), -1).mean()
-                            batch_loss_sc_z_kl = batch_loss_sc_z_rev_.sum()
+                            batch_loss_sc_z_kl = batch_loss_sc_z_.sum() + batch_loss_sc_z_rev_.sum()
                         else:
                             batch_loss_qy_py_e_ = torch.mean(criterion_ce(qy_logits_e[i].reshape(-1, n_spk), batch_sc_cv[i//2].reshape(-1)).reshape(n_batch_utt, -1), -1)
                             batch_loss_qy_py_e[i] = batch_loss_qy_py_e_.mean()
@@ -1802,7 +1824,7 @@ def main():
                             batch_loss_qy_py_err_e[i] = batch_loss_qy_py_err_e_.mean()
                             batch_loss_sc_z_cv_rev_ = torch.mean(criterion_ce(batch_z_sc[i].reshape(-1, n_spk), batch_sc_cv[i//2].reshape(-1)).reshape(batch_sc_cv[i//2].shape[0], -1), -1)
                             batch_loss_sc_z_cv_rev[i//2] = batch_loss_sc_z_cv_rev_.mean()
-                            batch_loss_sc_z_kl = batch_loss_sc_z_cv_rev_.sum()
+                            batch_loss_sc_z_kl = batch_loss_sc_z_.sum() + batch_loss_sc_z_cv_rev_.sum()
                         batch_loss_qz_pz_e_ = torch.mean(torch.sum(kl_laplace(qz_alpha_e[i]), -1), -1)
                         batch_loss_qz_pz_e[i] = batch_loss_qz_pz_e_.mean()
 
@@ -1829,6 +1851,7 @@ def main():
                             total_eval_loss["eval/loss_qy_py_e_rev-%d"%(i+1)].append(batch_loss_qy_py_e_rev[i].item())
                         total_eval_loss["eval/loss_qy_py_err_e-%d"%(i+1)].append(batch_loss_qy_py_err_e[i].item())
                         total_eval_loss["eval/loss_qz_pz_e-%d"%(i+1)].append(batch_loss_qz_pz_e[i].item())
+                        total_eval_loss["eval/loss_sc_z-%d"%(i+1)].append(batch_loss_sc_z[i].item())
                         total_eval_loss["eval/loss_sc_z_rev-%d"%(i+1)].append(batch_loss_sc_z_rev[i].item())
                         total_eval_loss["eval/loss_sc_feat-%d"%(i+1)].append(batch_loss_sc_feat[i].item())
                         total_eval_loss["eval/loss_sc_feat_rev-%d"%(i+1)].append(batch_loss_sc_feat_rev[i].item())
@@ -1890,12 +1913,12 @@ def main():
                     for i in range(n_half_cyc_eval):
                         if i % 2 == 0:
                             if n_half_cyc_eval > 1:
-                                text_log += "[%ld] %.3f ; %.3f %.3f %.3f %% %.3f , %.3f %.3f %% %.3f ; %.3f %.3f , %.3f , %.3f %.3f , %.3f %.3f ; %.3f %.3f %.3f dB , %.3f %% %.3f %% , "\
+                                text_log += "[%ld] %.3f ; %.3f %.3f %.3f %% %.3f , %.3f %.3f %% %.3f ; %.3f %.3f , %.3f %.3f , %.3f %.3f , %.3f %.3f ; %.3f %.3f %.3f dB , %.3f %% %.3f %% , "\
                                     "%.3f Hz %.3f Hz , %.3f %% %.3f %% , %.3f dB %.3f dB ;; " % (
                                     i+1, batch_loss_elbo[i].item(), batch_loss_px[i].item(), batch_loss_qy_py[i].item(), batch_loss_qy_py_err[i].item(),
                                         batch_loss_qz_pz[i].item(), batch_loss_qy_py_e[i].item(), batch_loss_qy_py_err_e[i].item(),
                                             batch_loss_qz_pz_e[i].item(), batch_loss_ms_norm[i].item(), batch_loss_ms_err[i].item(),
-                                            batch_loss_sc_z_rev[i].item(),
+                                            batch_loss_sc_z[i].item(), batch_loss_sc_z_rev[i].item(),
                                             batch_loss_sc_feat[i].item(), batch_loss_sc_feat_rev[i].item(),
                                             batch_loss_sc_feat_cv[i//2].item(), batch_loss_sc_feat_cv_rev[i//2].item(),
                                                 batch_loss_melsp[i].item(), batch_loss_melsp_cv[i//2].item(),
@@ -1904,14 +1927,14 @@ def main():
                                                         batch_loss_uvcap[i].item(), batch_loss_uvcap_cv[i//2].item(),
                                                             batch_loss_cap[i].item(), batch_loss_cap_cv[i//2].item())
                             else:
-                                text_log += "[%ld] %.3f ; %.3f %.3f %.3f %% %.3f , %.3f %.3f %% %.3f , %.3f %.3f %% %.3f , %.3f %.3f %% %.3f ; %.3f %.3f , %.3f , %.3f %.3f , %.3f %.3f "\
+                                text_log += "[%ld] %.3f ; %.3f %.3f %.3f %% %.3f , %.3f %.3f %% %.3f , %.3f %.3f %% %.3f , %.3f %.3f %% %.3f ; %.3f %.3f , %.3f %.3f , %.3f %.3f , %.3f %.3f "\
                                     "; %.3f %.3f %.3f dB , %.3f %% %.3f %% , %.3f Hz %.3f Hz , %.3f %% %.3f %% , %.3f dB %.3f dB ;; " % (
                                     i+1, batch_loss_elbo[i].item(), batch_loss_px[i].item(), batch_loss_qy_py[i].item(), batch_loss_qy_py_err[i].item(),
                                         batch_loss_qz_pz[i].item(), batch_loss_qy_py[i+1].item(), batch_loss_qy_py_err[i+1].item(),
                                         batch_loss_qz_pz[i+1].item(), batch_loss_qy_py_e[i].item(), batch_loss_qy_py_err_e[i].item(),
                                         batch_loss_qz_pz_e[i].item(), batch_loss_qy_py_e[i+1].item(), batch_loss_qy_py_err_e[i+1].item(),
                                         batch_loss_qz_pz_e[i+1].item(), batch_loss_ms_norm[i].item(), batch_loss_ms_err[i].item(),
-                                            batch_loss_sc_z_rev[i].item(),
+                                            batch_loss_sc_z[i].item(), batch_loss_sc_z_rev[i].item(),
                                             batch_loss_sc_feat[i].item(), batch_loss_sc_feat_rev[i].item(),
                                             batch_loss_sc_feat_cv[i//2].item(), batch_loss_sc_feat_cv_rev[i//2].item(),
                                             batch_loss_melsp[i].item(), batch_loss_melsp_cv[i//2].item(),
@@ -1920,12 +1943,12 @@ def main():
                                                         batch_loss_uvcap[i].item(), batch_loss_uvcap_cv[i//2].item(),
                                                             batch_loss_cap[i].item(), batch_loss_cap_cv[i//2].item())
                         else:
-                            text_log += "[%ld] %.3f ; %.3f %.3f %.3f %.3f %% %.3f , %.3f %.3f %.3f %% %.3f ; %.3f %.3f , %.3f %.3f , %.3f %.3f ; %.3f %.3f dB , %.3f %% "\
+                            text_log += "[%ld] %.3f ; %.3f %.3f %.3f %.3f %% %.3f , %.3f %.3f %.3f %% %.3f ; %.3f %.3f , %.3f %.3f %.3f , %.3f %.3f ; %.3f %.3f dB , %.3f %% "\
                                 "%.3f Hz , %.3f %% %.3f dB ;; " % (
                                 i+1, batch_loss_elbo[i].item(), batch_loss_px[i].item(), batch_loss_qy_py[i].item(), batch_loss_qy_py_rev[i].item(), batch_loss_qy_py_err[i].item(),
                                     batch_loss_qz_pz[i].item(), batch_loss_qy_py_e[i].item(), batch_loss_qy_py_e_rev[i].item(), batch_loss_qy_py_err_e[i].item(),
                                     batch_loss_qz_pz_e[i].item(), batch_loss_ms_norm[i].item(), batch_loss_ms_err[i].item(),
-                                            batch_loss_sc_z_rev[i].item(), batch_loss_sc_z_cv_rev[i//2].item(),
+                                            batch_loss_sc_z[i].item(), batch_loss_sc_z_rev[i].item(), batch_loss_sc_z_cv_rev[i//2].item(),
                                             batch_loss_sc_feat[i].item(), batch_loss_sc_feat_rev[i].item(),
                                             batch_loss_melsp[i].item(), batch_loss_melsp_dB[i].item(),
                                             batch_loss_uv[i].item(), batch_loss_f0[i].item(),
@@ -2861,6 +2884,7 @@ def main():
                         batch_feat_rec_sc_ = batch_feat_rec_sc[i][k,:flens_utt]
                         batch_z_sc_ = batch_z_sc[i][k,:flens_utt]
                         batch_sc_cv_ = batch_sc_cv[i//2][k,:flens_utt]
+                        batch_loss_sc_z_kl_select += torch.mean(kl_categorical_categorical_logits(p_spk, logits_p_spk, batch_z_sc_))
                         if i % 2 == 0:
                             ## conversion
                             if flens_utt > 1:
@@ -3043,6 +3067,8 @@ def main():
                     batch_loss_sc_feat_kl = batch_loss_sc_feat_.sum()
                 batch_loss_qz_pz_ = torch.mean(torch.sum(kl_laplace(qz_alpha[i]), -1), -1)
                 batch_loss_qz_pz[i] = batch_loss_qz_pz_.mean()
+                batch_loss_sc_z_ = torch.mean(kl_categorical_categorical_logits(p_spk, logits_p_spk, batch_z_sc[i]), -1)
+                batch_loss_sc_z[i] = batch_loss_sc_z_.mean()
                 batch_loss_sc_z_rev_ = torch.mean(criterion_ce(revgrad(batch_z_sc[i].reshape(-1, n_spk)), batch_sc.reshape(-1)).reshape(batch_sc.shape[0], -1), -1)
                 batch_loss_sc_z_rev[i] = batch_loss_sc_z_rev_.mean()
                 if i % 2 == 0:
@@ -3054,7 +3080,7 @@ def main():
                         batch_loss_qy_py_e[i+1] = torch.mean(criterion_ce(qy_logits_e[i+1].reshape(-1, n_spk), batch_sc_cv[i//2].reshape(-1)).reshape(batch_sc_cv[i//2].shape[0], -1), -1).mean()
                         batch_loss_qy_py_err_e[i+1] = torch.mean(100*torch.sum(criterion_l1(F.softmax(qy_logits_e[i+1], dim=-1), F.one_hot(batch_sc_cv[i//2], num_classes=n_spk).float()), -1), -1).mean()
                         batch_loss_qz_pz_e[i+1] = torch.mean(torch.sum(kl_laplace(qz_alpha_e[i+1]), -1), -1).mean()
-                    batch_loss_sc_z_kl = batch_loss_sc_z_rev_.sum()
+                    batch_loss_sc_z_kl = batch_loss_sc_z_.sum() + batch_loss_sc_z_rev_.sum()
                 else:
                     batch_loss_qy_py_e_ = torch.mean(criterion_ce(qy_logits_e[i].reshape(-1, n_spk), batch_sc_cv[i//2].reshape(-1)).reshape(batch_sc_cv[i//2].shape[0], -1), -1)
                     batch_loss_qy_py_e[i] = batch_loss_qy_py_e_.mean()
@@ -3064,7 +3090,7 @@ def main():
                     batch_loss_qy_py_err_e[i] = batch_loss_qy_py_err_e_.mean()
                     batch_loss_sc_z_cv_rev_ = torch.mean(criterion_ce(revgrad(batch_z_sc[i].reshape(-1, n_spk)), batch_sc_cv[i//2].reshape(-1)).reshape(batch_sc_cv[i//2].shape[0], -1), -1)
                     batch_loss_sc_z_cv_rev[i//2] = batch_loss_sc_z_cv_rev_.mean()
-                    batch_loss_sc_z_kl = batch_loss_sc_z_cv_rev_.sum()
+                    batch_loss_sc_z_kl = batch_loss_sc_z_.sum() + batch_loss_sc_z_cv_rev_.sum()
                 batch_loss_qz_pz_e_ = torch.mean(torch.sum(kl_laplace(qz_alpha_e[i]), -1), -1)
                 batch_loss_qz_pz_e[i] = batch_loss_qz_pz_e_.mean()
 
@@ -3092,6 +3118,7 @@ def main():
                     total_train_loss["train/loss_qy_py_e_rev-%d"%(i+1)].append(batch_loss_qy_py_e_rev[i].item())
                 total_train_loss["train/loss_qy_py_err_e-%d"%(i+1)].append(batch_loss_qy_py_err_e[i].item())
                 total_train_loss["train/loss_qz_pz_e-%d"%(i+1)].append(batch_loss_qz_pz_e[i].item())
+                total_train_loss["train/loss_sc_z-%d"%(i+1)].append(batch_loss_sc_z[i].item())
                 total_train_loss["train/loss_sc_z_rev-%d"%(i+1)].append(batch_loss_sc_z_rev[i].item())
                 total_train_loss["train/loss_sc_feat-%d"%(i+1)].append(batch_loss_sc_feat[i].item())
                 total_train_loss["train/loss_sc_feat_rev-%d"%(i+1)].append(batch_loss_sc_feat_rev[i].item())
@@ -3158,12 +3185,12 @@ def main():
             for i in range(args.n_half_cyc):
                 if i % 2 == 0:
                     if args.n_half_cyc > 1:
-                        text_log += "[%ld] %.3f ; %.3f %.3f %.3f %% %.3f , %.3f %.3f %% %.3f ; %.3f %.3f , %.3f , %.3f %.3f , %.3f %.3f ; %.3f %.3f %.3f dB , %.3f %% %.3f %% , "\
+                        text_log += "[%ld] %.3f ; %.3f %.3f %.3f %% %.3f , %.3f %.3f %% %.3f ; %.3f %.3f , %.3f %.3f , %.3f %.3f , %.3f %.3f ; %.3f %.3f %.3f dB , %.3f %% %.3f %% , "\
                             "%.3f Hz %.3f Hz , %.3f %% %.3f %% , %.3f dB %.3f dB ;; " % (
                             i+1, batch_loss_elbo[i].item(), batch_loss_px[i].item(), batch_loss_qy_py[i].item(), batch_loss_qy_py_err[i].item(),
                                 batch_loss_qz_pz[i].item(), batch_loss_qy_py_e[i].item(), batch_loss_qy_py_err_e[i].item(),
                                     batch_loss_qz_pz_e[i].item(), batch_loss_ms_norm[i].item(), batch_loss_ms_err[i].item(),
-                                    batch_loss_sc_z_rev[i].item(),
+                                    batch_loss_sc_z[i].item(), batch_loss_sc_z_rev[i].item(),
                                     batch_loss_sc_feat[i].item(), batch_loss_sc_feat_rev[i].item(),
                                     batch_loss_sc_feat_cv[i//2].item(), batch_loss_sc_feat_cv_rev[i//2].item(),
                                         batch_loss_melsp[i].item(), batch_loss_melsp_cv[i//2].item(),
@@ -3172,14 +3199,14 @@ def main():
                                                 batch_loss_uvcap[i].item(), batch_loss_uvcap_cv[i//2].item(),
                                                     batch_loss_cap[i].item(), batch_loss_cap_cv[i//2].item())
                     else:
-                        text_log += "[%ld] %.3f ; %.3f %.3f %.3f %% %.3f , %.3f %.3f %% %.3f , %.3f %.3f %% %.3f , %.3f %.3f %% %.3f ; %.3f %.3f , %.3f , %.3f %.3f , %.3f %.3f "\
+                        text_log += "[%ld] %.3f ; %.3f %.3f %.3f %% %.3f , %.3f %.3f %% %.3f , %.3f %.3f %% %.3f , %.3f %.3f %% %.3f ; %.3f %.3f , %.3f %.3f , %.3f %.3f , %.3f %.3f "\
                             "; %.3f %.3f %.3f dB , %.3f %% %.3f %% , %.3f Hz %.3f Hz , %.3f %% %.3f %% , %.3f dB %.3f dB ;; " % (
                             i+1, batch_loss_elbo[i].item(), batch_loss_px[i].item(), batch_loss_qy_py[i].item(), batch_loss_qy_py_err[i].item(),
                                 batch_loss_qz_pz[i].item(), batch_loss_qy_py[i+1].item(), batch_loss_qy_py_err[i+1].item(),
                                 batch_loss_qz_pz[i+1].item(), batch_loss_qy_py_e[i].item(), batch_loss_qy_py_err_e[i].item(),
                                 batch_loss_qz_pz_e[i].item(), batch_loss_qy_py_e[i+1].item(), batch_loss_qy_py_err_e[i+1].item(),
                                 batch_loss_qz_pz_e[i+1].item(), batch_loss_ms_norm[i].item(), batch_loss_ms_err[i].item(),
-                                    batch_loss_sc_z_rev[i].item(),
+                                    batch_loss_sc_z[i].item(), batch_loss_sc_z_rev[i].item(),
                                     batch_loss_sc_feat[i].item(), batch_loss_sc_feat_rev[i].item(),
                                     batch_loss_sc_feat_cv[i//2].item(), batch_loss_sc_feat_cv_rev[i//2].item(),
                                     batch_loss_melsp[i].item(), batch_loss_melsp_cv[i//2].item(),
@@ -3188,12 +3215,12 @@ def main():
                                                 batch_loss_uvcap[i].item(), batch_loss_uvcap_cv[i//2].item(),
                                                     batch_loss_cap[i].item(), batch_loss_cap_cv[i//2].item())
                 else:
-                    text_log += "[%ld] %.3f ; %.3f %.3f %.3f %.3f %% %.3f , %.3f %.3f %.3f %% %.3f ; %.3f %.3f , %.3f %.3f , %.3f %.3f ; %.3f %.3f dB , %.3f %% "\
+                    text_log += "[%ld] %.3f ; %.3f %.3f %.3f %.3f %% %.3f , %.3f %.3f %.3f %% %.3f ; %.3f %.3f , %.3f %.3f %.3f , %.3f %.3f ; %.3f %.3f dB , %.3f %% "\
                         "%.3f Hz , %.3f %% %.3f dB ;; " % (
                         i+1, batch_loss_elbo[i].item(), batch_loss_px[i].item(), batch_loss_qy_py[i].item(), batch_loss_qy_py_rev[i].item(), batch_loss_qy_py_err[i].item(),
                             batch_loss_qz_pz[i].item(), batch_loss_qy_py_e[i].item(), batch_loss_qy_py_e_rev[i].item(), batch_loss_qy_py_err_e[i].item(),
                             batch_loss_qz_pz_e[i].item(), batch_loss_ms_norm[i].item(), batch_loss_ms_err[i].item(),
-                                    batch_loss_sc_z_rev[i].item(), batch_loss_sc_z_cv_rev[i//2].item(),
+                                    batch_loss_sc_z[i].item(), batch_loss_sc_z_rev[i].item(), batch_loss_sc_z_cv_rev[i//2].item(),
                                     batch_loss_sc_feat[i].item(), batch_loss_sc_feat_rev[i].item(),
                                     batch_loss_melsp[i].item(), batch_loss_melsp_dB[i].item(),
                                     batch_loss_uv[i].item(), batch_loss_f0[i].item(),

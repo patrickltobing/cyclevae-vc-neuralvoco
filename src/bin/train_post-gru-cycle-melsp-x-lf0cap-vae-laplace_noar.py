@@ -577,7 +577,7 @@ def main():
         lat_dim=None,
         feat_dim=args.mel_dim,
         n_spk=n_spk,
-        hidden_units=64,
+        hidden_units=16,
         hidden_layers=1)
     logging.info(model_classifier)
     model_post = GRU_POST_NET(
@@ -1285,20 +1285,36 @@ def main():
                         _, _, trj_lat_src_e, _ = model_encoder_excit(batch_melsp_data_full, sampling=False)
                         batch_sc_data_full = F.pad(batch_sc_data_full.unsqueeze(1).float(), (dec_pad_left*2+post_pad_left,dec_pad_right*2+post_pad_right), "replicate").squeeze(1).long()
                         batch_sc_cv_data_full = F.pad(batch_sc_cv_data_full.unsqueeze(1).float(), (dec_pad_left*2+post_pad_left,dec_pad_right*2+post_pad_right), "replicate").squeeze(1).long()
-                        trj_src_src_uvlf0, _ = model_decoder_excit(batch_sc_data_full, trj_lat_src_e)
-                        trj_src_trg_uvlf0, _ = model_decoder_excit(batch_sc_cv_data_full, trj_lat_src_e)
+                        if args.spkidtr_dim > 0:
+                            trj_src_src_uvlf0, _ = model_decoder_excit(model_spkidtr(batch_sc_data_full), trj_lat_src_e)
+                            trj_src_trg_uvlf0, _ = model_decoder_excit(model_spkidtr(batch_sc_cv_data_full), trj_lat_src_e)
+                        else:
+                            trj_src_src_uvlf0, _ = model_decoder_excit(batch_sc_data_full, trj_lat_src_e)
+                            trj_src_trg_uvlf0, _ = model_decoder_excit(batch_sc_cv_data_full, trj_lat_src_e)
                         if dec_pad_right > 0:
                             z_cat = torch.cat((trj_lat_src_e[:,dec_pad_left:-dec_pad_right], trj_lat_src[:,dec_pad_left:-dec_pad_right]), 2)
-                            trj_src_src, _ = model_decoder_melsp(batch_sc_data_full[:,dec_pad_left:-dec_pad_right], z_cat, e=trj_src_src_uvlf0[:,:,:args.excit_dim])
-                            trj_src_trg, _ = model_decoder_melsp(batch_sc_cv_data_full[:,dec_pad_left:-dec_pad_right], z_cat, e=trj_src_trg_uvlf0[:,:,:args.excit_dim])
-                            trj_src_src, _ = model_post(batch_sc_data_full[:,dec_pad_left*2:-dec_pad_right*2], trj_src_src)
-                            trj_src_trg, _ = model_post(batch_sc_cv_data_full[:,dec_pad_left*2:-dec_pad_right*2], trj_src_trg)
+                            if args.spkidtr_dim > 0:
+                                trj_src_src, _ = model_decoder_melsp(model_spkidtr(batch_sc_data_full[:,dec_pad_left:-dec_pad_right]), z_cat, e=trj_src_src_uvlf0[:,:,:args.excit_dim])
+                                trj_src_trg, _ = model_decoder_melsp(model_spkidtr(batch_sc_cv_data_full[:,dec_pad_left:-dec_pad_right]), z_cat, e=trj_src_trg_uvlf0[:,:,:args.excit_dim])
+                                trj_src_src, _ = model_post(model_spkidtr(batch_sc_data_full[:,dec_pad_left*2:-dec_pad_right*2]), trj_src_src)
+                                trj_src_trg, _ = model_post(model_spkidtr(batch_sc_cv_data_full[:,dec_pad_left*2:-dec_pad_right*2]), trj_src_trg)
+                            else:
+                                trj_src_src, _ = model_decoder_melsp(batch_sc_data_full[:,dec_pad_left:-dec_pad_right], z_cat, e=trj_src_src_uvlf0[:,:,:args.excit_dim])
+                                trj_src_trg, _ = model_decoder_melsp(batch_sc_cv_data_full[:,dec_pad_left:-dec_pad_right], z_cat, e=trj_src_trg_uvlf0[:,:,:args.excit_dim])
+                                trj_src_src, _ = model_post(batch_sc_data_full[:,dec_pad_left*2:-dec_pad_right*2], trj_src_src)
+                                trj_src_trg, _ = model_post(batch_sc_cv_data_full[:,dec_pad_left*2:-dec_pad_right*2], trj_src_trg)
                         else:
                             z_cat = torch.cat((trj_lat_src_e[:,dec_pad_left:], trj_lat_src[:,dec_pad_left:]), 2)
-                            trj_src_src, _ = model_decoder_melsp(batch_sc_data_full[:,dec_pad_left:], z_cat, e=trj_src_src_uvlf0[:,:,:args.excit_dim])
-                            trj_src_trg, _ = model_decoder_melsp(batch_sc_cv_data_full[:,dec_pad_left:], z_cat, e=trj_src_trg_uvlf0[:,:,:args.excit_dim])
-                            trj_src_src, _ = model_post(batch_sc_data_full[:,dec_pad_left*2:], trj_src_src)
-                            trj_src_trg, _ = model_post(batch_sc_cv_data_full[:,dec_pad_left*2:], trj_src_trg)
+                            if args.spkidtr_dim > 0:
+                                trj_src_src, _ = model_decoder_melsp(model_spkidtr(batch_sc_data_full[:,dec_pad_left:]), z_cat, e=trj_src_src_uvlf0[:,:,:args.excit_dim])
+                                trj_src_trg, _ = model_decoder_melsp(model_spkidtr(batch_sc_cv_data_full[:,dec_pad_left:]), z_cat, e=trj_src_trg_uvlf0[:,:,:args.excit_dim])
+                                trj_src_src, _ = model_post(model_spkidtr(batch_sc_data_full[:,dec_pad_left*2:]), trj_src_src)
+                                trj_src_trg, _ = model_post(model_spkidtr(batch_sc_cv_data_full[:,dec_pad_left*2:]), trj_src_trg)
+                            else:
+                                trj_src_src, _ = model_decoder_melsp(batch_sc_data_full[:,dec_pad_left:], z_cat, e=trj_src_src_uvlf0[:,:,:args.excit_dim])
+                                trj_src_trg, _ = model_decoder_melsp(batch_sc_cv_data_full[:,dec_pad_left:], z_cat, e=trj_src_trg_uvlf0[:,:,:args.excit_dim])
+                                trj_src_src, _ = model_post(batch_sc_data_full[:,dec_pad_left*2:], trj_src_src)
+                                trj_src_trg, _ = model_post(batch_sc_cv_data_full[:,dec_pad_left*2:], trj_src_trg)
                         for k in range(n_batch_utt):
                             spk_src = os.path.basename(os.path.dirname(featfile[k]))
                             #GV stat of reconstructed
