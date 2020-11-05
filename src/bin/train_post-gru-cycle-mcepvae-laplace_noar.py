@@ -472,7 +472,7 @@ def main():
         lat_dim=None,
         feat_dim=args.mcep_dim,
         n_spk=n_spk,
-        hidden_units=64,
+        hidden_units=16,
         hidden_layers=1)
     logging.info(model_classifier)
     model_post = GRU_POST_NET(
