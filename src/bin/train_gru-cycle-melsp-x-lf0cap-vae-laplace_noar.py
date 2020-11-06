@@ -1814,7 +1814,8 @@ def main():
                                 batch_loss_qy_py_e[i+1] = torch.mean(criterion_ce(qy_logits_e[i+1].reshape(-1, n_spk), batch_sc_cv[i//2].reshape(-1)).reshape(batch_sc_cv[i//2].shape[0], -1), -1).mean()
                                 batch_loss_qy_py_err_e[i+1] = torch.mean(100*torch.sum(criterion_l1(F.softmax(qy_logits_e[i+1], dim=-1), F.one_hot(batch_sc_cv[i//2], num_classes=n_spk).float()), -1), -1).mean()
                                 batch_loss_qz_pz_e[i+1] = torch.mean(torch.sum(kl_laplace(qz_alpha_e[i+1]), -1), -1).mean()
-                            batch_loss_sc_z_kl = batch_loss_sc_z_.sum() + batch_loss_sc_z_rev_.sum()
+                            #batch_loss_sc_z_kl = batch_loss_sc_z_.sum() + batch_loss_sc_z_rev_.sum()
+                            batch_loss_sc_z_kl = batch_loss_sc_z_rev_.sum()
                         else:
                             batch_loss_qy_py_e_ = torch.mean(criterion_ce(qy_logits_e[i].reshape(-1, n_spk), batch_sc_cv[i//2].reshape(-1)).reshape(n_batch_utt, -1), -1)
                             batch_loss_qy_py_e[i] = batch_loss_qy_py_e_.mean()
@@ -1825,7 +1826,8 @@ def main():
                             batch_loss_sc_z_cv_rev_ = torch.mean(criterion_ce(batch_z_sc[i].reshape(-1, n_spk), batch_sc_cv[i//2].reshape(-1)).reshape(batch_sc_cv[i//2].shape[0], -1), -1)
                             batch_loss_sc_z_cv_rev[i//2] = batch_loss_sc_z_cv_rev_.mean()
                             #batch_loss_sc_z_kl = batch_loss_sc_z_.sum() + batch_loss_sc_z_cv_rev_.sum()
-                            batch_loss_sc_z_kl = batch_loss_sc_z_.sum() + batch_loss_sc_z_rev_.sum() + batch_loss_sc_z_cv_rev_.sum()
+                            #batch_loss_sc_z_kl = batch_loss_sc_z_.sum() + batch_loss_sc_z_rev_.sum() + batch_loss_sc_z_cv_rev_.sum()
+                            batch_loss_sc_z_kl = batch_loss_sc_z_rev_.sum() + batch_loss_sc_z_cv_rev_.sum()
                         batch_loss_qz_pz_e_ = torch.mean(torch.sum(kl_laplace(qz_alpha_e[i]), -1), -1)
                         batch_loss_qz_pz_e[i] = batch_loss_qz_pz_e_.mean()
 
@@ -2886,8 +2888,9 @@ def main():
                         batch_z_sc_ = batch_z_sc[i][k,:flens_utt]
                         batch_sc_cv_ = batch_sc_cv[i//2][k,:flens_utt]
                         #batch_loss_sc_z_kl_select += torch.mean(kl_categorical_categorical_logits(p_spk, logits_p_spk, batch_z_sc_))
-                        batch_loss_sc_z_kl_select += torch.mean(kl_categorical_categorical_logits(p_spk, logits_p_spk, batch_z_sc_)) \
-                                            + torch.mean(criterion_ce(revgrad(batch_z_sc_), batch_sc_))
+                        #batch_loss_sc_z_kl_select += torch.mean(kl_categorical_categorical_logits(p_spk, logits_p_spk, batch_z_sc_)) \
+                        #                    + torch.mean(criterion_ce(revgrad(batch_z_sc_), batch_sc_))
+                        batch_loss_sc_z_kl_select += torch.mean(criterion_ce(revgrad(batch_z_sc_), batch_sc_))
                         if i % 2 == 0:
                             ## conversion
                             if flens_utt > 1:
@@ -3083,7 +3086,8 @@ def main():
                         batch_loss_qy_py_e[i+1] = torch.mean(criterion_ce(qy_logits_e[i+1].reshape(-1, n_spk), batch_sc_cv[i//2].reshape(-1)).reshape(batch_sc_cv[i//2].shape[0], -1), -1).mean()
                         batch_loss_qy_py_err_e[i+1] = torch.mean(100*torch.sum(criterion_l1(F.softmax(qy_logits_e[i+1], dim=-1), F.one_hot(batch_sc_cv[i//2], num_classes=n_spk).float()), -1), -1).mean()
                         batch_loss_qz_pz_e[i+1] = torch.mean(torch.sum(kl_laplace(qz_alpha_e[i+1]), -1), -1).mean()
-                    batch_loss_sc_z_kl = batch_loss_sc_z_.sum() + batch_loss_sc_z_rev_.sum()
+                    #batch_loss_sc_z_kl = batch_loss_sc_z_.sum() + batch_loss_sc_z_rev_.sum()
+                    batch_loss_sc_z_kl = batch_loss_sc_z_rev_.sum()
                 else:
                     batch_loss_qy_py_e_ = torch.mean(criterion_ce(qy_logits_e[i].reshape(-1, n_spk), batch_sc_cv[i//2].reshape(-1)).reshape(batch_sc_cv[i//2].shape[0], -1), -1)
                     batch_loss_qy_py_e[i] = batch_loss_qy_py_e_.mean()
@@ -3094,7 +3098,8 @@ def main():
                     batch_loss_sc_z_cv_rev_ = torch.mean(criterion_ce(revgrad(batch_z_sc[i].reshape(-1, n_spk)), batch_sc_cv[i//2].reshape(-1)).reshape(batch_sc_cv[i//2].shape[0], -1), -1)
                     batch_loss_sc_z_cv_rev[i//2] = batch_loss_sc_z_cv_rev_.mean()
                     #batch_loss_sc_z_kl = batch_loss_sc_z_.sum() + batch_loss_sc_z_cv_rev_.sum()
-                    batch_loss_sc_z_kl = batch_loss_sc_z_.sum() + batch_loss_sc_z_rev_.sum() + batch_loss_sc_z_cv_rev_.sum()
+                    #batch_loss_sc_z_kl = batch_loss_sc_z_.sum() + batch_loss_sc_z_rev_.sum() + batch_loss_sc_z_cv_rev_.sum()
+                    batch_loss_sc_z_kl = batch_loss_sc_z_rev_.sum() + batch_loss_sc_z_cv_rev_.sum()
                 batch_loss_qz_pz_e_ = torch.mean(torch.sum(kl_laplace(qz_alpha_e[i]), -1), -1)
                 batch_loss_qz_pz_e[i] = batch_loss_qz_pz_e_.mean()
 
