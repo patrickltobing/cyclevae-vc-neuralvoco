@@ -1205,10 +1205,12 @@ def main():
 
                         batch_loss_px_ms_norm_, batch_loss_px_ms_err_ = criterion_ms(mcep_est, powmcep)
                         batch_loss_ms_norm[i] = batch_loss_px_ms_norm_.mean()
-                        if not torch.isinf(batch_loss_ms_norm[i]) and not torch.isnan(batch_loss_ms_norm[i]):
+                        #if not torch.isinf(batch_loss_ms_norm[i]) and not torch.isnan(batch_loss_ms_norm[i]):
+                        if not torch.isinf(batch_loss_ms_norm[i]) and not torch.isnan(batch_loss_ms_norm[i]) and batch_loss_ms_norm[i] <= 3:
                             batch_loss_px_sum += batch_loss_px_ms_norm_.sum()
                         batch_loss_ms_err[i] = batch_loss_px_ms_err_.mean()
-                        if not torch.isinf(batch_loss_ms_err[i]) and not torch.isnan(batch_loss_ms_err[i]):
+                        #if not torch.isinf(batch_loss_ms_err[i]) and not torch.isnan(batch_loss_ms_err[i]):
+                        if not torch.isinf(batch_loss_ms_err[i]) and not torch.isnan(batch_loss_ms_err[i]) and batch_loss_ms_err[i] <= 3:
                             batch_loss_px_sum += batch_loss_px_ms_err_.sum()
 
                         batch_loss_px[i] = batch_loss_mcep_rec[i] + batch_loss_ms_norm[i] + batch_loss_ms_err[i]
@@ -1864,9 +1866,11 @@ def main():
                     for i in range(args.n_half_cyc):
                         batch_loss_px_select += torch.mean(mcd_constant*torch.sum(criterion_l1(batch_mcep_rec[i][k,:flens_utt], powmcep), -1))
                         batch_loss_px_ms_norm_, batch_loss_px_ms_err_ = criterion_ms(batch_mcep_rec[i][k,:flens_utt], powmcep)
-                        if not torch.isinf(batch_loss_px_ms_norm_) and not torch.isnan(batch_loss_px_ms_norm_):
+                        #if not torch.isinf(batch_loss_px_ms_norm_) and not torch.isnan(batch_loss_px_ms_norm_):
+                        if not torch.isinf(batch_loss_px_ms_norm_) and not torch.isnan(batch_loss_px_ms_norm_) and batch_loss_px_ms_norm_ <= 3:
                             batch_loss_px_ms_norm_select += batch_loss_px_ms_norm_
-                        if not torch.isinf(batch_loss_px_ms_err_) and not torch.isnan(batch_loss_px_ms_err_):
+                        #if not torch.isinf(batch_loss_px_ms_err_) and not torch.isnan(batch_loss_px_ms_err_):
+                        if not torch.isinf(batch_loss_px_ms_err_) and not torch.isnan(batch_loss_px_ms_err_) and batch_loss_px_ms_err_ <= 3:
                             batch_loss_px_ms_err_select += batch_loss_px_ms_err_
 
                         qy_logits_select_ = qy_logits[i][k,:flens_utt]
@@ -1957,10 +1961,12 @@ def main():
 
                 batch_loss_px_ms_norm_, batch_loss_px_ms_err_ = criterion_ms(mcep_est, powmcep)
                 batch_loss_ms_norm[i] = batch_loss_px_ms_norm_.mean()
-                if not torch.isinf(batch_loss_ms_norm[i]) and not torch.isnan(batch_loss_ms_norm[i]):
+                #if not torch.isinf(batch_loss_ms_norm[i]) and not torch.isnan(batch_loss_ms_norm[i]):
+                if not torch.isinf(batch_loss_ms_norm[i]) and not torch.isnan(batch_loss_ms_norm[i]) and batch_loss_ms_norm[i] <= 3:
                     batch_loss_px_sum += batch_loss_px_ms_norm_.sum()
                 batch_loss_ms_err[i] = batch_loss_px_ms_err_.mean()
-                if not torch.isinf(batch_loss_ms_err[i]) and not torch.isnan(batch_loss_ms_err[i]):
+                #if not torch.isinf(batch_loss_ms_err[i]) and not torch.isnan(batch_loss_ms_err[i]):
+                if not torch.isinf(batch_loss_ms_err[i]) and not torch.isnan(batch_loss_ms_err[i]) and batch_loss_ms_err[i] <= 3:
                     batch_loss_px_sum += batch_loss_px_ms_err_.sum()
 
                 batch_loss_px[i] = batch_loss_mcep_rec[i] + batch_loss_ms_norm[i] + batch_loss_ms_err[i]
