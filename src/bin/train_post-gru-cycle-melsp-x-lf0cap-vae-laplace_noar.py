@@ -304,6 +304,7 @@ def save_checkpoint(checkpoint_dir, model_encoder_melsp, model_decoder_melsp, mo
     logging.info("%d-iter checkpoint created." % iterations)
 
 
+
 def write_to_tensorboard(writer, steps, loss):
     """Write to tensorboard."""
     for key, value in loss.items():
@@ -477,8 +478,8 @@ def main():
     scale_stats = torch.FloatTensor(np.r_[read_hdf5(args.stats, "/scale_feat_mceplf0cap")[:args.excit_dim], read_hdf5(args.stats, "/scale_melsp")])
     mean_cap = torch.FloatTensor(read_hdf5(args.stats, "/mean_feat_mceplf0cap")[3:args.full_excit_dim])
     scale_cap = torch.FloatTensor(read_hdf5(args.stats, "/scale_feat_mceplf0cap")[3:args.full_excit_dim])
-    mean_full = torch.FloatTensor(read_hdf5(args.stats, "/mean_melsp"))
-    scale_full = torch.FloatTensor(read_hdf5(args.stats, "/scale_melsp"))
+    mean_full = torch.FloatTensor(np.r_[read_hdf5(args.stats, "/mean_feat_mceplf0cap")[:args.full_excit_dim], read_hdf5(args.stats, "/mean_melsp")])
+    scale_full = torch.FloatTensor(np.r_[read_hdf5(args.stats, "/scale_feat_mceplf0cap")[:args.full_excit_dim], read_hdf5(args.stats, "/scale_melsp")])
     args.cap_dim = mean_cap.shape[0]
 
     # save args as conf
@@ -582,7 +583,7 @@ def main():
     logging.info(model_classifier)
     model_post = GRU_POST_NET(
         spec_dim=args.mel_dim,
-        excit_dim=None,
+        excit_dim=args.excit_dim+args.cap_dim+1,
         n_spk=n_spk,
         hidden_layers=args.hidden_layers_post,
         hidden_units=args.hidden_units_post,
@@ -1223,16 +1224,22 @@ def main():
                             ## post
                             idx_in += 1
                             i_cv_in += 1
+                            if dec_pad_right > 0:
+                                e_post = batch_lf0_rec[i][:,dec_pad_left:-dec_pad_right]
+                                e_cv_post = batch_lf0_cv[i_cv][:,dec_pad_left:-dec_pad_right]
+                            else:
+                                e_post = batch_lf0_rec[i][:,dec_pad_left:]
+                                e_cv_post = batch_lf0_cv[i_cv][:,dec_pad_left:]
                             if args.spkidtr_dim > 0:
                                 batch_melsp_rec_post[i], h_melsp_post[i] = model_post(model_spkidtr(batch_sc_in[idx_in]), batch_melsp_rec[i],
-                                                    outpad_right=outpad_rights_eval[idx_in], h=h_melsp_post[i])
+                                                    e=e_post, outpad_right=outpad_rights_eval[idx_in], h=h_melsp_post[i])
                                 batch_melsp_cv_post[i_cv], h_melsp_cv_post[i_cv] = model_post(model_spkidtr(batch_sc_cv_in[i_cv_in]), batch_melsp_cv[i_cv],
-                                                    outpad_right=outpad_rights_eval[idx_in], h=h_melsp_cv_post[i_cv])
+                                                    e=e_cv_post, outpad_right=outpad_rights_eval[idx_in], h=h_melsp_cv_post[i_cv])
                             else:
                                 batch_melsp_rec_post[i], h_melsp_post[i] = model_post(batch_sc_in[idx_in], batch_melsp_rec[i],
-                                                    outpad_right=outpad_rights_eval[idx_in], h=h_melsp_post[i])
+                                                    e=e_post, outpad_right=outpad_rights_eval[idx_in], h=h_melsp_post[i])
                                 batch_melsp_cv_post[i_cv], h_melsp_cv_post[i_cv] = model_post(batch_sc_cv_in[i_cv_in], batch_melsp_cv[i_cv],
-                                                    outpad_right=outpad_rights_eval[idx_in], h=h_melsp_cv_post[i_cv])
+                                                    e=e_cv_post, outpad_right=outpad_rights_eval[idx_in], h=h_melsp_cv_post[i_cv])
                             feat_len = batch_melsp_rec_post[i].shape[1]
                             batch_melsp_rec_post[i] = batch_melsp_rec_post[i][:,outpad_lefts_eval[idx_in]:feat_len-outpad_rights_eval[idx_in]]
                             batch_melsp_cv_post[i_cv] = batch_melsp_cv_post[i_cv][:,outpad_lefts_eval[idx_in]:feat_len-outpad_rights_eval[idx_in]]
@@ -1265,12 +1272,16 @@ def main():
                                                             e=batch_lf0_rec[j][:,:,:args.excit_dim], outpad_right=outpad_rights_eval[idx_in], h=h_melsp[j])
                                 ## post
                                 idx_in += 1
+                                if dec_pad_right > 0:
+                                    e_post = batch_lf0_rec[j][:,dec_pad_left:-dec_pad_right]
+                                else:
+                                    e_post = batch_lf0_rec[j][:,dec_pad_left:]
                                 if args.spkidtr_dim > 0:
                                     batch_melsp_rec_post[j], h_melsp_post[j] = model_post(model_spkidtr(batch_sc_in[idx_in]), batch_melsp_rec[j],
-                                                        outpad_right=outpad_rights_eval[idx_in], h=h_melsp_post[j])
+                                                        e=e_post, outpad_right=outpad_rights_eval[idx_in], h=h_melsp_post[j])
                                 else:
                                     batch_melsp_rec_post[j], h_melsp_post[j] = model_post(batch_sc_in[idx_in], batch_melsp_rec[j],
-                                                        outpad_right=outpad_rights_eval[idx_in], h=h_melsp_post[j])
+                                                        e=e_post, outpad_right=outpad_rights_eval[idx_in], h=h_melsp_post[j])
                                 batch_melsp_rec_post[j] = batch_melsp_rec_post[j][:,outpad_lefts_eval[idx_in]:batch_melsp_rec_post[j].shape[1]-outpad_rights_eval[idx_in]]
                                 batch_feat_rec_sc[j], h_feat_sc[j] = model_classifier(feat=batch_melsp_rec_post[j], h=h_feat_sc[j])
                     else:
@@ -1296,25 +1307,25 @@ def main():
                             if args.spkidtr_dim > 0:
                                 trj_src_src, _ = model_decoder_melsp(model_spkidtr(batch_sc_data_full[:,dec_pad_left:-dec_pad_right]), z_cat, e=trj_src_src_uvlf0[:,:,:args.excit_dim])
                                 trj_src_trg, _ = model_decoder_melsp(model_spkidtr(batch_sc_cv_data_full[:,dec_pad_left:-dec_pad_right]), z_cat, e=trj_src_trg_uvlf0[:,:,:args.excit_dim])
-                                trj_src_src, _ = model_post(model_spkidtr(batch_sc_data_full[:,dec_pad_left*2:-dec_pad_right*2]), trj_src_src)
-                                trj_src_trg, _ = model_post(model_spkidtr(batch_sc_cv_data_full[:,dec_pad_left*2:-dec_pad_right*2]), trj_src_trg)
+                                trj_src_src, _ = model_post(model_spkidtr(batch_sc_data_full[:,dec_pad_left*2:-dec_pad_right*2]), trj_src_src, e=trj_src_src_uvlf0[:,dec_pad_left:-dec_pad_right])
+                                trj_src_trg, _ = model_post(model_spkidtr(batch_sc_cv_data_full[:,dec_pad_left*2:-dec_pad_right*2]), trj_src_trg, e=trj_src_trg_uvlf0[:,dec_pad_left:-dec_pad_right])
                             else:
                                 trj_src_src, _ = model_decoder_melsp(batch_sc_data_full[:,dec_pad_left:-dec_pad_right], z_cat, e=trj_src_src_uvlf0[:,:,:args.excit_dim])
                                 trj_src_trg, _ = model_decoder_melsp(batch_sc_cv_data_full[:,dec_pad_left:-dec_pad_right], z_cat, e=trj_src_trg_uvlf0[:,:,:args.excit_dim])
-                                trj_src_src, _ = model_post(batch_sc_data_full[:,dec_pad_left*2:-dec_pad_right*2], trj_src_src)
-                                trj_src_trg, _ = model_post(batch_sc_cv_data_full[:,dec_pad_left*2:-dec_pad_right*2], trj_src_trg)
+                                trj_src_src, _ = model_post(batch_sc_data_full[:,dec_pad_left*2:-dec_pad_right*2], trj_src_src, e=trj_src_src_uvlf0[:,dec_pad_left:-dec_pad_right])
+                                trj_src_trg, _ = model_post(batch_sc_cv_data_full[:,dec_pad_left*2:-dec_pad_right*2], trj_src_trg, e=trj_src_trg_uvlf0[:,dec_pad_left:-dec_pad_right])
                         else:
                             z_cat = torch.cat((trj_lat_src_e[:,dec_pad_left:], trj_lat_src[:,dec_pad_left:]), 2)
                             if args.spkidtr_dim > 0:
                                 trj_src_src, _ = model_decoder_melsp(model_spkidtr(batch_sc_data_full[:,dec_pad_left:]), z_cat, e=trj_src_src_uvlf0[:,:,:args.excit_dim])
                                 trj_src_trg, _ = model_decoder_melsp(model_spkidtr(batch_sc_cv_data_full[:,dec_pad_left:]), z_cat, e=trj_src_trg_uvlf0[:,:,:args.excit_dim])
-                                trj_src_src, _ = model_post(model_spkidtr(batch_sc_data_full[:,dec_pad_left*2:]), trj_src_src)
-                                trj_src_trg, _ = model_post(model_spkidtr(batch_sc_cv_data_full[:,dec_pad_left*2:]), trj_src_trg)
+                                trj_src_src, _ = model_post(model_spkidtr(batch_sc_data_full[:,dec_pad_left*2:]), trj_src_src, e=trj_src_src_uvlf0[:,dec_pad_left:])
+                                trj_src_trg, _ = model_post(model_spkidtr(batch_sc_cv_data_full[:,dec_pad_left*2:]), trj_src_trg, e=trj_src_trg_uvlf0[:,dec_pad_left:])
                             else:
                                 trj_src_src, _ = model_decoder_melsp(batch_sc_data_full[:,dec_pad_left:], z_cat, e=trj_src_src_uvlf0[:,:,:args.excit_dim])
                                 trj_src_trg, _ = model_decoder_melsp(batch_sc_cv_data_full[:,dec_pad_left:], z_cat, e=trj_src_trg_uvlf0[:,:,:args.excit_dim])
-                                trj_src_src, _ = model_post(batch_sc_data_full[:,dec_pad_left*2:], trj_src_src)
-                                trj_src_trg, _ = model_post(batch_sc_cv_data_full[:,dec_pad_left*2:], trj_src_trg)
+                                trj_src_src, _ = model_post(batch_sc_data_full[:,dec_pad_left*2:], trj_src_src, e=trj_src_src_uvlf0[:,dec_pad_left:])
+                                trj_src_trg, _ = model_post(batch_sc_cv_data_full[:,dec_pad_left*2:], trj_src_trg, e=trj_src_trg_uvlf0[:,dec_pad_left:])
                         for k in range(n_batch_utt):
                             spk_src = os.path.basename(os.path.dirname(featfile[k]))
                             #GV stat of reconstructed
@@ -1388,16 +1399,22 @@ def main():
                             ## post
                             idx_in += 1
                             i_cv_in += 1
+                            if dec_pad_right > 0:
+                                e_post = batch_lf0_rec[i][:,dec_pad_left:-dec_pad_right]
+                                e_cv_post = batch_lf0_cv[i_cv][:,dec_pad_left:-dec_pad_right]
+                            else:
+                                e_post = batch_lf0_rec[i][:,dec_pad_left:]
+                                e_cv_post = batch_lf0_cv[i_cv][:,dec_pad_left:]
                             if args.spkidtr_dim > 0:
                                 batch_melsp_rec_post[i], h_melsp_post[i] = model_post(model_spkidtr(batch_sc_in[idx_in]), batch_melsp_rec[i],
-                                                    outpad_right=outpad_rights_eval[idx_in])
+                                                    e=e_post, outpad_right=outpad_rights_eval[idx_in])
                                 batch_melsp_cv_post[i_cv], h_melsp_cv_post[i_cv] = model_post(model_spkidtr(batch_sc_cv_in[i_cv_in]), batch_melsp_cv[i_cv],
-                                                    outpad_right=outpad_rights_eval[idx_in])
+                                                    e=e_cv_post, outpad_right=outpad_rights_eval[idx_in])
                             else:
                                 batch_melsp_rec_post[i], h_melsp_post[i] = model_post(batch_sc_in[idx_in], batch_melsp_rec[i],
-                                                    outpad_right=outpad_rights_eval[idx_in])
+                                                    e=e_post, outpad_right=outpad_rights_eval[idx_in])
                                 batch_melsp_cv_post[i_cv], h_melsp_cv_post[i_cv] = model_post(batch_sc_cv_in[i_cv_in], batch_melsp_cv[i_cv],
-                                                    outpad_right=outpad_rights_eval[idx_in])
+                                                    e=e_cv_post, outpad_right=outpad_rights_eval[idx_in])
                             feat_len = batch_melsp_rec_post[i].shape[1]
                             batch_melsp_rec_post[i] = batch_melsp_rec_post[i][:,outpad_lefts_eval[idx_in]:feat_len-outpad_rights_eval[idx_in]]
                             batch_melsp_cv_post[i_cv] = batch_melsp_cv_post[i_cv][:,outpad_lefts_eval[idx_in]:feat_len-outpad_rights_eval[idx_in]]
@@ -1430,12 +1447,16 @@ def main():
                                                             e=batch_lf0_rec[j][:,:,:args.excit_dim], outpad_right=outpad_rights_eval[idx_in])
                                 ## post
                                 idx_in += 1
+                                if dec_pad_right > 0:
+                                    e_post = batch_lf0_rec[j][:,dec_pad_left:-dec_pad_right]
+                                else:
+                                    e_post = batch_lf0_rec[j][:,dec_pad_left:]
                                 if args.spkidtr_dim > 0:
                                     batch_melsp_rec_post[j], h_melsp_post[j] = model_post(model_spkidtr(batch_sc_in[idx_in]), batch_melsp_rec[j],
-                                                        outpad_right=outpad_rights_eval[idx_in])
+                                                        e=e_post, outpad_right=outpad_rights_eval[idx_in])
                                 else:
                                     batch_melsp_rec_post[j], h_melsp_post[j] = model_post(batch_sc_in[idx_in], batch_melsp_rec[j],
-                                                        outpad_right=outpad_rights_eval[idx_in])
+                                                        e=e_post, outpad_right=outpad_rights_eval[idx_in])
                                 batch_melsp_rec_post[j] = batch_melsp_rec_post[j][:,outpad_lefts_eval[idx_in]:batch_melsp_rec_post[j].shape[1]-outpad_rights_eval[idx_in]]
                                 batch_feat_rec_sc[j], h_feat_sc[j] = model_classifier(feat=batch_melsp_rec_post[j])
 
@@ -1903,16 +1924,22 @@ def main():
                     ## post
                     idx_in += 1
                     i_cv_in += 1
+                    if dec_pad_right > 0:
+                        e_post = batch_lf0_rec[i][:,dec_pad_left:-dec_pad_right]
+                        e_cv_post = batch_lf0_cv[i_cv][:,dec_pad_left:-dec_pad_right]
+                    else:
+                        e_post = batch_lf0_rec[i][:,dec_pad_left:]
+                        e_cv_post = batch_lf0_cv[i_cv][:,dec_pad_left:]
                     if args.spkidtr_dim > 0:
                         batch_melsp_rec_post[i], h_melsp_post[i] = model_post(model_spkidtr(batch_sc_in[idx_in]), batch_melsp_rec[i],
-                                            outpad_right=outpad_rights[idx_in], h=h_melsp_post[i], do=True)
+                                            e=e_post, outpad_right=outpad_rights[idx_in], h=h_melsp_post[i], do=True)
                         batch_melsp_cv_post[i_cv], h_melsp_cv_post[i_cv] = model_post(model_spkidtr(batch_sc_cv_in[i_cv_in]), batch_melsp_cv[i_cv],
-                                            outpad_right=outpad_rights[idx_in], h=h_melsp_cv_post[i_cv], do=True)
+                                            e=e_cv_post, outpad_right=outpad_rights[idx_in], h=h_melsp_cv_post[i_cv], do=True)
                     else:
                         batch_melsp_rec_post[i], h_melsp_post[i] = model_post(batch_sc_in[idx_in], batch_melsp_rec[i],
-                                            outpad_right=outpad_rights[idx_in], h=h_melsp_post[i], do=True)
+                                            e=e_post, outpad_right=outpad_rights[idx_in], h=h_melsp_post[i], do=True)
                         batch_melsp_cv_post[i_cv], h_melsp_cv_post[i_cv] = model_post(batch_sc_cv_in[i_cv_in], batch_melsp_cv[i_cv],
-                                            outpad_right=outpad_rights[idx_in], h=h_melsp_cv_post[i_cv], do=True)
+                                            e=e_cv_post, outpad_right=outpad_rights[idx_in], h=h_melsp_cv_post[i_cv], do=True)
                     feat_len = batch_melsp_rec_post[i].shape[1]
                     batch_melsp_rec_post[i] = batch_melsp_rec_post[i][:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
                     batch_melsp_cv_post[i_cv] = batch_melsp_cv_post[i_cv][:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
@@ -1951,12 +1978,16 @@ def main():
                                                     e=batch_lf0_rec[j][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], h=h_melsp[j], do=True)
                         ## post
                         idx_in += 1
+                        if dec_pad_right > 0:
+                            e_post = batch_lf0_rec[j][:,dec_pad_left:-dec_pad_right]
+                        else:
+                            e_post = batch_lf0_rec[j][:,dec_pad_left:]
                         if args.spkidtr_dim > 0:
                             batch_melsp_rec_post[j], h_melsp_post[j] = model_post(model_spkidtr(batch_sc_in[idx_in]), batch_melsp_rec[j],
-                                                outpad_right=outpad_rights[idx_in], h=h_melsp_post[j], do=True)
+                                                e=e_post, outpad_right=outpad_rights[idx_in], h=h_melsp_post[j], do=True)
                         else:
                             batch_melsp_rec_post[j], h_melsp_post[j] = model_post(batch_sc_in[idx_in], batch_melsp_rec[j],
-                                                outpad_right=outpad_rights[idx_in], h=h_melsp_post[j], do=True)
+                                                e=e_post, outpad_right=outpad_rights[idx_in], h=h_melsp_post[j], do=True)
                         batch_melsp_rec_post[j] = batch_melsp_rec_post[j][:,outpad_lefts[idx_in]:batch_melsp_rec_post[j].shape[1]-outpad_rights[idx_in]]
                         batch_feat_rec_sc[j], h_feat_sc[j] = model_classifier(feat=batch_melsp_rec_post[j], h=h_feat_sc[j])
             else:
@@ -2012,16 +2043,22 @@ def main():
                     ## post
                     idx_in += 1
                     i_cv_in += 1
+                    if dec_pad_right > 0:
+                        e_post = batch_lf0_rec[i][:,dec_pad_left:-dec_pad_right]
+                        e_cv_post = batch_lf0_cv[i_cv][:,dec_pad_left:-dec_pad_right]
+                    else:
+                        e_post = batch_lf0_rec[i][:,dec_pad_left:]
+                        e_cv_post = batch_lf0_cv[i_cv][:,dec_pad_left:]
                     if args.spkidtr_dim > 0:
                         batch_melsp_rec_post[i], h_melsp_post[i] = model_post(model_spkidtr(batch_sc_in[idx_in]), batch_melsp_rec[i],
-                                            outpad_right=outpad_rights[idx_in], do=True)
+                                            e=e_post, outpad_right=outpad_rights[idx_in], do=True)
                         batch_melsp_cv_post[i_cv], h_melsp_cv_post[i_cv] = model_post(model_spkidtr(batch_sc_cv_in[i_cv_in]), batch_melsp_cv[i_cv],
-                                            outpad_right=outpad_rights[idx_in], do=True)
+                                            e=e_cv_post, outpad_right=outpad_rights[idx_in], do=True)
                     else:
                         batch_melsp_rec_post[i], h_melsp_post[i] = model_post(batch_sc_in[idx_in], batch_melsp_rec[i],
-                                            outpad_right=outpad_rights[idx_in], do=True)
+                                            e=e_post, outpad_right=outpad_rights[idx_in], do=True)
                         batch_melsp_cv_post[i_cv], h_melsp_cv_post[i_cv] = model_post(batch_sc_cv_in[i_cv_in], batch_melsp_cv[i_cv],
-                                            outpad_right=outpad_rights[idx_in], do=True)
+                                            e=e_cv_post, outpad_right=outpad_rights[idx_in], do=True)
                     feat_len = batch_melsp_rec_post[i].shape[1]
                     batch_melsp_rec_post[i] = batch_melsp_rec_post[i][:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
                     batch_melsp_cv_post[i_cv] = batch_melsp_cv_post[i_cv][:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
@@ -2060,12 +2097,16 @@ def main():
                                                     e=batch_lf0_rec[j][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], do=True)
                         ## post
                         idx_in += 1
+                        if dec_pad_right > 0:
+                            e_post = batch_lf0_rec[j][:,dec_pad_left:-dec_pad_right]
+                        else:
+                            e_post = batch_lf0_rec[j][:,dec_pad_left:]
                         if args.spkidtr_dim > 0:
                             batch_melsp_rec_post[j], h_melsp_post[j] = model_post(model_spkidtr(batch_sc_in[idx_in]), batch_melsp_rec[j],
-                                                outpad_right=outpad_rights[idx_in], do=True)
+                                                e=e_post, outpad_right=outpad_rights[idx_in], do=True)
                         else:
                             batch_melsp_rec_post[j], h_melsp_post[j] = model_post(batch_sc_in[idx_in], batch_melsp_rec[j],
-                                                outpad_right=outpad_rights[idx_in], do=True)
+                                                e=e_post, outpad_right=outpad_rights[idx_in], do=True)
                         batch_melsp_rec_post[j] = batch_melsp_rec_post[j][:,outpad_lefts[idx_in]:batch_melsp_rec_post[j].shape[1]-outpad_rights[idx_in]]
                         batch_feat_rec_sc[j], h_feat_sc[j] = model_classifier(feat=batch_melsp_rec_post[j])
 
