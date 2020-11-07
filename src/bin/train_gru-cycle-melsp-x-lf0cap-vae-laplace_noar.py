@@ -2140,11 +2140,12 @@ def main():
                         eval_loss_uv[i], eval_loss_uv_std[i], eval_loss_f0[i], eval_loss_f0_std[i], \
                         eval_loss_uvcap[i], eval_loss_uvcap_std[i], eval_loss_cap[i], eval_loss_cap_std[i])
             logging.info("%s (%.3f min., %.3f sec / batch)" % (text_log, total / 60.0, total / iter_count))
-            if (pair_exist and (eval_loss_melsp_dB_src_trg+eval_loss_melsp_dB_src_trg_std) <= (min_eval_loss_melsp_dB_src_trg+min_eval_loss_melsp_dB_src_trg_std)) \
-                or (pair_exist and eval_loss_melsp_dB_src_trg <= min_eval_loss_melsp_dB_src_trg) \
-                    or ((eval_loss_melsp_cv[0]-eval_loss_melsp[0]) >= (min_eval_loss_melsp_cv[0]-min_eval_loss_melsp[0])) \
-                        or ((eval_loss_melsp_dB[0]+eval_loss_melsp_dB_std[0]) <= (min_eval_loss_melsp_dB[0]+min_eval_loss_melsp_dB_std[0])) \
-                            or (eval_loss_melsp_dB[0] <= min_eval_loss_melsp_dB[0]):
+            #if (pair_exist and (eval_loss_melsp_dB_src_trg+eval_loss_melsp_dB_src_trg_std) <= (min_eval_loss_melsp_dB_src_trg+min_eval_loss_melsp_dB_src_trg_std)) \
+            #    or (pair_exist and eval_loss_melsp_dB_src_trg <= min_eval_loss_melsp_dB_src_trg) \
+            #            or ((eval_loss_melsp_dB[0]+eval_loss_melsp_dB_std[0]) <= (min_eval_loss_melsp_dB[0]+min_eval_loss_melsp_dB_std[0])) \
+            if (pair_exist and eval_loss_melsp_dB_src_trg <= min_eval_loss_melsp_dB_src_trg) \
+                or ((eval_loss_melsp_cv[0]-eval_loss_melsp[0]) >= (min_eval_loss_melsp_cv[0]-min_eval_loss_melsp[0])) \
+                    or (eval_loss_melsp_dB[0] <= min_eval_loss_melsp_dB[0]):
                 min_eval_loss_gv_src_src = eval_loss_gv_src_src
                 min_eval_loss_gv_src_trg = eval_loss_gv_src_trg
                 if pair_exist:
