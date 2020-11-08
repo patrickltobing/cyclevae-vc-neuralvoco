@@ -161,8 +161,12 @@ lr: 1e-4
 do_prob: 0.5
 
 ## maximum epoch count
-epoch_count: 110
+#epoch_count: 110
 #epoch_count: 111
+#epoch_count: 115
+epoch_count: 120
+#epoch_count_wave: 80
+#epoch_count_wave: 360
 epoch_count_wave: 487
 #epoch_count_wave: 488
 ## maximum epoch count
