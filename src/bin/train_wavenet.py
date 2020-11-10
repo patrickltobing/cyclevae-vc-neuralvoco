@@ -629,8 +629,8 @@ def main():
                 "%.3f sec / batch)" % (epoch_idx + 1, eval_loss_ce, eval_loss_ce_std, \
                     eval_loss_err, eval_loss_err_std, total / 60.0, total / iter_count))
             if (eval_loss_ce+eval_loss_ce_std) <= (min_eval_loss_ce+min_eval_loss_ce_std) \
-                or (eval_loss_ce+eval_loss_ce_std+eval_loss_err+eval_loss_err_std) \
-                    <= (min_eval_loss_ce+min_eval_loss_ce_std+min_eval_loss_err+min_eval_loss_err_std) \
+                or (eval_loss_ce+eval_loss_ce_std+eval_loss_err) \
+                    <= (min_eval_loss_ce+min_eval_loss_ce_std+min_eval_loss_err) \
                     or (eval_loss_ce+eval_loss_err <= min_eval_loss_ce+min_eval_loss_err) \
                         or (eval_loss_ce <= min_eval_loss_ce):
                 min_eval_loss_ce = eval_loss_ce

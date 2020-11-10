@@ -921,8 +921,8 @@ def main():
                             eval_loss_ce_f[i], eval_loss_ce_f_std[i], eval_loss_err_f[i], eval_loss_err_f_std[i])
             logging.info("%s ;; (%.3f min., %.3f sec / batch)" % (text_log, total / 60.0, total / iter_count))
             if (eval_loss_ce_avg+eval_loss_ce_avg_std) <= (min_eval_loss_ce_avg+min_eval_loss_ce_avg_std) \
-                or (eval_loss_ce_avg+eval_loss_ce_avg_std+eval_loss_err_avg+eval_loss_err_avg_std) \
-                    <= (min_eval_loss_ce_avg+min_eval_loss_ce_avg_std+min_eval_loss_err_avg+min_eval_loss_err_avg_std) \
+                or (eval_loss_ce_avg+eval_loss_ce_avg_std+eval_loss_err_avg) \
+                    <= (min_eval_loss_ce_avg+min_eval_loss_ce_avg_std+min_eval_loss_err_avg) \
                     or (eval_loss_ce_avg+eval_loss_err_avg <= min_eval_loss_ce_avg+min_eval_loss_err_avg) \
                         or (eval_loss_ce_avg <= min_eval_loss_ce_avg):
                 min_eval_loss_ce_avg = eval_loss_ce_avg
