@@ -2,8 +2,12 @@
 
 * Previous version is in v1.0 branch
 * Scripts overhauled starting on v2.0 branch
-* Added CycleVAE with mel-spectrogram
-* Added multiband WaveRNN with data-driven linear prediction for low-latency universal neural vocoder with high-quality output (submitted for ICASSP 2021)
+    * Added CycleVAE with mel-spectrogram
+    * Added multiband WaveRNN with data-driven linear prediction for low-latency universal neural vocoder with high-quality output (submitted for ICASSP 2021) [demo_page](https://demo-icassp2021.audioeval.net/)
+* Created experiment branch (exp) for agile update version
+    * Added Laplace fine-sampling for fine-structure recovery of mel-spectrogram
+    * Added the use of mel-filterbank to encode WORLD spectrum instead of mel-cepstrum
+    * Contents will be merged with v2.[] and master when confirmed
 * Lots of work to be done...
     * CycleVAE with mcep+excit
     * CycleVQVAE (mcep,mcep+excit,melsp)
