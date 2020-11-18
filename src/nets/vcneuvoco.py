@@ -20,7 +20,7 @@ from torch.distributions.one_hot_categorical import OneHotCategorical
 
 import numpy as np
 
-CLIP_1E12 = -14.162084148244246758816564788835
+CLIP_1E16 = -14.162084148244246758816564788835
 
 
 def initialize(m):
@@ -680,10 +680,14 @@ def kl_laplace_param(mu_q, sigma_q):
     return torch.mean(torch.sum(-torch.log(scale_q) + mu_q_abs + scale_q*torch.exp(-mu_q_abs/scale_q) - 1, -1), -1) # B / 1
 
 
-def sampling_laplace(param):
-    k = param.shape[-1]//2
-    mu = param[:,:,:k]
-    scale = torch.exp(param[:,:,k:])
+def sampling_laplace(param, log_scale=None):
+    if log_scale is not None:
+        mu = param
+        scale = torch.exp(log_scale)
+    else:
+        k = param.shape[-1]//2
+        mu = param[:,:,:k]
+        scale = torch.exp(param[:,:,k:])
     eps = torch.empty_like(mu).uniform_(torch.finfo(mu.dtype).eps-1,1)
 
     return mu - scale * eps.sign() * torch.log1p(-eps.abs()) # scale
@@ -1032,27 +1036,39 @@ class GRU_VAE_ENCODER(nn.Module):
 
 
 class GRU_LAT_FEAT_CLASSIFIER(nn.Module):
-    def __init__(self, lat_dim=32, feat_dim=50, n_spk=14, hidden_layers=1, hidden_units=32, use_weight_norm=True):
+    def __init__(self, lat_dim=None, feat_dim=50, n_spk=14, hidden_layers=1, hidden_units=32, use_weight_norm=True,
+            adversarial=False, feat_aux_dim=None, do_prob=0):
         super(GRU_LAT_FEAT_CLASSIFIER, self).__init__()
         self.lat_dim = lat_dim
+        self.feat_aux_dim = feat_aux_dim
         self.feat_dim = feat_dim
         self.n_spk = n_spk
         self.hidden_layers = hidden_layers
         self.hidden_units = hidden_units
         self.use_weight_norm = use_weight_norm
+        self.adversarial = adversarial
+        self.do_prob = do_prob
 
         # Conv. layers
         if self.lat_dim is not None:
             conv_lat = [nn.Conv1d(self.lat_dim, self.hidden_units, 1), nn.ReLU()]
             self.conv_lat = nn.Sequential(*conv_lat)
+        if self.feat_aux_dim is not None:
+            conv_feat_aux = [nn.Conv1d(self.feat_aux_dim, self.hidden_units, 1), nn.ReLU()]
+            self.conv_feat_aux = nn.Sequential(*conv_feat_aux)
         conv_feat = [nn.Conv1d(self.feat_dim, self.hidden_units, 1), nn.ReLU()]
         self.conv_feat = nn.Sequential(*conv_feat)
 
         # GRU layer(s)
         self.gru = nn.GRU(self.hidden_units, self.hidden_units, self.hidden_layers, batch_first=True)
+        if self.do_prob > 0:
+            self.gru_drop = nn.Dropout(p=self.do_prob)
 
         # Output layers
-        self.out = nn.Conv1d(self.hidden_units, self.n_spk, 1)
+        if self.adversarial:
+            self.out = nn.Conv1d(self.hidden_units, self.n_spk+1, 1)
+        else:
+            self.out = nn.Conv1d(self.hidden_units, self.n_spk, 1)
 
         # apply weight norm
         if self.use_weight_norm:
@@ -1060,22 +1076,41 @@ class GRU_LAT_FEAT_CLASSIFIER(nn.Module):
         else:
             self.apply(initialize)
 
-    def forward(self, lat=None, feat=None, h=None):
+    def forward(self, lat=None, feat=None, feat_aux=None, h=None, detach_adv=True, do=False):
         # Input layers
         if lat is not None:
             c = self.conv_lat(lat.transpose(1,2)).transpose(1,2)
+            if self.adversarial and detach_adv:
+                c_detach = self.conv_lat(lat.detach().transpose(1,2)).transpose(1,2)
+        elif feat_aux is not None:
+            c = self.conv_feat_aux(feat_aux.transpose(1,2)).transpose(1,2)
+            if self.adversarial and detach_adv:
+                c_detach = self.conv_feat_aux(feat_aux.detach().transpose(1,2)).transpose(1,2)
         else:
-            if len(feat.shape) > 3:
-                c = self.conv_feat(feat.reshape(feat.shape[0], feat.shape[1], -1).transpose(1,2)).transpose(1,2)
+            c = self.conv_feat(feat.transpose(1,2)).transpose(1,2)
+            if self.adversarial and detach_adv:
+                c_detach = self.conv_feat(feat.detach().transpose(1,2)).transpose(1,2)
+        if self.adversarial and detach_adv:
+            if h is not None:
+                out_detach, _ = self.gru(c_detach, h) # B x T x C
             else:
-                c = self.conv_feat(feat.transpose(1,2)).transpose(1,2)
+                out_detach, _ = self.gru(c_detach) # B x T x C
         # GRU layers
         if h is not None:
             out, h = self.gru(c, h) # B x T x C
         else:
             out, h = self.gru(c) # B x T x C
+        if do and self.do_prob > 0:
+            out = self.gru_drop(out)
         # Output layers
-        return F.selu(self.out(out.transpose(1,2))).transpose(1,2), h.detach() # B x T x C -> B x C x T -> B x T x C
+        if self.adversarial:
+            out = F.selu(self.out(out.transpose(1,2))).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
+            if detach_adv:
+                return F.selu(out[:,:,:-1]), torch.sigmoid(out[:,:,-1]), torch.sigmoid(self.out(out_detach.transpose(1,2)).transpose(1,2)[:,:,-1]), h.detach()
+            else:
+                return F.selu(out[:,:,:-1]), torch.sigmoid(out[:,:,-1]), h.detach()
+        else:
+            return F.selu(self.out(out.transpose(1,2))).transpose(1,2), h.detach() # B x T x C -> B x C x T -> B x T x C
 
     def apply_weight_norm(self):
         """Apply weight normalization module from all of the layers."""
@@ -1154,7 +1189,7 @@ class SPKID_TRANSFORM_LAYER(nn.Module):
 class GRU_POST_NET(nn.Module):
     def __init__(self, spec_dim=80, excit_dim=6, hidden_layers=1, hidden_units=1024, causal_conv=True,
             kernel_size=7, dilation_size=1, do_prob=0, n_spk=14, use_weight_norm=True, 
-                pad_first=True, right_size=None):
+                pad_first=True, right_size=None, res=False, laplace=False, ar=False):
         super(GRU_POST_NET, self).__init__()
         self.n_spk = n_spk
         self.spec_dim = spec_dim
@@ -1163,8 +1198,13 @@ class GRU_POST_NET(nn.Module):
             self.feat_dim = self.spec_dim+self.excit_dim
         else:
             self.feat_dim = self.spec_dim
+        self.ar = ar
         self.in_dim = self.feat_dim+self.n_spk
-        self.out_dim = self.spec_dim
+        self.laplace = laplace
+        if not self.laplace:
+            self.out_dim = self.spec_dim
+        else:
+            self.out_dim = self.spec_dim*2
         self.hidden_layers = hidden_layers
         self.hidden_units = hidden_units
         self.kernel_size = kernel_size
@@ -1174,8 +1214,14 @@ class GRU_POST_NET(nn.Module):
         self.use_weight_norm = use_weight_norm
         self.pad_first = pad_first
         self.right_size = right_size
+        if self.laplace:
+            self.res = True
+        else:
+            self.res = res
 
         self.scale_in = nn.Conv1d(self.feat_dim, self.feat_dim, 1)
+        if self.ar:
+            self.scale_in_spec = nn.Conv1d(self.spec_dim, self.spec_dim, 1)
 
         if self.right_size <= 0:
             if not self.causal_conv:
@@ -1198,12 +1244,20 @@ class GRU_POST_NET(nn.Module):
             self.conv_drop = nn.Dropout(p=self.do_prob)
 
         # GRU layer(s)
-        if self.do_prob > 0 and self.hidden_layers > 1:
-            self.gru = nn.GRU(self.in_dim*self.conv.rec_field, self.hidden_units, self.hidden_layers, \
-                                dropout=self.do_prob, bidirectional=False, batch_first=True)
+        if not self.ar:
+            if self.do_prob > 0 and self.hidden_layers > 1:
+                self.gru = nn.GRU(self.in_dim*self.conv.rec_field, self.hidden_units, self.hidden_layers, \
+                                    dropout=self.do_prob, bidirectional=False, batch_first=True)
+            else:
+                self.gru = nn.GRU(self.in_dim*self.conv.rec_field, self.hidden_units, self.hidden_layers, \
+                                    bidirectional=False, batch_first=True)
         else:
-            self.gru = nn.GRU(self.in_dim*self.conv.rec_field, self.hidden_units, self.hidden_layers, \
-                                bidirectional=False, batch_first=True)
+            if self.do_prob > 0 and self.hidden_layers > 1:
+                self.gru = nn.GRU(self.in_dim*self.conv.rec_field+self.spec_dim, self.hidden_units, self.hidden_layers, \
+                                    dropout=self.do_prob, bidirectional=False, batch_first=True)
+            else:
+                self.gru = nn.GRU(self.in_dim*self.conv.rec_field+self.spec_dim, self.hidden_units, self.hidden_layers, \
+                                    bidirectional=False, batch_first=True)
         if self.do_prob > 0:
             self.gru_drop = nn.Dropout(p=self.do_prob)
 
@@ -1220,7 +1274,7 @@ class GRU_POST_NET(nn.Module):
         else:
             self.apply(initialize)
 
-    def forward(self, y, x, e=None, h=None, do=False, outpad_right=0):
+    def forward(self, y, x, e=None, h=None, do=False, outpad_right=0, x_prev=None, x_prev_1=None):
         if len(y.shape) == 2:
             if e is not None:
                 z = torch.cat((F.one_hot(y, num_classes=self.n_spk).float(), self.scale_in(torch.cat((x, e), 2).transpose(1,2)).transpose(1,2)), 2) # B x T_frm x C
@@ -1236,27 +1290,192 @@ class GRU_POST_NET(nn.Module):
             e = self.conv_drop(self.conv(z.transpose(1,2)).transpose(1,2)) # B x C x T --> B x T x C
         else:
             e = self.conv(z.transpose(1,2)).transpose(1,2) # B x C x T --> B x T x C
-        if outpad_right > 0:
-            # GRU e layers
-            if h is None:
-                out, h = self.gru(e[:,:-outpad_right]) # B x T x C
+        if not self.ar:
+            if outpad_right > 0:
+                # GRU e layers
+                if h is None:
+                    out, h = self.gru(e[:,:-outpad_right]) # B x T x C
+                else:
+                    out, h = self.gru(e[:,:-outpad_right], h) # B x T x C
+                out_, _ = self.gru(e[:,-outpad_right:], h) # B x T x C
+                e = torch.cat((out, out_), 1)
             else:
-                out, h = self.gru(e[:,:-outpad_right], h) # B x T x C
-            out_, _ = self.gru(e[:,-outpad_right:], h) # B x T x C
-            e = torch.cat((out, out_), 1)
+                # GRU e layers
+                if h is None:
+                    e, h = self.gru(e) # B x T x C
+                else:
+                    e, h = self.gru(e, h) # B x T x C
         else:
-            # GRU e layers
-            if h is None:
-                e, h = self.gru(e) # B x T x C
+            if x_prev is not None:
+                if self.pad_right == 0:
+                    x_prev = self.scale_in_spec(x_prev[:,self.pad_left:].transpose(1,2)).transpose(1,2)
+                else:
+                    x_prev = self.scale_in_spec(x_prev[:,self.pad_left:-self.pad_right].transpose(1,2)).transpose(1,2)
+                if outpad_right > 0:
+                    # GRU e layers
+                    if h is None:
+                        out, h = self.gru(torch.cat((e, x_prev), 2)[:,:-outpad_right]) # B x T x C
+                    else:
+                        out, h = self.gru(torch.cat((e, x_prev), 2)[:,:-outpad_right], h) # B x T x C
+                    out_, _ = self.gru(torch.cat((e, x_prev), 2)[:,-outpad_right:], h) # B x T x C
+                    e = torch.cat((out, out_), 1)
+                else:
+                    # GRU e layers
+                    if h is None:
+                        e, h = self.gru(torch.cat((e, x_prev), 2)) # B x T x C
+                    else:
+                        e, h = self.gru(torch.cat((e, x_prev), 2), h) # B x T x C
             else:
-                e, h = self.gru(e, h) # B x T x C
+                if x_prev_1 is not None:
+                    x_prev = x_prev_1
+                else:
+                    x_prev = torch.zeros_like(x[:,:1])
+                if self.pad_right == 0:
+                    x_ = x[:,self.pad_left:]
+                else:
+                    x_ = x[:,self.pad_left:-self.pad_right]
+                if h is None:
+                    out, h = self.gru(torch.cat((e[:,:1], x_prev), 2)) # B x T x C
+                else:
+                    out, h = self.gru(torch.cat((e[:,:1], x_prev), 2), h) # B x T x C
+                if self.do_prob > 0 and do:
+                    out = self.out(self.gru_drop(out).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
+                else:
+                    out = self.out(out.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
+                mus_e_ = self.scale_out(F.tanhshrink(out[:,:,:self.spec_dim]).transpose(1,2)).transpose(1,2)
+                x_t = x_[:,:1]
+                mus = mus_ = x_t+mus_e_
+                log_scales = log_scales_ = F.logsigmoid(out[:,:,self.spec_dim:])
+                x_e = x_e_ = x_t+sampling_laplace(mus_e_, log_scales_)
+                x_prev = self.scale_in_spec(x_e_.transpose(1,2)).transpose(1,2)
+                if self.do_prob > 0 and do:
+                    if outpad_right > 0:
+                        T = e.shape[1]-outpad_right
+                        for t in range(1,T):
+                            t_1 = t+1
+                            out, h = self.gru(torch.cat((e[:,t:t_1], x_prev), 2), h) # B x T x C
+                            out = self.out(self.gru_drop(out).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
+                            mus_e_ = self.scale_out(F.tanhshrink(out[:,:,:self.spec_dim]).transpose(1,2)).transpose(1,2)
+                            x_t = x_[:,t:t_1]
+                            mus_ = x_t+mus_e_
+                            log_scales_ = F.logsigmoid(out[:,:,self.spec_dim:])
+                            x_e_ = x_t+sampling_laplace(mus_e_, log_scales_)
+                            x_prev = self.scale_in_spec(x_e_.transpose(1,2)).transpose(1,2)
+                            mus = torch.cat((mus, mus_), 1)
+                            log_scales = torch.cat((log_scales, log_scales_), 1)
+                            x_e = torch.cat((x_e, x_e_), 1)
+                        T = e.shape[1]
+                        t_ = t
+                        h_ = h
+                        x_prev_ = x_prev
+                        for t in range(t_,T):
+                            t_1 = t+1
+                            out, h_ = self.gru(torch.cat((e[:,t:t_1], x_prev_), 2), h_) # B x T x C
+                            out = self.out(self.gru_drop(out).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
+                            mus_e_ = self.scale_out(F.tanhshrink(out[:,:,:self.spec_dim]).transpose(1,2)).transpose(1,2)
+                            x_t = x_[:,t:t_1]
+                            mus_ = x_t+mus_e_
+                            mus_ = x_t+mus_e_
+                            log_scales_ = F.logsigmoid(out[:,:,self.spec_dim:])
+                            x_e_ = x_t+sampling_laplace(mus_e_, log_scales_)
+                            x_prev_ = self.scale_in_spec(x_e_.transpose(1,2)).transpose(1,2)
+                            mus = torch.cat((mus, mus_), 1)
+                            log_scales = torch.cat((log_scales, log_scales_), 1)
+                            x_e = torch.cat((x_e, x_e_), 1)
+                    else:
+                        T = e.shape[1]
+                        for t in range(1,T):
+                            t_1 = t+1
+                            out, h = self.gru(torch.cat((e[:,t:t_1], x_prev), 2), h) # B x T x C
+                            out = self.out(self.gru_drop(out).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
+                            mus_e_ = self.scale_out(F.tanhshrink(out[:,:,:self.spec_dim]).transpose(1,2)).transpose(1,2)
+                            x_t = x_[:,t:t_1]
+                            mus_ = x_t+mus_e_
+                            log_scales_ = F.logsigmoid(out[:,:,self.spec_dim:])
+                            x_e_ = x_t+sampling_laplace(mus_e_, log_scales_)
+                            x_prev = self.scale_in_spec(x_e_.transpose(1,2)).transpose(1,2)
+                            mus = torch.cat((mus, mus_), 1)
+                            log_scales = torch.cat((log_scales, log_scales_), 1)
+                            x_e = torch.cat((x_e, x_e_), 1)
+                else:
+                    if outpad_right > 0:
+                        T = e.shape[1]-outpad_right
+                        for t in range(1,T):
+                            t_1 = t+1
+                            out, h = self.gru(torch.cat((e[:,t:t_1], x_prev), 2), h) # B x T x C
+                            out = self.out(out.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
+                            mus_e_ = self.scale_out(F.tanhshrink(out[:,:,:self.spec_dim]).transpose(1,2)).transpose(1,2)
+                            x_t = x_[:,t:t_1]
+                            mus_ = x_t+mus_e_
+                            log_scales_ = F.logsigmoid(out[:,:,self.spec_dim:])
+                            x_e_ = x_t+sampling_laplace(mus_e_, log_scales_)
+                            x_prev = self.scale_in_spec(x_e_.transpose(1,2)).transpose(1,2)
+                            mus = torch.cat((mus, mus_), 1)
+                            log_scales = torch.cat((log_scales, log_scales_), 1)
+                            x_e = torch.cat((x_e, x_e_), 1)
+                        T = e.shape[1]
+                        t_ = t
+                        h_ = h
+                        x_prev_ = x_prev
+                        for t in range(t_,T):
+                            t_1 = t+1
+                            out, h_ = self.gru(torch.cat((e[:,t:t_1], x_prev_), 2), h_) # B x T x C
+                            out = self.out(out.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
+                            mus_e_ = self.scale_out(F.tanhshrink(out[:,:,:self.spec_dim]).transpose(1,2)).transpose(1,2)
+                            x_t = x_[:,t:t_1]
+                            mus_ = x_t+mus_e_
+                            log_scales_ = F.logsigmoid(out[:,:,self.spec_dim:])
+                            x_e_ = x_t+sampling_laplace(mus_e_, log_scales_)
+                            x_prev_ = self.scale_in_spec(x_e_.transpose(1,2)).transpose(1,2)
+                            mus = torch.cat((mus, mus_), 1)
+                            log_scales = torch.cat((log_scales, log_scales_), 1)
+                            x_e = torch.cat((x_e, x_e_), 1)
+                    else:
+                        T = e.shape[1]
+                        for t in range(1,T):
+                            t_1 = t+1
+                            out, h = self.gru(torch.cat((e[:,t:t_1], x_prev), 2), h) # B x T x C
+                            out = self.out(out.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
+                            mus_e_ = self.scale_out(F.tanhshrink(out[:,:,:self.spec_dim]).transpose(1,2)).transpose(1,2)
+                            x_t = x_[:,t:t_1]
+                            mus_ = x_t+mus_e_
+                            log_scales_ = F.logsigmoid(out[:,:,self.spec_dim:])
+                            x_e_ = x_t+sampling_laplace(mus_e_, log_scales_)
+                            x_prev = self.scale_in_spec(x_e_.transpose(1,2)).transpose(1,2)
+                            mus = torch.cat((mus, mus_), 1)
+                            log_scales = torch.cat((log_scales, log_scales_), 1)
+                            x_e = torch.cat((x_e, x_e_), 1)
+                if do:
+                    return mus, torch.clamp(log_scales, min=CLIP_1E16), x_e, x_prev.detach(), h.detach()
+                else:
+                    return mus, log_scales, x_e, x_prev.detach(), h.detach()
         # Output e layers
         if self.do_prob > 0 and do:
             e = self.out(self.gru_drop(e).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
         else:
             e = self.out(e.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
 
-        return self.scale_out(e.transpose(1,2)).transpose(1,2), h.detach()
+        if self.laplace:
+            if self.pad_right == 0:
+                x_ = x[:,self.pad_left:]
+            else:
+                x_ = x[:,self.pad_left:-self.pad_right]
+            mus_e = self.scale_out(F.tanhshrink(e[:,:,:self.spec_dim]).transpose(1,2)).transpose(1,2)
+            mus = x_+mus_e
+            log_scales = F.logsigmoid(e[:,:,self.spec_dim:])
+            e = sampling_laplace(mus_e, log_scales)
+            if do:
+                return mus, torch.clamp(log_scales, min=CLIP_1E16), x_+e, h.detach()
+            else:
+                return mus, log_scales, x_+e, h.detach()
+        else:
+            if self.res:
+                if self.pad_right == 0:
+                    return x[:,self.pad_left:]+self.scale_out(e.transpose(1,2)).transpose(1,2), h.detach()
+                else:
+                    return x[:,self.pad_left:-self.pad_right]+self.scale_out(e.transpose(1,2)).transpose(1,2), h.detach()
+            else:
+                return self.scale_out(e.transpose(1,2)).transpose(1,2), h.detach()
 
     def apply_weight_norm(self):
         """Apply weight normalization module from all of the layers."""
@@ -2614,11 +2833,13 @@ class LaplaceLoss(nn.Module):
         super(LaplaceLoss, self).__init__()
         self.c = 0.69314718055994530941723212145818 # ln(2)
 
-    def forward(self, mu, b, target, log_b):
-        if len(mu.shape) > 1: # B x T x ...
-            return torch.mean(self.c + log_b + torch.abs(target-mu)/b, 1)
-        else: # T
-            return torch.mean(self.c + log_b + torch.abs(target-mu)/b)
+    def forward(self, mu, log_b, target):
+        if len(mu.shape) > 2: # B x T x C
+            return torch.mean(torch.sum(self.c + log_b + torch.abs(target-mu)/log_b.exp(), -1), -1) # B x 1
+        else: # T x C
+            return torch.mean(torch.sum(self.c + log_b + torch.abs(target-mu)/log_b.exp(), -1)) # 1
+        #else: # T
+        #    return torch.mean(self.c + log_b + torch.abs(target-mu)/b)
 
 
 def laplace_logits(mu, b, disc, log_b):

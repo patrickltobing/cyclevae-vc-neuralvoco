@@ -66,7 +66,7 @@ def melsp(x, n_mels=MEL_DIM, n_fft=FFTL, shiftms=SHIFTMS, winms=WINMS, fs=FS):
     #melfb = librosa.filters.mel(fs, n_fft, n_mels=n_mels, fmin=50)
     melfb = librosa.filters.mel(fs, n_fft, n_mels=n_mels)
 
-    return np.dot(melfb, magspec).T
+    return np.dot(melfb, magspec).T, magspec.T
 
 
 def low_cut_filter(x, fs, cutoff=HIGHPASS_CUTOFF):
@@ -278,6 +278,9 @@ def main():
         "--wavdir", default=None,
         help="directory to save of analysis-synthesis WORLD wav file")
     parser.add_argument(
+        "--wavmeldir", default=None,
+        help="directory to save of analysis-synthesis WORLD with mel-filterbank wav file")
+    parser.add_argument(
         "--wavgfdir", default=None,
         help="directory to save of analysis-synthesis Griffin-Lim wav file")
     parser.add_argument(
@@ -378,7 +381,8 @@ def main():
         #else:
         #    melfb_t = np.linalg.pinv(librosa.filters.mel(args.fs, args.fftl, n_mels=args.mel_dim, fmin=50, fmax=4000))
         #melfb_t = np.linalg.pinv(librosa.filters.mel(args.fs, args.fftl, n_mels=args.mel_dim, fmin=50))
-        melfb_t = np.linalg.pinv(librosa.filters.mel(args.fs, args.fftl, n_mels=args.mel_dim))
+        melfb = librosa.filters.mel(args.fs, args.fftl, n_mels=args.mel_dim)
+        melfb_t = np.linalg.pinv(melfb)
         for wav_name in wav_list:
             # load wavfile and apply low cut filter
             fs, x = read_wav(wav_name, cutoff=args.highpass_cutoff)
@@ -429,11 +433,31 @@ def main():
                 write_hdf5(hdf5name, "/f0_range", f0_range)
                 write_hdf5(hdf5name, "/time_axis", time_axis_range)
 
-                melmagsp = melsp(x, n_mels=args.mel_dim, n_fft=args.fftl, shiftms=args.shiftms,
+                melmagsp, magspec = melsp(x, n_mels=args.mel_dim, n_fft=args.fftl, shiftms=args.shiftms,
                                 winms=args.winms, fs=fs)
+                assert(melmagsp.shape[0] == magspec.shape[0])
+                if len(f0_range) < melmagsp.shape[0]:
+                    logging.info(f"f0 less {len(f0_range)} {melmagsp.shape[0]}")
+                    melmagsp = melmagsp[:len(f0_range)]
+                    magspec = magspec[:len(f0_range)]
+                elif len(f0_range) > melmagsp.shape[0]:
+                    logging.info(f"melsp less {len(f0_range)} {melmagsp.shape[0]}")
+                    time_axis_range = time_axis_range[:melmagsp.shape[0]]
+                    f0_range = f0_range[:melmagsp.shape[0]]
+                    ap_range = ap_range[:melmagsp.shape[0]]
+                    spc_range = spc_range[:melmagsp.shape[0]]
+
+                melworldsp = np.dot(spc_range, melfb.T)
+
                 logging.info(melmagsp.shape)
+                logging.info(magspec.shape)
+                logging.info(melworldsp.shape)
+                logging.info(spc_range.shape)
 
                 write_hdf5(hdf5name, "/log_1pmelmagsp", np.log(1+10000*melmagsp))
+                write_hdf5(hdf5name, "/magsp", magspec)
+                write_hdf5(hdf5name, "/log_1pmelworldsp", np.log(1+10000*melworldsp))
+                write_hdf5(hdf5name, "/worldsp", spc_range)
 
                 uv_range, cont_f0_range = convert_continuos_f0(np.array(f0_range))
                 unique, counts = np.unique(uv_range, return_counts=True)

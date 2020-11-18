@@ -324,10 +324,6 @@ def main():
                         type=int, help="depth of dilation")
     parser.add_argument("--hidden_layers_dec", default=1,
                         type=int, help="depth of dilation")
-    parser.add_argument("--hidden_units_lf0", default=1024,
-                        type=int, help="depth of dilation")
-    parser.add_argument("--hidden_layers_lf0", default=1,
-                        type=int, help="depth of dilation")
     parser.add_argument("--kernel_size_enc", default=7,
                         type=int, help="kernel size of dilated causal convolution")
     parser.add_argument("--dilation_size_enc", default=1,
@@ -336,26 +332,14 @@ def main():
                         type=int, help="kernel size of dilated causal convolution")
     parser.add_argument("--dilation_size_dec", default=1,
                         type=int, help="kernel size of dilated causal convolution")
-    parser.add_argument("--kernel_size_lf0", default=7,
-                        type=int, help="kernel size of dilated causal convolution")
-    parser.add_argument("--dilation_size_lf0", default=1,
-                        type=int, help="kernel size of dilated causal convolution")
     parser.add_argument("--spk_list", required=True,
                         type=str, help="kernel size of dilated causal convolution")
     parser.add_argument("--stats_list", required=True,
                         type=str, help="directory to save the model")
-    parser.add_argument("--lat_dim", default=32,
-                        type=int, help="kernel size of dilated causal convolution")
-    parser.add_argument("--lat_dim_e", default=32,
+    parser.add_argument("--lat_dim", default=64,
                         type=int, help="kernel size of dilated causal convolution")
     parser.add_argument("--mel_dim", default=80,
                         type=int, help="kernel size of dilated causal convolution")
-    parser.add_argument("--excit_dim", default=2,
-                        type=int, help="kernel size of dilated causal convolution")
-    parser.add_argument("--full_excit_dim", default=6,
-                        type=int, help="kernel size of dilated causal convolution")
-    parser.add_argument("--spkidtr_dim", default=0,
-                        type=int, help="number of dimension of reduced one-hot spk-dim (if 0 not apply reduction)")
     # network training setting
     parser.add_argument("--lr", default=1e-4,
                         type=float, help="learning rate")
@@ -377,13 +361,9 @@ def main():
                         type=strtobool, help="batch size (if set 0, utterance batch will be used)")
     parser.add_argument("--causal_conv_dec", default=True,
                         type=strtobool, help="batch size (if set 0, utterance batch will be used)")
-    parser.add_argument("--causal_conv_lf0", default=True,
-                        type=strtobool, help="batch size (if set 0, utterance batch will be used)")
     parser.add_argument("--right_size_enc", default=2,
                         type=int, help="batch size (if set 0, utterance batch will be used)")
     parser.add_argument("--right_size_dec", default=0,
-                        type=int, help="batch size (if set 0, utterance batch will be used)")
-    parser.add_argument("--right_size_lf0", default=0,
                         type=int, help="batch size (if set 0, utterance batch will be used)")
     # other setting
     parser.add_argument("--pad_len", default=360000,
@@ -448,47 +428,19 @@ def main():
 
     torch.backends.cudnn.benchmark = True #faster
 
-    spk_list = args.spk_list.split('@')
-    n_spk = len(spk_list)
-    feat_eval_src_list = args.feats_eval_list.split('@')
-    assert(n_spk == len(feat_eval_src_list))
-
-    mean_stats = torch.FloatTensor(np.r_[read_hdf5(args.stats, "/mean_feat_mceplf0cap")[:args.excit_dim], read_hdf5(args.stats, "/mean_melsp")])
-    scale_stats = torch.FloatTensor(np.r_[read_hdf5(args.stats, "/scale_feat_mceplf0cap")[:args.excit_dim], read_hdf5(args.stats, "/scale_melsp")])
-    mean_cap = torch.FloatTensor(read_hdf5(args.stats, "/mean_feat_mceplf0cap")[3:args.full_excit_dim])
-    scale_cap = torch.FloatTensor(read_hdf5(args.stats, "/scale_feat_mceplf0cap")[3:args.full_excit_dim])
-    args.cap_dim = mean_cap.shape[0]
+    mean_stats = torch.FloatTensor(read_hdf5(args.stats, "/mean_melsp"))
+    scale_stats = torch.FloatTensor(read_hdf5(args.stats, "/scale_melsp"))
 
     # save args as conf
-    if args.kernel_size_dec != args.kernel_size_lf0:
-        if args.kernel_size_dec > args.kernel_size_lf0:
-            args.kernel_size_lf0 = args.kernel_size_dec
-        else:
-            args.kernel_size_dec = args.kernel_size_lf0
-    if args.dilation_size_dec != args.dilation_size_lf0:
-        if args.dilation_size_dec > args.dilation_size_lf0:
-            args.dilation_size_lf0 = args.dilation_size_dec
-        else:
-            args.dilation_size_dec = args.dilation_size_lf0
-    if args.causal_conv_dec != args.causal_conv_lf0:
-        if args.causal_conv_dec:
-            args.causal_conv_lf0 = True
-        else:
-            args.causal_conv_dec = True
-    if args.right_size_dec != args.right_size_lf0:
-        if args.right_size_dec > args.right_size_lf0:
-            args.right_size_lf0 = args.right_size_dec
-        else:
-            args.right_size_dec = args.right_size_lf0
     args.fftsize = 2 ** (len(bin(args.batch_size)) - 2 + 1)
     args.string_path = "/log_1pmelmagsp"
     torch.save(args, args.expdir + "/model.conf")
 
     # define network
-    model_encoder_melsp = GRU_VAE_ENCODER(
+    model_encoder_noisy_clean = GRU_VAE_ENCODER(
         in_dim=args.mel_dim,
-        n_spk=n_spk,
-        lat_dim=args.lat_dim,
+        lat_dim=args.mel_dim,
+        scale_out_flag=True,
         hidden_layers=args.hidden_layers_enc,
         hidden_units=args.hidden_units_enc,
         kernel_size=args.kernel_size_enc,
@@ -500,26 +452,10 @@ def main():
         right_size=args.right_size_enc,
         do_prob=args.do_prob)
     logging.info(model_encoder_melsp)
-    model_decoder_melsp = GRU_SPEC_DECODER(
-        feat_dim=args.lat_dim+args.lat_dim_e,
-        excit_dim=args.excit_dim,
-        out_dim=args.mel_dim,
-        n_spk=n_spk,
-        hidden_layers=args.hidden_layers_dec,
-        hidden_units=args.hidden_units_dec,
-        kernel_size=args.kernel_size_dec,
-        dilation_size=args.dilation_size_dec,
-        causal_conv=args.causal_conv_dec,
-        bi=False,
-        ar=False,
-        pad_first=True,
-        right_size=args.right_size_dec,
-        do_prob=args.do_prob)
-    logging.info(model_decoder_melsp)
-    model_encoder_excit = GRU_VAE_ENCODER(
+    model_encoder_noisy_noise = GRU_VAE_ENCODER(
         in_dim=args.mel_dim,
-        n_spk=n_spk,
-        lat_dim=args.lat_dim_e,
+        lat_dim=args.mel_dim,
+        scale_out_flag=True,
         hidden_layers=args.hidden_layers_enc,
         hidden_units=args.hidden_units_enc,
         kernel_size=args.kernel_size_enc,
@@ -530,31 +466,82 @@ def main():
         pad_first=True,
         right_size=args.right_size_enc,
         do_prob=args.do_prob)
-    logging.info(model_encoder_excit)
-    model_decoder_excit = GRU_EXCIT_DECODER(
-        feat_dim=args.lat_dim_e,
-        cap_dim=args.cap_dim,
-        n_spk=n_spk,
-        hidden_layers=args.hidden_layers_lf0,
-        hidden_units=args.hidden_units_lf0,
-        kernel_size=args.kernel_size_lf0,
-        dilation_size=args.dilation_size_lf0,
-        causal_conv=args.causal_conv_lf0,
+    logging.info(model_encoder_noisy_noise)
+    model_decoder_noisy = GRU_SPEC_DECODER(
+        feat_dim=args.mel_dim*2,
+        out_dim=args.mel_dim,
+        scale_in_flag=True,
+        hidden_layers=args.hidden_layers_dec,
+        hidden_units=args.hidden_units_dec,
+        kernel_size=args.kernel_size_dec,
+        dilation_size=args.dilation_size_dec,
+        causal_conv=args.causal_conv_dec,
         bi=False,
         ar=False,
         pad_first=True,
-        right_size=args.right_size_lf0,
+        right_size=args.right_size_dec,
         do_prob=args.do_prob)
-    logging.info(model_decoder_excit)
-    if (args.spkidtr_dim > 0):
-        model_spkidtr = SPKID_TRANSFORM_LAYER(
-            n_spk=n_spk,
-            spkidtr_dim=args.spkidtr_dim)
-        logging.info(model_spkidtr)
+    logging.info(model_decoder_noisy)
+    model_encoder_clean = GRU_VAE_ENCODER(
+        in_dim=args.mel_dim,
+        lat_dim=args.lat_dim,
+        hidden_layers=args.hidden_layers_enc,
+        hidden_units=args.hidden_units_enc,
+        kernel_size=args.kernel_size_dec,
+        dilation_size=args.dilation_size_dec,
+        causal_conv=args.causal_conv_dec,
+        bi=False,
+        ar=False,
+        pad_first=True,
+        right_size=args.right_size_dec,
+        do_prob=args.do_prob)
+    logging.info(model_encoder_clean)
+    model_decoder_clean = GRU_SPEC_DECODER(
+        feat_dim=args.lat_dim,
+        out_dim=args.mel_dim,
+        hidden_layers=args.hidden_layers_dec,
+        hidden_units=args.hidden_units_dec,
+        kernel_size=args.kernel_size_dec,
+        dilation_size=args.dilation_size_dec,
+        causal_conv=args.causal_conv_dec,
+        bi=False,
+        ar=False,
+        pad_first=True,
+        right_size=args.right_size_dec,
+        do_prob=args.do_prob)
+    logging.info(model_decoder_clean)
+    model_encoder_noise = GRU_VAE_ENCODER(
+        in_dim=args.mel_dim,
+        lat_dim=args.lat_dim,
+        hidden_layers=args.hidden_layers_enc,
+        hidden_units=args.hidden_units_enc,
+        kernel_size=args.kernel_size_dec,
+        dilation_size=args.dilation_size_dec,
+        causal_conv=args.causal_conv_dec,
+        bi=False,
+        ar=False,
+        pad_first=True,
+        right_size=args.right_size_dec,
+        do_prob=args.do_prob)
+    logging.info(model_encoder_noise)
+    model_decoder_noise = GRU_SPEC_DECODER(
+        feat_dim=args.lat_dim,
+        out_dim=args.mel_dim,
+        hidden_layers=args.hidden_layers_dec,
+        hidden_units=args.hidden_units_dec,
+        kernel_size=args.kernel_size_dec,
+        dilation_size=args.dilation_size_dec,
+        causal_conv=args.causal_conv_dec,
+        bi=False,
+        ar=False,
+        pad_first=True,
+        right_size=args.right_size_dec,
+        do_prob=args.do_prob)
+    logging.info(model_decoder_noise)
     model_classifier = GRU_LAT_FEAT_CLASSIFIER(
-        lat_dim=args.lat_dim+args.lat_dim_e,
+        lat_dim=args.lat_dim,
         feat_dim=args.mel_dim,
-        n_spk=n_spk,
+        n_spk=3,
         hidden_units=32,
         hidden_layers=1)
     logging.info(model_classifier)
@@ -563,17 +550,16 @@ def main():
     criterion_l1 = torch.nn.L1Loss(reduction='none')
     criterion_l2 = torch.nn.MSELoss(reduction='none')
 
-    p_spk = torch.ones(n_spk)/n_spk
-
     # send to gpu
     if torch.cuda.is_available():
-        model_encoder_melsp.cuda()
-        model_decoder_melsp.cuda()
-        model_encoder_excit.cuda()
-        model_decoder_excit.cuda()
+        model_encoder_noisy_clean.cuda()
+        model_encoder_noisy_noise.cuda()
+        model_decoder_noisy.cuda()
+        model_encoder_clean.cuda()
+        model_decoder_clean.cuda()
+        model_encoder_noise.cuda()
+        model_decoder_noise.cuda()
         model_classifier.cuda()
-        if (args.spkidtr_dim > 0):
-            model_spkidtr.cuda()
         criterion_ms.cuda()
         criterion_ce.cuda()
         criterion_l1.cuda()
@@ -582,119 +568,159 @@ def main():
         scale_stats = scale_stats.cuda()
         mean_cap = mean_cap.cuda()
         scale_cap = scale_cap.cuda()
-        p_spk = p_spk.cuda()
     else:
         logging.error("gpu is not available. please check the setting.")
         sys.exit(1)
-    logits_p_spk = torch.log(p_spk)
 
-    logging.info(p_spk)
-    logging.info(logits_p_spk)
-
-    model_encoder_melsp.train()
-    model_decoder_melsp.train()
-    model_encoder_excit.train()
-    model_decoder_excit.train()
+    model_encoder_noisy_clean.train()
+    model_encoder_noisy_noise.train()
+    model_decoder_noisy.train()
+    model_encoder_clean.train()
+    model_decoder_clean.train()
+    model_encoder_noise.train()
+    model_decoder_noise.train()
     model_classifier.train()
-    if (args.spkidtr_dim > 0):
-        model_spkidtr.train()
 
-    if model_encoder_melsp.use_weight_norm:
-        torch.nn.utils.remove_weight_norm(model_encoder_melsp.scale_in)
-    if model_decoder_melsp.use_weight_norm:
-        torch.nn.utils.remove_weight_norm(model_decoder_melsp.scale_in)
-        torch.nn.utils.remove_weight_norm(model_decoder_melsp.scale_out)
-    if model_encoder_excit.use_weight_norm:
-        torch.nn.utils.remove_weight_norm(model_encoder_excit.scale_in)
-    if model_decoder_excit.use_weight_norm:
-        torch.nn.utils.remove_weight_norm(model_decoder_excit.scale_out)
-        torch.nn.utils.remove_weight_norm(model_decoder_excit.scale_out_cap)
+    if model_encoder_noisy_clean.use_weight_norm:
+        torch.nn.utils.remove_weight_norm(model_encoder_noisy_clean.scale_in)
+        torch.nn.utils.remove_weight_norm(model_encoder_noisy_clean.scale_out)
+    if model_encoder_noisy_noise.use_weight_norm:
+        torch.nn.utils.remove_weight_norm(model_encoder_noisy_noise.scale_in)
+        torch.nn.utils.remove_weight_norm(model_encoder_noisy_noise.scale_out)
+    if model_decoder_noisy.use_weight_norm:
+        torch.nn.utils.remove_weight_norm(model_decoder_noisy.scale_in)
+        torch.nn.utils.remove_weight_norm(model_decoder_noisy.scale_out)
+    if model_encoder_clean.use_weight_norm:
+        torch.nn.utils.remove_weight_norm(model_encoder_clean.scale_in)
+    if model_decoder_clean.use_weight_norm:
+        torch.nn.utils.remove_weight_norm(model_decoder_clean.scale_out)
+    if model_encoder_noise.use_weight_norm:
+        torch.nn.utils.remove_weight_norm(model_encoder_noise.scale_in)
+    if model_decoder_noise.use_weight_norm:
+        torch.nn.utils.remove_weight_norm(model_decoder_noise.scale_out)
 
-    model_encoder_melsp.scale_in.weight = torch.nn.Parameter(torch.unsqueeze(torch.diag(1.0/scale_stats[args.excit_dim:].data),2))
-    model_encoder_melsp.scale_in.bias = torch.nn.Parameter(-(mean_stats[args.excit_dim:].data/scale_stats[args.excit_dim:].data))
-    model_decoder_melsp.scale_in.weight = torch.nn.Parameter(torch.unsqueeze(torch.diag(1.0/scale_stats[:args.excit_dim].data),2))
-    model_decoder_melsp.scale_in.bias = torch.nn.Parameter(-(mean_stats[:args.excit_dim].data/scale_stats[:args.excit_dim].data))
-    model_decoder_melsp.scale_out.weight = torch.nn.Parameter(torch.unsqueeze(torch.diag(scale_stats[args.excit_dim:].data),2))
-    model_decoder_melsp.scale_out.bias = torch.nn.Parameter(mean_stats[args.excit_dim:].data)
-    model_encoder_excit.scale_in.weight = torch.nn.Parameter(torch.unsqueeze(torch.diag(1.0/scale_stats[args.excit_dim:].data),2))
-    model_encoder_excit.scale_in.bias = torch.nn.Parameter(-(mean_stats[args.excit_dim:].data/scale_stats[args.excit_dim:].data))
-    model_decoder_excit.scale_out.weight = torch.nn.Parameter(torch.unsqueeze(torch.diag(scale_stats[1:2].data),2))
-    model_decoder_excit.scale_out.bias = torch.nn.Parameter(mean_stats[1:2].data)
-    model_decoder_excit.scale_out_cap.weight = torch.nn.Parameter(torch.unsqueeze(torch.diag(scale_cap.data),2))
-    model_decoder_excit.scale_out_cap.bias = torch.nn.Parameter(mean_cap.data)
+    model_encoder_noisy_clean.scale_in.weight = torch.nn.Parameter(torch.unsqueeze(torch.diag(1.0/scale_stats.data),2))
+    model_encoder_noisy_clean.scale_in.bias = torch.nn.Parameter(-(mean_stats.data/scale_stats.data))
+    model_encoder_noisy_clean.scale_out.weight = torch.nn.Parameter(torch.unsqueeze(torch.diag(scale_stats.data),2))
+    model_encoder_noisy_clean.scale_out.bias = torch.nn.Parameter(mean_stats.data)
+    model_encoder_noisy_noise.scale_in.weight = torch.nn.Parameter(torch.unsqueeze(torch.diag(1.0/scale_stats.data),2))
+    model_encoder_noisy_noise.scale_in.bias = torch.nn.Parameter(-(mean_stats.data/scale_stats.data))
+    model_encoder_noisy_noise.scale_out.weight = torch.nn.Parameter(torch.unsqueeze(torch.diag(scale_stats.data),2))
+    model_encoder_noisy_noise.scale_out.bias = torch.nn.Parameter(mean_stats.data)
+    model_decoder_noisy.scale_in.weight = torch.nn.Parameter(torch.unsqueeze(torch.diag(1.0/torch.cat((scale_stats, scale_stats)).data),2))
+    model_decoder_noisy.scale_in.bias = torch.nn.Parameter(-(torch.cat((mean_stats, mean_stats)).data/torch.cat((scale_stats, scale_stats)).data))
+    model_decoder_noisy.scale_out.weight = torch.nn.Parameter(torch.unsqueeze(torch.diag(scale_stats.data),2))
+    model_decoder_noisy.scale_out.bias = torch.nn.Parameter(mean_stats.data)
+    model_encoder_clean.scale_in.weight = torch.nn.Parameter(torch.unsqueeze(torch.diag(1.0/scale_stats.data),2))
+    model_encoder_clean.scale_in.bias = torch.nn.Parameter(-(mean_stats.data/scale_stats.data))
+    model_decoder_clean.scale_out.weight = torch.nn.Parameter(torch.unsqueeze(torch.diag(scale_stats.data),2))
+    model_decoder_clean.scale_out.bias = torch.nn.Parameter(mean_stats.data)
+    model_encoder_noise.scale_in.weight = torch.nn.Parameter(torch.unsqueeze(torch.diag(1.0/scale_stats.data),2))
+    model_encoder_noise.scale_in.bias = torch.nn.Parameter(-(mean_stats.data/scale_stats.data))
+    model_decoder_noise.scale_out.weight = torch.nn.Parameter(torch.unsqueeze(torch.diag(scale_stats.data),2))
+    model_decoder_noise.scale_out.bias = torch.nn.Parameter(mean_stats.data)
 
-    if model_encoder_melsp.use_weight_norm:
-        torch.nn.utils.weight_norm(model_encoder_melsp.scale_in)
-    if model_decoder_melsp.use_weight_norm:
-        torch.nn.utils.weight_norm(model_decoder_melsp.scale_in)
-        torch.nn.utils.weight_norm(model_decoder_melsp.scale_out)
-    if model_encoder_excit.use_weight_norm:
-        torch.nn.utils.weight_norm(model_encoder_excit.scale_in)
-    if model_decoder_excit.use_weight_norm:
-        torch.nn.utils.weight_norm(model_decoder_excit.scale_out)
-        torch.nn.utils.weight_norm(model_decoder_excit.scale_out_cap)
+    if model_encoder_noisy_clean.use_weight_norm:
+        torch.nn.utils.weight_norm(model_encoder_noisy_clean.scale_in)
+        torch.nn.utils.weight_norm(model_encoder_noisy_clean.scale_out)
+    if model_encoder_noisy_noise.use_weight_norm:
+        torch.nn.utils.weight_norm(model_encoder_noisy_noise.scale_in)
+        torch.nn.utils.weight_norm(model_encoder_noisy_noise.scale_out)
+    if model_decoder_noisy.use_weight_norm:
+        torch.nn.utils.weight_norm(model_decoder_noisy.scale_in)
+        torch.nn.utils.weight_norm(model_decoder_noisy.scale_out)
+    if model_encoder_clean.use_weight_norm:
+        torch.nn.utils.weight_norm(model_encoder_clean.scale_in)
+    if model_decoder_clean.use_weight_norm:
+        torch.nn.utils.weight_norm(model_decoder_clean.scale_out)
+    if model_encoder_noise.use_weight_norm:
+        torch.nn.utils.weight_norm(model_encoder_noise.scale_in)
+    if model_decoder_noise.use_weight_norm:
+        torch.nn.utils.weight_norm(model_decoder_noise.scale_out)
 
-    parameters = filter(lambda p: p.requires_grad, model_encoder_melsp.parameters())
+    parameters = filter(lambda p: p.requires_grad, model_encoder_noisy_clean.parameters())
     parameters = sum([np.prod(p.size()) for p in parameters]) / 1000000
-    logging.info('Trainable Parameters (encoder_melsp): %.3f million' % parameters)
-    parameters = filter(lambda p: p.requires_grad, model_decoder_melsp.parameters())
+    logging.info('Trainable Parameters (encoder_noisy_clean): %.3f million' % parameters)
+    parameters = filter(lambda p: p.requires_grad, model_encoder_noisy_noise.parameters())
     parameters = sum([np.prod(p.size()) for p in parameters]) / 1000000
-    logging.info('Trainable Parameters (decoder_melsp): %.3f million' % parameters)
-    parameters = filter(lambda p: p.requires_grad, model_encoder_excit.parameters())
+    logging.info('Trainable Parameters (encoder_noisy_noise): %.3f million' % parameters)
+    parameters = filter(lambda p: p.requires_grad, model_decoder_noisy.parameters())
     parameters = sum([np.prod(p.size()) for p in parameters]) / 1000000
-    logging.info('Trainable Parameters (encoder_excit): %.3f million' % parameters)
-    parameters = filter(lambda p: p.requires_grad, model_decoder_excit.parameters())
+    logging.info('Trainable Parameters (decoder_noisy): %.3f million' % parameters)
+    parameters = filter(lambda p: p.requires_grad, model_encoder_clean.parameters())
     parameters = sum([np.prod(p.size()) for p in parameters]) / 1000000
-    logging.info('Trainable Parameters (decoder_excit): %.3f million' % parameters)
+    logging.info('Trainable Parameters (encoder_clean): %.3f million' % parameters)
+    parameters = filter(lambda p: p.requires_grad, model_decoder_clean.parameters())
+    parameters = sum([np.prod(p.size()) for p in parameters]) / 1000000
+    logging.info('Trainable Parameters (decoder_clean): %.3f million' % parameters)
+    parameters = filter(lambda p: p.requires_grad, model_encoder_noisy.parameters())
+    parameters = sum([np.prod(p.size()) for p in parameters]) / 1000000
+    logging.info('Trainable Parameters (encoder_noisy): %.3f million' % parameters)
+    parameters = filter(lambda p: p.requires_grad, model_decoder_noisy.parameters())
+    parameters = sum([np.prod(p.size()) for p in parameters]) / 1000000
+    logging.info('Trainable Parameters (decoder_noisy): %.3f million' % parameters)
     parameters = filter(lambda p: p.requires_grad, model_classifier.parameters())
     parameters = sum([np.prod(p.size()) for p in parameters]) / 1000000
     logging.info('Trainable Parameters (classifier): %.3f million' % parameters)
-    if (args.spkidtr_dim > 0):
-        parameters = filter(lambda p: p.requires_grad, model_spkidtr.parameters())
-        parameters = sum([np.prod(p.size()) for p in parameters]) / 1000000
-        logging.info('Trainable Parameters (spkidtr): %.3f million' % parameters)
 
-    for param in model_encoder_melsp.parameters():
+    for param in model_encoder_noisy_clean.parameters():
         param.requires_grad = True
-    for param in model_encoder_melsp.scale_in.parameters():
+    for param in model_encoder_noisy_clean.scale_in.parameters():
         param.requires_grad = False
-    for param in model_decoder_melsp.parameters():
+    for param in model_encoder_noisy_clean.scale_out.parameters():
+        param.requires_grad = False
+    for param in model_encoder_noisy_noise.parameters():
         param.requires_grad = True
-    for param in model_decoder_melsp.scale_in.parameters():
+    for param in model_encoder_noisy_noise.scale_in.parameters():
         param.requires_grad = False
-    for param in model_decoder_melsp.scale_out.parameters():
+    for param in model_encoder_noisy_noise.scale_out.parameters():
         param.requires_grad = False
-    for param in model_encoder_excit.parameters():
+    for param in model_decoder_noisy.parameters():
         param.requires_grad = True
-    for param in model_encoder_excit.scale_in.parameters():
+    for param in model_decoder_noisy.scale_in.parameters():
         param.requires_grad = False
-    for param in model_decoder_excit.parameters():
+    for param in model_decoder_noisy.scale_out.parameters():
+        param.requires_grad = False
+    for param in model_encoder_clean.parameters():
         param.requires_grad = True
-    for param in model_decoder_excit.scale_out.parameters():
+    for param in model_encoder_clean.scale_in.parameters():
         param.requires_grad = False
-    for param in model_decoder_excit.scale_out_cap.parameters():
+    for param in model_decoder_clean.parameters():
+        param.requires_grad = True
+    for param in model_decoder_clean.scale_out.parameters():
         param.requires_grad = False
-    if (args.spkidtr_dim > 0) and args.pretrained is not None:
-        for param in model_spkidtr.parameters():
-            param.requires_grad = False
+    for param in model_encoder_noise.parameters():
+        param.requires_grad = True
+    for param in model_encoder_noise.scale_in.parameters():
+        param.requires_grad = False
+    for param in model_decoder_noise.parameters():
+        param.requires_grad = True
+    for param in model_decoder_noise.scale_out.parameters():
+        param.requires_grad = False
 
-    module_list = list(model_encoder_melsp.conv.parameters())
-    module_list += list(model_encoder_melsp.gru.parameters()) + list(model_encoder_melsp.out.parameters())
+    module_list = list(model_encoder_noisy_clean.conv.parameters())
+    module_list += list(model_encoder_noisy_clean.gru.parameters()) + list(model_encoder_noisy_clean.out.parameters())
 
-    module_list += list(model_decoder_melsp.conv.parameters())
-    module_list += list(model_decoder_melsp.gru.parameters()) + list(model_decoder_melsp.out.parameters())
+    module_list += list(model_encoder_noisy_noise.conv.parameters())
+    module_list += list(model_encoder_noisy_noise.gru.parameters()) + list(model_encoder_noisy_noise.out.parameters())
 
-    module_list += list(model_encoder_excit.conv.parameters())
-    module_list += list(model_encoder_excit.gru.parameters()) + list(model_encoder_excit.out.parameters())
+    module_list += list(model_decoder_noisy.conv.parameters())
+    module_list += list(model_decoder_noisy.gru.parameters()) + list(model_decoder_noisy.out.parameters())
 
-    module_list += list(model_decoder_excit.conv.parameters())
-    module_list += list(model_decoder_excit.gru.parameters()) + list(model_decoder_excit.out.parameters())
+    module_list += list(model_encoder_clean.conv.parameters())
+    module_list += list(model_encoder_clean.gru.parameters()) + list(model_encoder_clean.out.parameters())
+
+    module_list += list(model_decoder_clean.conv.parameters())
+    module_list += list(model_decoder_clean.gru.parameters()) + list(model_decoder_clean.out.parameters())
+
+    module_list += list(model_encoder_noise.conv.parameters())
+    module_list += list(model_encoder_noise.gru.parameters()) + list(model_encoder_noise.out.parameters())
+
+    module_list += list(model_decoder_noise.conv.parameters())
+    module_list += list(model_decoder_noise.gru.parameters()) + list(model_decoder_noise.out.parameters())
 
     module_list += list(model_classifier.conv_lat.parameters()) + list(model_classifier.conv_feat.parameters())
     module_list += list(model_classifier.gru.parameters()) + list(model_classifier.out.parameters())
-
-    if (args.spkidtr_dim > 0) and args.pretrained is None:
-        module_list += list(model_spkidtr.conv.parameters()) + list(model_spkidtr.deconv.parameters())
 
     # model = ...
     optimizer = optim.RAdam(
@@ -708,26 +734,29 @@ def main():
     #optimizer = torch.optim.Adam(module_list, lr=args.lr)
 
     # resume
-    if args.pretrained is not None and args.spkidtr_dim > 0:
+    if args.pretrained is not None:
         checkpoint = torch.load(args.pretrained)
-        #model_encoder_melsp.load_state_dict(checkpoint["model_encoder_melsp"])
-        #model_decoder_melsp.load_state_dict(checkpoint["model_decoder_melsp"])
-        #model_encoder_excit.load_state_dict(checkpoint["model_encoder_excit"])
-        #model_decoder_excit.load_state_dict(checkpoint["model_decoder_excit"])
-        #model_classifier.load_state_dict(checkpoint["model_classifier"])
-        model_spkidtr.load_state_dict(checkpoint["model_spkidtr"])
+        model_encoder_noisy_clean.load_state_dict(checkpoint["model_encoder_noisy_clean"])
+        model_encoder_noisy_noise.load_state_dict(checkpoint["model_encoder_noisy_noise"])
+        model_decoder_noisy.load_state_dict(checkpoint["model_decoder_noisy"])
+        model_encoder_clean.load_state_dict(checkpoint["model_encoder_clean"])
+        model_decoder_clean.load_state_dict(checkpoint["model_decoder_clean"])
+        model_encoder_noise.load_state_dict(checkpoint["model_encoder_noise"])
+        model_decoder_noise.load_state_dict(checkpoint["model_decoder_noise"])
+        model_classifier.load_state_dict(checkpoint["model_classifier"])
         epoch_idx = checkpoint["iterations"]
-        logging.info("pretrained spkidtr from %d-iter checkpoint." % epoch_idx)
+        logging.info("pretrained from %d-iter checkpoint." % epoch_idx)
         epoch_idx = 0
     elif args.resume is not None:
         checkpoint = torch.load(args.resume)
-        model_encoder_melsp.load_state_dict(checkpoint["model_encoder_melsp"])
-        model_decoder_melsp.load_state_dict(checkpoint["model_decoder_melsp"])
-        model_encoder_excit.load_state_dict(checkpoint["model_encoder_excit"])
-        model_decoder_excit.load_state_dict(checkpoint["model_decoder_excit"])
+        model_encoder_noisy_clean.load_state_dict(checkpoint["model_encoder_noisy_clean"])
+        model_encoder_noisy_noise.load_state_dict(checkpoint["model_encoder_noisy_noise"])
+        model_decoder_noisy.load_state_dict(checkpoint["model_decoder_noisy"])
+        model_encoder_clean.load_state_dict(checkpoint["model_encoder_clean"])
+        model_decoder_clean.load_state_dict(checkpoint["model_decoder_clean"])
+        model_encoder_noise.load_state_dict(checkpoint["model_encoder_noise"])
+        model_decoder_noise.load_state_dict(checkpoint["model_decoder_noise"])
         model_classifier.load_state_dict(checkpoint["model_classifier"])
-        if (args.spkidtr_dim > 0):
-            model_spkidtr.load_state_dict(checkpoint["model_spkidtr"])
         optimizer.load_state_dict(checkpoint["optimizer"])
         epoch_idx = checkpoint["iterations"]
         logging.info("restored from %d-iter checkpoint." % epoch_idx)
@@ -736,9 +765,6 @@ def main():
 
     def zero_feat_pad(x): return padding(x, args.pad_len, value=None)
     pad_feat_transform = transforms.Compose([zero_feat_pad])
-
-    n_rec = args.n_half_cyc + args.n_half_cyc%2
-    n_cv = int(args.n_half_cyc/2+args.n_half_cyc%2)
 
     stats_list = args.stats_list.split('@')
     assert(n_spk == len(stats_list))
@@ -787,93 +813,31 @@ def main():
     logging.info(args.fftsize)
     eps_1 = torch.finfo(mean_stats.dtype).eps-1
     logging.info(eps_1)
-    logging.info(f'n_cyc: {args.n_half_cyc}')
-    logging.info(f'n_rec: {n_rec}')
-    logging.info(f'n_cv: {n_cv}')
-    enc_pad_left = model_encoder_melsp.pad_left
-    enc_pad_right = model_encoder_melsp.pad_right
+    enc_pad_left = model_encoder_noisy_clean.pad_left
+    enc_pad_right = model_encoder_noisy_clean.pad_right
     logging.info(f'enc_pad_left: {enc_pad_left}')
     logging.info(f'enc_pad_right: {enc_pad_right}')
-    dec_pad_left = model_decoder_melsp.pad_left
-    dec_pad_right = model_decoder_melsp.pad_right
+    dec_pad_left = model_decoder_noisy.pad_left
+    dec_pad_right = model_decoder_noisy.pad_right
     logging.info(f'dec_pad_left: {dec_pad_left}')
     logging.info(f'dec_pad_right: {dec_pad_right}')
-    first_pad_left = (enc_pad_left + dec_pad_left*2)*args.n_half_cyc
-    first_pad_right = (enc_pad_right + dec_pad_right*2)*args.n_half_cyc
+    first_pad_left = enc_pad_left + dec_pad_left*3
+    first_pad_right = enc_pad_right + dec_pad_right*3
     # paddings are added with 1 more dec_pad because excit. flow part is also used in melsp flow part
-    if args.n_half_cyc == 1:
-        first_pad_left += enc_pad_left
-        first_pad_right += enc_pad_right
     logging.info(f'first_pad_left: {first_pad_left}')
     logging.info(f'first_pad_right: {first_pad_right}')
-    if args.n_half_cyc > 1:
-        outpad_lefts = [None]*args.n_half_cyc*3
-        outpad_rights = [None]*args.n_half_cyc*3
-    else:
-        outpad_lefts = [None]*(args.n_half_cyc*3+1)
-        outpad_rights = [None]*(args.n_half_cyc*3+1)
+    outpad_lefts = [None]*args.n_half_cyc*3
+    outpad_rights = [None]*args.n_half_cyc*3
     outpad_lefts[0] = first_pad_left-enc_pad_left
     outpad_rights[0] = first_pad_right-enc_pad_right
-    for i in range(1,args.n_half_cyc*3):
-        if i % 3 != 0:
-            outpad_lefts[i] = outpad_lefts[i-1]-dec_pad_left
-            outpad_rights[i] = outpad_rights[i-1]-dec_pad_right
-        else:
-            outpad_lefts[i] = outpad_lefts[i-1]-enc_pad_left
-            outpad_rights[i] = outpad_rights[i-1]-enc_pad_right
-    if args.n_half_cyc == 1:
-        outpad_lefts[len(outpad_lefts)-1] = outpad_lefts[len(outpad_lefts)-2]-enc_pad_left
-        outpad_rights[len(outpad_rights)-1] = outpad_rights[len(outpad_rights)-2]-enc_pad_right
+    for i in range(1,args.n_half_cyc*4):
+        outpad_lefts[i] = outpad_lefts[i-1]-dec_pad_left
+        outpad_rights[i] = outpad_rights[i-1]-dec_pad_right
     logging.info(outpad_lefts)
     logging.info(outpad_rights)
-    batch_feat_in = [None]*args.n_half_cyc*3
-    batch_sc_in = [None]*args.n_half_cyc*3
-    batch_sc_cv_in = [None]*n_cv*2
+    batch_feat_in = [None]*args.n_half_cyc*4
     total = 0
     iter_count = 0
-    batch_sc_cv = [None]*n_cv
-    batch_excit_cv = [None]*n_cv
-    qy_logits = [None]*n_rec
-    qz_alpha = [None]*n_rec
-    qy_logits_e = [None]*n_rec
-    qz_alpha_e = [None]*n_rec
-    z = [None]*n_rec
-    batch_z_sc = [None]*n_rec
-    z_e = [None]*n_rec
-    batch_melsp_rec = [None]*n_rec
-    batch_feat_rec_sc = [None]*n_rec
-    batch_melsp_cv = [None]*n_cv
-    batch_feat_cv_sc = [None]*n_cv
-    batch_lf0_rec = [None]*n_rec
-    batch_lf0_cv = [None]*n_cv
-    h_z = [None]*n_rec
-    h_z_sc = [None]*n_rec
-    h_z_e = [None]*n_rec
-    h_melsp = [None]*n_rec
-    h_lf0 = [None]*n_rec
-    h_feat_sc = [None]*n_rec
-    h_melsp_cv = [None]*n_cv
-    h_lf0_cv = [None]*n_cv
-    h_feat_cv_sc = [None]*n_rec
-    loss_elbo = [None]*args.n_half_cyc
-    loss_px = [None]*args.n_half_cyc
-    loss_qy_py = [None]*n_rec
-    loss_qy_py_err = [None]*n_rec
-    loss_qz_pz = [None]*n_rec
-    loss_qy_py_e = [None]*n_rec
-    loss_qy_py_err_e = [None]*n_rec
-    loss_qz_pz_e = [None]*n_rec
-    loss_uv = [None]*args.n_half_cyc
-    loss_f0 = [None]*args.n_half_cyc
-    loss_uvcap = [None]*args.n_half_cyc
-    loss_cap = [None]*args.n_half_cyc
-    loss_melsp = [None]*args.n_half_cyc
-    loss_melsp_dB = [None]*args.n_half_cyc
-    loss_melsp_cv = [None]*args.n_half_cyc
-    loss_uv_cv = [None]*args.n_half_cyc
-    loss_f0_cv = [None]*args.n_half_cyc
-    loss_uvcap_cv = [None]*args.n_half_cyc
-    loss_cap_cv = [None]*args.n_half_cyc
     loss_melsp_dB_src_trg = []
     loss_uv_src_trg = []
     loss_f0_src_trg = []
@@ -1178,7 +1142,7 @@ def main():
                 param.requires_grad = False
             for param in model_classifier.parameters():
                 param.requires_grad = False
-            if args.spkidtr_dim > 0 and args.pretrained is None:
+            if args.spkidtr_dim > 0:
                 for param in model_spkidtr.parameters():
                     param.requires_grad = False
             pair_exist = False
@@ -2376,7 +2340,7 @@ def main():
                 param.requires_grad = False
             for param in model_classifier.parameters():
                 param.requires_grad = True
-            if args.spkidtr_dim > 0 and args.pretrained is None:
+            if args.spkidtr_dim > 0:
                 for param in model_spkidtr.parameters():
                     param.requires_grad = True
             # start next epoch
@@ -2393,399 +2357,154 @@ def main():
             f_es = f_ss+f_bs
             logging.info(f'{f_ss} {f_bs} {f_es} {max_flen}')
             # handle first pad for input on melsp flow
-            flag_cv = True
-            i_cv = 0
-            i_cv_in = 0
             f_ss_first_pad_left = f_ss-first_pad_left
             f_es_first_pad_right = f_es+first_pad_right
-            i_end = args.n_half_cyc*3
-            if args.n_half_cyc == 1:
-                i_end += 1
-            for i in range(i_end):
-                if i % 3 == 0: #enc
-                    if f_ss_first_pad_left >= 0 and f_es_first_pad_right <= max_flen: # pad left and right available
-                        batch_feat_in[i] = batch_feat[:,f_ss_first_pad_left:f_es_first_pad_right,args.full_excit_dim:]
-                    elif f_es_first_pad_right <= max_flen: # pad right available, left need additional replicate
-                        batch_feat_in[i] = F.pad(batch_feat[:,:f_es_first_pad_right,args.full_excit_dim:].transpose(1,2), (-f_ss_first_pad_left,0), "replicate").transpose(1,2)
-                    elif f_ss_first_pad_left >= 0: # pad left available, right need additional replicate
-                        batch_feat_in[i] = F.pad(batch_feat[:,f_ss_first_pad_left:max_flen,args.full_excit_dim:].transpose(1,2), (0,f_es_first_pad_right-max_flen), "replicate").transpose(1,2)
-                    else: # pad left and right need additional replicate
-                        batch_feat_in[i] = F.pad(batch_feat[:,:max_flen,args.full_excit_dim:].transpose(1,2), (-f_ss_first_pad_left,f_es_first_pad_right-max_flen), "replicate").transpose(1,2)
-                    f_ss_first_pad_left += enc_pad_left
-                    f_es_first_pad_right -= enc_pad_right
-                else: #dec
-                    if f_ss_first_pad_left >= 0 and f_es_first_pad_right <= max_flen: # pad left and right available
-                        batch_sc_in[i] = batch_sc[:,f_ss_first_pad_left:f_es_first_pad_right]
-                        if flag_cv:
-                            batch_sc_cv_in[i_cv_in] = batch_sc_cv_data[i_cv][:,f_ss_first_pad_left:f_es_first_pad_right]
-                            i_cv_in += 1
-                            if i % 3 == 2:
-                                i_cv += 1
-                                flag_cv = False
-                        else:
-                            if (i + 1) % 6 == 0:
-                                flag_cv = True
-                    elif f_es_first_pad_right <= max_flen: # pad right available, left need additional replicate
-                        batch_sc_in[i] = F.pad(batch_sc[:,:f_es_first_pad_right].unsqueeze(1).float(), (-f_ss_first_pad_left,0), "replicate").squeeze(1).long()
-                        if flag_cv:
-                            batch_sc_cv_in[i_cv_in] = F.pad(batch_sc_cv_data[i_cv][:,:f_es_first_pad_right].unsqueeze(1).float(), (-f_ss_first_pad_left,0), "replicate").squeeze(1).long()
-                            i_cv_in += 1
-                            if i % 3 == 2:
-                                i_cv += 1
-                                flag_cv = False
-                        else:
-                            if (i + 1) % 6 == 0:
-                                flag_cv = True
-                    elif f_ss_first_pad_left >= 0: # pad left available, right need additional replicate
-                        diff_pad = f_es_first_pad_right - max_flen
-                        batch_sc_in[i] = F.pad(batch_sc[:,f_ss_first_pad_left:max_flen].unsqueeze(1).float(), (0,diff_pad), "replicate").squeeze(1).long()
-                        if flag_cv:
-                            batch_sc_cv_in[i_cv_in] = F.pad(batch_sc_cv_data[i_cv][:,f_ss_first_pad_left:max_flen].unsqueeze(1).float(), (0,diff_pad), "replicate").squeeze(1).long()
-                            i_cv_in += 1
-                            if i % 3 == 2:
-                                i_cv += 1
-                                flag_cv = False
-                        else:
-                            if (i + 1) % 6 == 0:
-                                flag_cv = True
-                    else: # pad left and right need additional replicate
-                        diff_pad = f_es_first_pad_right - max_flen
-                        batch_sc_in[i] = F.pad(batch_sc[:,:max_flen].unsqueeze(1).float(), (-f_ss_first_pad_left,diff_pad), "replicate").squeeze(1).long()
-                        if flag_cv:
-                            batch_sc_cv_in[i_cv_in] = F.pad(batch_sc_cv_data[i_cv][:,:max_flen].unsqueeze(1).float(), (-f_ss_first_pad_left,diff_pad), "replicate").squeeze(1).long()
-                            i_cv_in += 1
-                            if i % 3 == 2:
-                                i_cv += 1
-                                flag_cv = False
-                        else:
-                            if (i + 1) % 6 == 0:
-                                flag_cv = True
-                    f_ss_first_pad_left += dec_pad_left
-                    f_es_first_pad_right -= dec_pad_right
-            batch_melsp = batch_feat[:,f_ss:f_es,args.full_excit_dim:]
-            batch_excit = batch_feat[:,f_ss:f_es,:args.full_excit_dim]
-            batch_sc = batch_sc[:,f_ss:f_es]
-            for i in range(n_cv):
-                batch_sc_cv[i] = batch_sc_cv_data[i][:,f_ss:f_es]
-                batch_excit_cv[i] = batch_feat_cv_data[i][:,f_ss:f_es]
+            if f_ss_first_pad_left >= 0 and f_es_first_pad_right <= max_flen: # pad left and right available
+                y = batch_feat[:,f_ss_first_pad_left:f_es_first_pad_right]
+            elif f_es_first_pad_right <= max_flen: # pad right available, left need additional replicate
+                y = F.pad(batch_feat[:,:f_es_first_pad_right].transpose(1,2), (-f_ss_first_pad_left,0), "replicate").transpose(1,2)
+            elif f_ss_first_pad_left >= 0: # pad left available, right need additional replicate
+                y = F.pad(batch_feat[:,f_ss_first_pad_left:max_flen].transpose(1,2), (0,f_es_first_pad_right-max_flen), "replicate").transpose(1,2)
+            else: # pad left and right need additional replicate
+                y = F.pad(batch_feat[:,:max_flen].transpose(1,2), (-f_ss_first_pad_left,f_es_first_pad_right-max_flen), "replicate").transpose(1,2)
+            batch_melsp = batch_feat[:,f_ss:f_es]
 
             if f_ss > 0:
+                if len(del_index_utt) > 0:
+                    h_y_sc = torch.FloatTensor(np.delete(h_y_sc.cpu().data.numpy(), \
+                                                    del_index_utt, axis=1)).to(device)
+                    h_x = torch.FloatTensor(np.delete(h_x.cpu().data.numpy(), \
+                                                    del_index_utt, axis=1)).to(device)
+                    h_x_e = torch.FloatTensor(np.delete(h_x_e.cpu().data.numpy(), \
+                                                    del_index_utt, axis=1)).to(device)
+                    h_y_rec = torch.FloatTensor(np.delete(h_y_rec.cpu().data.numpy(), \
+                                                    del_index_utt, axis=1)).to(device)
+                    h_y_rec_sc = torch.FloatTensor(np.delete(h_y_rec_sc.cpu().data.numpy(), \
+                                                    del_index_utt, axis=1)).to(device)
+                    h_z = torch.FloatTensor(np.delete(h_z.cpu().data.numpy(), \
+                                                    del_index_utt, axis=1)).to(device)
+                    h_z_e = torch.FloatTensor(np.delete(h_z_e.cpu().data.numpy(), \
+                                                    del_index_utt, axis=1)).to(device)
+                    h_x_sc = torch.FloatTensor(np.delete(h_x_sc.cpu().data.numpy(), \
+                                                    del_index_utt, axis=1)).to(device)
+                    h_x_e_sc = torch.FloatTensor(np.delete(h_x_e_sc.cpu().data.numpy(), \
+                                                    del_index_utt, axis=1)).to(device)
+                    h_x_rec = torch.FloatTensor(np.delete(h_x_rec.cpu().data.numpy(), \
+                                                    del_index_utt, axis=1)).to(device)
+                    h_x_e_rec = torch.FloatTensor(np.delete(h_x_e_rec.cpu().data.numpy(), \
+                                                    del_index_utt, axis=1)).to(device)
+                    h_z_sc = torch.FloatTensor(np.delete(h_z_sc.cpu().data.numpy(), \
+                                                    del_index_utt, axis=1)).to(device)
+                    h_z_e_sc = torch.FloatTensor(np.delete(h_z_e_sc.cpu().data.numpy(), \
+                                                    del_index_utt, axis=1)).to(device)
+                    h_x_rec_sc = torch.FloatTensor(np.delete(h_x_rec_sc.cpu().data.numpy(), \
+                                                    del_index_utt, axis=1)).to(device)
+                    h_x_e_rec_sc = torch.FloatTensor(np.delete(h_x_e_rec_sc.cpu().data.numpy(), \
+                                                    del_index_utt, axis=1)).to(device)
+                y_sc, h_y_sc = model_classifier(feat=batch_melsp, h=h_feat_y_sc)
+                ## src. infer.
                 idx_in = 0
-                i_cv_in = 0 #because excit. flow is also used in melsp flow
-                for i in range(0,args.n_half_cyc,2):
-                    i_cv = i//2
-                    j = i+1
-                    if len(del_index_utt) > 0:
-                        if i == 0:
-                            h_feat_in_sc = torch.FloatTensor(np.delete(h_feat_in_sc.cpu().data.numpy(), \
-                                                            del_index_utt, axis=1)).to(device)
-                        h_z[i] = torch.FloatTensor(np.delete(h_z[i].cpu().data.numpy(), \
-                                                        del_index_utt, axis=1)).to(device)
-                        h_z_e[i] = torch.FloatTensor(np.delete(h_z_e[i].cpu().data.numpy(), \
-                                                        del_index_utt, axis=1)).to(device)
-                        h_z_sc[i] = torch.FloatTensor(np.delete(h_z_sc[i].cpu().data.numpy(), \
-                                                        del_index_utt, axis=1)).to(device)
-                        h_melsp[i] = torch.FloatTensor(np.delete(h_melsp[i].cpu().data.numpy(), \
-                                                        del_index_utt, axis=1)).to(device)
-                        h_feat_sc[i] = torch.FloatTensor(np.delete(h_feat_sc[i].cpu().data.numpy(), \
-                                                        del_index_utt, axis=1)).to(device)
-                        h_melsp_cv[i_cv] = torch.FloatTensor(np.delete(h_melsp_cv[i_cv].cpu().data.numpy(), \
-                                                        del_index_utt, axis=1)).to(device)
-                        h_feat_cv_sc[i_cv] = torch.FloatTensor(np.delete(h_feat_cv_sc[i_cv].cpu().data.numpy(), \
-                                                        del_index_utt, axis=1)).to(device)
-                        h_lf0[i] = torch.FloatTensor(np.delete(h_lf0[i].cpu().data.numpy(), \
-                                                        del_index_utt, axis=1)).to(device)
-                        h_lf0_cv[i_cv] = torch.FloatTensor(np.delete(h_lf0_cv[i_cv].cpu().data.numpy(), \
-                                                        del_index_utt, axis=1)).to(device)
-                        h_z[j] = torch.FloatTensor(np.delete(h_z[j].cpu().data.numpy(), \
-                                                        del_index_utt, axis=1)).to(device)
-                        h_z_e[j] = torch.FloatTensor(np.delete(h_z_e[j].cpu().data.numpy(), \
-                                                        del_index_utt, axis=1)).to(device)
-                        h_z_sc[j] = torch.FloatTensor(np.delete(h_z_sc[j].cpu().data.numpy(), \
-                                                        del_index_utt, axis=1)).to(device)
-                        if args.n_half_cyc > 1:
-                            h_melsp[j] = torch.FloatTensor(np.delete(h_melsp[j].cpu().data.numpy(), \
-                                                            del_index_utt, axis=1)).to(device)
-                            h_feat_sc[j] = torch.FloatTensor(np.delete(h_feat_sc[j].cpu().data.numpy(), \
-                                                            del_index_utt, axis=1)).to(device)
-                            h_lf0[j] = torch.FloatTensor(np.delete(h_lf0[j].cpu().data.numpy(), \
-                                                            del_index_utt, axis=1)).to(device)
-                    if i > 0:
-                        idx_in += 1
-                        i_cv_in += 1
-                        i_1 = i-1
-                        cyc_rec_feat = batch_melsp_rec[i_1].detach()
-                        qy_logits[i], qz_alpha[i], h_z[i] = model_encoder_melsp(cyc_rec_feat, outpad_right=outpad_rights[idx_in], h=h_z[i], do=True)
-                        qy_logits_e[i], qz_alpha_e[i], h_z_e[i] = model_encoder_excit(cyc_rec_feat, outpad_right=outpad_rights[idx_in], h=h_z_e[i], do=True)
-                        idx_in_1 = idx_in-1
-                        idx_in_2 = idx_in-2 #because excit flow is also used in melsp flow
-                        batch_melsp_rec[i_1] = batch_melsp_rec[i_1][:,outpad_lefts[idx_in_1]:batch_melsp_rec[i_1].shape[1]-outpad_rights[idx_in_1]]
-                        batch_lf0_rec[i_1] = batch_lf0_rec[i_1][:,outpad_lefts[idx_in_2]:batch_lf0_rec[i_1].shape[1]-outpad_rights[idx_in_2]]
-                        batch_feat_rec_sc[i_1], h_feat_sc[i_1] = model_classifier(feat=batch_melsp_rec[i_1], h=h_feat_sc[i_1])
-                    else:
-                        qy_logits[i], qz_alpha[i], h_z[i] = model_encoder_melsp(batch_feat_in[idx_in], outpad_right=outpad_rights[idx_in], h=h_z[i], do=True)
-                        qy_logits_e[i], qz_alpha_e[i], h_z_e[i] = model_encoder_excit(batch_feat_in[idx_in], outpad_right=outpad_rights[idx_in], h=h_z_e[i], do=True)
-                        batch_feat_in_sc, h_feat_in_sc = model_classifier(feat=batch_melsp, h=h_feat_in_sc)
-                    ## reconstruction and conversion
-                    eps_e = torch.empty_like(qz_alpha_e[i][:,:,:args.lat_dim_e])
-                    eps_e.uniform_(eps_1,1)
-                    z_e[i] = qz_alpha_e[i][:,:,:args.lat_dim_e] - torch.exp(qz_alpha_e[i][:,:,args.lat_dim_e:]) * eps_e.sign() * torch.log1p(-eps_e.abs()) # sampling laplace
-                    idx_in += 1
-                    if args.spkidtr_dim > 0:
-                        batch_lf0_rec[i], h_lf0[i] \
-                                = model_decoder_excit(model_spkidtr(batch_sc_in[idx_in]), z_e[i], outpad_right=outpad_rights[idx_in], h=h_lf0[i], do=True)
-                        batch_lf0_cv[i_cv], h_lf0_cv[i_cv] \
-                                = model_decoder_excit(model_spkidtr(batch_sc_cv_in[i_cv_in]), z_e[i], outpad_right=outpad_rights[idx_in], h=h_lf0_cv[i_cv], do=True)
-                    else:
-                        batch_lf0_rec[i], h_lf0[i] \
-                                = model_decoder_excit(batch_sc_in[idx_in], z_e[i], outpad_right=outpad_rights[idx_in], h=h_lf0[i], do=True)
-                        batch_lf0_cv[i_cv], h_lf0_cv[i_cv] \
-                                = model_decoder_excit(batch_sc_cv_in[i_cv_in], z_e[i], outpad_right=outpad_rights[idx_in], h=h_lf0_cv[i_cv], do=True)
-                    eps = torch.empty_like(qz_alpha[i][:,:,:args.lat_dim])
-                    eps.uniform_(eps_1,1)
-                    z[i] = qz_alpha[i][:,:,:args.lat_dim] - torch.exp(qz_alpha[i][:,:,args.lat_dim:]) * eps.sign() * torch.log1p(-eps.abs()) # sampling laplace
-                    if dec_pad_right > 0:
-                        z_cat = torch.cat((z_e[i][:,dec_pad_left:-dec_pad_right], z[i][:,dec_pad_left:-dec_pad_right]), 2) #w/ 1 more dec_pad
-                    else:
-                        z_cat = torch.cat((z_e[i][:,dec_pad_left:], z[i][:,dec_pad_left:]), 2) #w/ 1 more dec_pad
-                    idx_in += 1
-                    i_cv_in += 1 #because excit. flow is also used in melsp flow
-                    if args.spkidtr_dim > 0:
-                        batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(model_spkidtr(batch_sc_in[idx_in]), z_cat,
-                                            e=batch_lf0_rec[i][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], h=h_melsp[i], do=True)
-                        batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(model_spkidtr(batch_sc_cv_in[i_cv_in]), z_cat,
-                                            e=batch_lf0_cv[i_cv][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], h=h_melsp_cv[i_cv], do=True)
-                    else:
-                        batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(batch_sc_in[idx_in], z_cat,
-                                            e=batch_lf0_rec[i][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], h=h_melsp[i], do=True)
-                        batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(batch_sc_cv_in[i_cv_in], z_cat,
-                                            e=batch_lf0_cv[i_cv][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], h=h_melsp_cv[i_cv], do=True)
-                    feat_len = qy_logits[i].shape[1]
-                    idx_in_2 = idx_in-2
-                    z[i] = z[i][:,outpad_lefts[idx_in_2]:feat_len-outpad_rights[idx_in_2]]
-                    z_e[i] = z_e[i][:,outpad_lefts[idx_in_2]:feat_len-outpad_rights[idx_in_2]]
-                    batch_z_sc[i], h_z_sc[i] = model_classifier(lat=torch.cat((z[i], z_e[i]), 2), h=h_z_sc[i])
-                    qy_logits[i] = qy_logits[i][:,outpad_lefts[idx_in_2]:feat_len-outpad_rights[idx_in_2]]
-                    qz_alpha[i] = qz_alpha[i][:,outpad_lefts[idx_in_2]:feat_len-outpad_rights[idx_in_2]]
-                    qy_logits_e[i] = qy_logits_e[i][:,outpad_lefts[idx_in_2]:feat_len-outpad_rights[idx_in_2]]
-                    qz_alpha_e[i] = qz_alpha_e[i][:,outpad_lefts[idx_in_2]:feat_len-outpad_rights[idx_in_2]]
-                    ## cyclic reconstruction
-                    idx_in += 1
-                    cv_feat = batch_melsp_cv[i_cv].detach()
-                    qy_logits[j], qz_alpha[j], h_z[j] = model_encoder_melsp(cv_feat, outpad_right=outpad_rights[idx_in], h=h_z[j], do=True)
-                    qy_logits_e[j], qz_alpha_e[j], h_z_e[j] = model_encoder_excit(cv_feat, outpad_right=outpad_rights[idx_in], h=h_z_e[j], do=True)
-                    feat_len = batch_melsp_rec[i].shape[1]
-                    feat_len_e = batch_lf0_rec[i].shape[1]
-                    idx_in_1 = idx_in-1
-                    idx_in_2 = idx_in-2 #because excit. flow is also used in melsp flow
-                    batch_melsp_rec[i] = batch_melsp_rec[i][:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
-                    batch_melsp_cv[i_cv] = batch_melsp_cv[i_cv][:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
-                    batch_lf0_rec[i] = batch_lf0_rec[i][:,outpad_lefts[idx_in_2]:feat_len_e-outpad_rights[idx_in_2]]
-                    batch_lf0_cv[i_cv] = batch_lf0_cv[i_cv][:,outpad_lefts[idx_in_2]:feat_len_e-outpad_rights[idx_in_2]]
-                    batch_feat_rec_sc[i], h_feat_sc[i] = model_classifier(feat=batch_melsp_rec[i], h=h_feat_sc[i])
-                    batch_feat_cv_sc[i_cv], h_feat_cv_sc[i_cv] = model_classifier(feat=batch_melsp_cv[i_cv], h=h_feat_cv_sc[i_cv])
-                    if args.n_half_cyc > 1:
-                        eps_e = torch.empty_like(qz_alpha_e[j][:,:,:args.lat_dim_e])
-                        eps_e.uniform_(eps_1,1)
-                        z_e[j] = qz_alpha_e[j][:,:,:args.lat_dim_e] - torch.exp(qz_alpha_e[j][:,:,args.lat_dim_e:]) * eps_e.sign() * torch.log1p(-eps_e.abs()) # sampling laplace
-                        idx_in += 1
-                        if args.spkidtr_dim > 0:
-                            batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(model_spkidtr(batch_sc_in[idx_in]), z_e[j], outpad_right=outpad_rights[idx_in], h=h_lf0[j], do=True)
-                        else:
-                            batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(batch_sc_in[idx_in], z_e[j], outpad_right=outpad_rights[idx_in], h=h_lf0[j], do=True)
-                        eps = torch.empty_like(qz_alpha[j][:,:,:args.lat_dim])
-                        eps.uniform_(eps_1,1)
-                        z[j] = qz_alpha[j][:,:,:args.lat_dim] - torch.exp(qz_alpha[j][:,:,args.lat_dim:]) * eps.sign() * torch.log1p(-eps.abs()) # sampling laplace
-                        if dec_pad_right > 0:
-                            z_cat = torch.cat((z_e[j][:,dec_pad_left:-dec_pad_right], z[j][:,dec_pad_left:-dec_pad_right]), 2) #w/ 1 more dec_pad
-                        else:
-                            z_cat = torch.cat((z_e[j][:,dec_pad_left:], z[j][:,dec_pad_left:]), 2) #w/ 1 more dec_pad
-                        idx_in += 1
-                        if args.spkidtr_dim > 0:
-                            batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(model_spkidtr(batch_sc_in[idx_in]), z_cat,
-                                                    e=batch_lf0_rec[j][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], h=h_melsp[j], do=True)
-                        else:
-                            batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(batch_sc_in[idx_in], z_cat,
-                                                    e=batch_lf0_rec[j][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], h=h_melsp[j], do=True)
-                        feat_len = qy_logits[j].shape[1]
-                        idx_in_2 = idx_in-2
-                        z[j] = z[j][:,outpad_lefts[idx_in_2]:feat_len-outpad_rights[idx_in_2]]
-                        z_e[j] = z_e[j][:,outpad_lefts[idx_in_2]:feat_len-outpad_rights[idx_in_2]]
-                        batch_z_sc[j], h_z_sc[j] = model_classifier(lat=torch.cat((z[j], z_e[j]), 2), h=h_z_sc[j])
-                        qy_logits[j] = qy_logits[j][:,outpad_lefts[idx_in_2]:feat_len-outpad_rights[idx_in_2]]
-                        qz_alpha[j] = qz_alpha[j][:,outpad_lefts[idx_in_2]:feat_len-outpad_rights[idx_in_2]]
-                        qy_logits_e[j] = qy_logits_e[j][:,outpad_lefts[idx_in_2]:feat_len-outpad_rights[idx_in_2]]
-                        qz_alpha_e[j] = qz_alpha_e[j][:,outpad_lefts[idx_in_2]:feat_len-outpad_rights[idx_in_2]]
-                        if j+1 == args.n_half_cyc:
-                            idx_in_1 = idx_in-1 #because excit. flow is also used in melsp flow
-                            batch_melsp_rec[j] = batch_melsp_rec[j][:,outpad_lefts[idx_in]:batch_melsp_rec[j].shape[1]-outpad_rights[idx_in]]
-                            batch_lf0_rec[j] = batch_lf0_rec[j][:,outpad_lefts[idx_in_1]:batch_lf0_rec[j].shape[1]-outpad_rights[idx_in_1]]
-                            batch_feat_rec_sc[j], h_feat_sc[j] = model_classifier(feat=batch_melsp_rec[j], h=h_feat_sc[j])
-                    else:
-                        feat_len = qy_logits[j].shape[1]
-                        qy_logits[j] = qy_logits[j][:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
-                        qz_alpha[j] = qz_alpha[j][:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
-                        qy_logits_e[j] = qy_logits_e[j][:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
-                        qz_alpha_e[j] = qz_alpha_e[j][:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
+                qxy, x, h_x = model_encoder_noisy_clean(y, outpad_right=outpad_rights[idx_in], h=h_x, do=True)
+                qxy, x_e, h_x_e = model_encoder_noisy_noise(y, outpad_right=outpad_rights[idx_in], h=h_x_e, do=True)
+                feat_len = qxy.shape[1]
+                qxy = qxy[:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
+                qxy_e = qxy_e[:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
+                ## obs. reconst.
+                idx_in += 1
+                pyx, y_rec, h_y_rec = model_decoder_noisy(torch.cat((x, x_e), 2), outpad_right=outpad_rights[idx_in], h=h_y_rec, do=True)
+                feat_len = pyx.shape[1]
+                pyx = pyx[:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
+                y_rec = y_rec[:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
+                y_rec_sc, h_y_rec_sc = model_classifier(feat=y_rec, h=h_y_rec_sc)
+                ## latent src. infer.
+                if dec_pad_right > 0:
+                    x = x[:,dec_pad_left:-dec_pad_right] #w/ 1 more dec_pad
+                    x_e = x_e[:,dec_pad_left:-dec_pad_right] #w/ 1 more dec_pad
+                else:
+                    x = x[:,dec_pad_left:] #w/ 1 more dec_pad
+                    x_e = x_e[:,dec_pad_left:] #w/ 1 more dec_pad
+                idx_in += 1
+                qzx, z, h_z = model_encoder_clean(x, outpad_right=outpad_rights[idx_in], h=h_z, do=True)
+                qzx_e, z_e, h_z_e = model_encoder_noise(x_e, outpad_right=outpad_rights[idx_in], h=h_z_e, do=True)
+                idx_in_1 = idx_in-1
+                feat_len = x.shape[1]
+                x = x[:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
+                x_e = x_e[:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
+                x_sc, h_x_sc = model_classifier(feat=x, h=h_x_sc)
+                x_e_sc, h_x_e_sc = model_classifier(feat=x_e, h=h_x_e_sc)
+                ## latent src. reconst.
+                idx_in += 1
+                pxz, x_rec, h_x_rec = model_decoder_clean(z, outpad_right=outpad_rights[idx_in], h=h_x_rec, do=True)
+                pxz_e, x_e_rec, h_x_e_rec = model_decoder_noise(z_e, outpad_right=outpad_rights[idx_in], h=h_x_e_rec, do=True)
+                idx_in_1 = idx_in-1
+                feat_len = z.shape[1]
+                z = z[:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
+                z_e = z_e[:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
+                qzx = qzx[:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
+                qzx_e = qzx_e[:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
+                z_sc, h_z_sc = model_classifier(lat=z, h=h_z_sc)
+                z_e_sc, h_z_e_sc = model_classifier(lat=z_e, h=h_z_e_sc)
+                x_rec_sc, h_x_rec_sc = model_classifier(feat=x_rec, h=h_x_rec_sc)
+                x_e_rec_sc, h_x_e_rec_sc = model_classifier(feat=x_e_rec, h=h_x_e_rec_sc)
             else:
+                y_sc, h_y_sc = model_classifier(feat=batch_melsp)
+                ## src. infer.
                 idx_in = 0
-                i_cv_in = 0 #because excit. flow is also used in melsp flow
-                for i in range(0,args.n_half_cyc,2):
-                    i_cv = i//2
-                    j = i+1
-                    if i > 0:
-                        idx_in += 1
-                        i_cv_in += 1
-                        i_1 = i-1
-                        cyc_rec_feat = batch_melsp_rec[i_1].detach()
-                        qy_logits[i], qz_alpha[i], h_z[i] = model_encoder_melsp(cyc_rec_feat, outpad_right=outpad_rights[idx_in], do=True)
-                        qy_logits_e[i], qz_alpha_e[i], h_z_e[i] = model_encoder_excit(cyc_rec_feat, outpad_right=outpad_rights[idx_in], do=True)
-                        idx_in_1 = idx_in-1
-                        idx_in_2 = idx_in-2 #because excit flow is also used in melsp flow
-                        batch_melsp_rec[i_1] = batch_melsp_rec[i_1][:,outpad_lefts[idx_in_1]:batch_melsp_rec[i_1].shape[1]-outpad_rights[idx_in_1]]
-                        batch_lf0_rec[i_1] = batch_lf0_rec[i_1][:,outpad_lefts[idx_in_2]:batch_lf0_rec[i_1].shape[1]-outpad_rights[idx_in_2]]
-                        batch_feat_rec_sc[i_1], h_feat_sc[i_1] = model_classifier(feat=batch_melsp_rec[i_1])
-                    else:
-                        qy_logits[i], qz_alpha[i], h_z[i] = model_encoder_melsp(batch_feat_in[idx_in], outpad_right=outpad_rights[idx_in], do=True)
-                        qy_logits_e[i], qz_alpha_e[i], h_z_e[i] = model_encoder_excit(batch_feat_in[idx_in], outpad_right=outpad_rights[idx_in], do=True)
-                        batch_feat_in_sc, h_feat_in_sc = model_classifier(feat=batch_melsp)
-                    ## reconstruction and conversion
-                    eps_e = torch.empty_like(qz_alpha_e[i][:,:,:args.lat_dim_e])
-                    eps_e.uniform_(eps_1,1)
-                    z_e[i] = qz_alpha_e[i][:,:,:args.lat_dim_e] - torch.exp(qz_alpha_e[i][:,:,args.lat_dim_e:]) * eps_e.sign() * torch.log1p(-eps_e.abs()) # sampling laplace
-                    idx_in += 1
-                    if args.spkidtr_dim > 0:
-                        batch_lf0_rec[i], h_lf0[i] = model_decoder_excit(model_spkidtr(batch_sc_in[idx_in]), z_e[i], outpad_right=outpad_rights[idx_in], do=True)
-                        batch_lf0_cv[i_cv], h_lf0_cv[i_cv] = model_decoder_excit(model_spkidtr(batch_sc_cv_in[i_cv_in]), z_e[i], outpad_right=outpad_rights[idx_in], do=True)
-                    else:
-                        batch_lf0_rec[i], h_lf0[i] = model_decoder_excit(batch_sc_in[idx_in], z_e[i], outpad_right=outpad_rights[idx_in], do=True)
-                        batch_lf0_cv[i_cv], h_lf0_cv[i_cv] = model_decoder_excit(batch_sc_cv_in[i_cv_in], z_e[i], outpad_right=outpad_rights[idx_in], do=True)
-                    eps = torch.empty_like(qz_alpha[i][:,:,:args.lat_dim])
-                    eps.uniform_(eps_1,1)
-                    z[i] = qz_alpha[i][:,:,:args.lat_dim] - torch.exp(qz_alpha[i][:,:,args.lat_dim:]) * eps.sign() * torch.log1p(-eps.abs()) # sampling laplace
-                    if dec_pad_right > 0:
-                        z_cat = torch.cat((z_e[i][:,dec_pad_left:-dec_pad_right], z[i][:,dec_pad_left:-dec_pad_right]), 2) #w/ 1 more dec_pad
-                    else:
-                        z_cat = torch.cat((z_e[i][:,dec_pad_left:], z[i][:,dec_pad_left:]), 2) #w/ 1 more dec_pad
-                    idx_in += 1
-                    i_cv_in += 1 #because excit. flow is also used in melsp flow
-                    if args.spkidtr_dim > 0:
-                        batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(model_spkidtr(batch_sc_in[idx_in]), z_cat,
-                                            e=batch_lf0_rec[i][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], do=True)
-                        batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(model_spkidtr(batch_sc_cv_in[i_cv_in]), z_cat,
-                                            e=batch_lf0_cv[i_cv][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], do=True)
-                    else:
-                        batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(batch_sc_in[idx_in], z_cat,
-                                            e=batch_lf0_rec[i][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], do=True)
-                        batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(batch_sc_cv_in[i_cv_in], z_cat,
-                                            e=batch_lf0_cv[i_cv][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], do=True)
-                    feat_len = qy_logits[i].shape[1]
-                    idx_in_2 = idx_in-2
-                    z[i] = z[i][:,outpad_lefts[idx_in_2]:feat_len-outpad_rights[idx_in_2]]
-                    z_e[i] = z_e[i][:,outpad_lefts[idx_in_2]:feat_len-outpad_rights[idx_in_2]]
-                    batch_z_sc[i], h_z_sc[i] = model_classifier(lat=torch.cat((z[i], z_e[i]), 2))
-                    qy_logits[i] = qy_logits[i][:,outpad_lefts[idx_in_2]:feat_len-outpad_rights[idx_in_2]]
-                    qz_alpha[i] = qz_alpha[i][:,outpad_lefts[idx_in_2]:feat_len-outpad_rights[idx_in_2]]
-                    qy_logits_e[i] = qy_logits_e[i][:,outpad_lefts[idx_in_2]:feat_len-outpad_rights[idx_in_2]]
-                    qz_alpha_e[i] = qz_alpha_e[i][:,outpad_lefts[idx_in_2]:feat_len-outpad_rights[idx_in_2]]
-                    ## cyclic reconstruction
-                    idx_in += 1
-                    cv_feat = batch_melsp_cv[i_cv].detach()
-                    qy_logits[j], qz_alpha[j], h_z[j] = model_encoder_melsp(cv_feat, outpad_right=outpad_rights[idx_in], do=True)
-                    qy_logits_e[j], qz_alpha_e[j], h_z_e[j] = model_encoder_excit(cv_feat, outpad_right=outpad_rights[idx_in], do=True)
-                    feat_len = batch_melsp_rec[i].shape[1]
-                    feat_len_e = batch_lf0_rec[i].shape[1]
-                    idx_in_1 = idx_in-1
-                    idx_in_2 = idx_in-2 #because excit. flow is also used in melsp flow
-                    batch_melsp_rec[i] = batch_melsp_rec[i][:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
-                    batch_melsp_cv[i_cv] = batch_melsp_cv[i_cv][:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
-                    batch_lf0_rec[i] = batch_lf0_rec[i][:,outpad_lefts[idx_in_2]:feat_len_e-outpad_rights[idx_in_2]]
-                    batch_lf0_cv[i_cv] = batch_lf0_cv[i_cv][:,outpad_lefts[idx_in_2]:feat_len_e-outpad_rights[idx_in_2]]
-                    batch_feat_rec_sc[i], h_feat_sc[i] = model_classifier(feat=batch_melsp_rec[i])
-                    batch_feat_cv_sc[i_cv], h_feat_cv_sc[i_cv] = model_classifier(feat=batch_melsp_cv[i_cv])
-                    if args.n_half_cyc > 1:
-                        eps_e = torch.empty_like(qz_alpha_e[j][:,:,:args.lat_dim_e])
-                        eps_e.uniform_(eps_1,1)
-                        z_e[j] = qz_alpha_e[j][:,:,:args.lat_dim_e] - torch.exp(qz_alpha_e[j][:,:,args.lat_dim_e:]) * eps_e.sign() * torch.log1p(-eps_e.abs()) # sampling laplace
-                        idx_in += 1
-                        if args.spkidtr_dim > 0:
-                            batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(model_spkidtr(batch_sc_in[idx_in]), z_e[j], outpad_right=outpad_rights[idx_in], do=True)
-                        else:
-                            batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(batch_sc_in[idx_in], z_e[j], outpad_right=outpad_rights[idx_in], do=True)
-                        eps = torch.empty_like(qz_alpha[j][:,:,:args.lat_dim])
-                        eps.uniform_(eps_1,1)
-                        z[j] = qz_alpha[j][:,:,:args.lat_dim] - torch.exp(qz_alpha[j][:,:,args.lat_dim:]) * eps.sign() * torch.log1p(-eps.abs()) # sampling laplace
-                        if dec_pad_right > 0:
-                            z_cat = torch.cat((z_e[j][:,dec_pad_left:-dec_pad_right], z[j][:,dec_pad_left:-dec_pad_right]), 2) #w/ 1 more dec_pad
-                        else:
-                            z_cat = torch.cat((z_e[j][:,dec_pad_left:], z[j][:,dec_pad_left:]), 2) #w/ 1 more dec_pad
-                        idx_in += 1
-                        if args.spkidtr_dim > 0:
-                            batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(model_spkidtr(batch_sc_in[idx_in]), z_cat,
-                                                    e=batch_lf0_rec[j][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], do=True)
-                        else:
-                            batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(batch_sc_in[idx_in], z_cat,
-                                                    e=batch_lf0_rec[j][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], do=True)
-                        feat_len = qy_logits[j].shape[1]
-                        idx_in_2 = idx_in-2
-                        z[j] = z[j][:,outpad_lefts[idx_in_2]:feat_len-outpad_rights[idx_in_2]]
-                        z_e[j] = z_e[j][:,outpad_lefts[idx_in_2]:feat_len-outpad_rights[idx_in_2]]
-                        batch_z_sc[j], h_z_sc[j] = model_classifier(lat=torch.cat((z[j], z_e[j]), 2))
-                        qy_logits[j] = qy_logits[j][:,outpad_lefts[idx_in_2]:feat_len-outpad_rights[idx_in_2]]
-                        qz_alpha[j] = qz_alpha[j][:,outpad_lefts[idx_in_2]:feat_len-outpad_rights[idx_in_2]]
-                        qy_logits_e[j] = qy_logits_e[j][:,outpad_lefts[idx_in_2]:feat_len-outpad_rights[idx_in_2]]
-                        qz_alpha_e[j] = qz_alpha_e[j][:,outpad_lefts[idx_in_2]:feat_len-outpad_rights[idx_in_2]]
-                        if j+1 == args.n_half_cyc:
-                            idx_in_1 = idx_in-1 #because excit. flow is also used in melsp flow
-                            batch_melsp_rec[j] = batch_melsp_rec[j][:,outpad_lefts[idx_in]:batch_melsp_rec[j].shape[1]-outpad_rights[idx_in]]
-                            batch_lf0_rec[j] = batch_lf0_rec[j][:,outpad_lefts[idx_in_1]:batch_lf0_rec[j].shape[1]-outpad_rights[idx_in_1]]
-                            batch_feat_rec_sc[j], h_feat_sc[j] = model_classifier(feat=batch_melsp_rec[j])
-                    else:
-                        feat_len = qy_logits[j].shape[1]
-                        qy_logits[j] = qy_logits[j][:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
-                        qz_alpha[j] = qz_alpha[j][:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
-                        qy_logits_e[j] = qy_logits_e[j][:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
-                        qz_alpha_e[j] = qz_alpha_e[j][:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
+                qxy, x, h_x = model_encoder_noisy_clean(y, outpad_right=outpad_rights[idx_in], do=True)
+                qxy, x_e, h_x_e = model_encoder_noisy_noise(y, outpad_right=outpad_rights[idx_in], do=True)
+                feat_len = qxy.shape[1]
+                qxy = qxy[:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
+                qxy_e = qxy_e[:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
+                ## obs. reconst.
+                idx_in += 1
+                pyx, y_rec, h_y_rec = model_decoder_noisy(torch.cat((x, x_e), 2), outpad_right=outpad_rights[idx_in], do=True)
+                feat_len = pyx.shape[1]
+                pyx = pyx[:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
+                y_rec = y_rec[:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
+                y_rec_sc, h_y_rec_sc = model_classifier(feat=y_rec)
+                ## latent src. infer.
+                if dec_pad_right > 0:
+                    x = x[:,dec_pad_left:-dec_pad_right] #w/ 1 more dec_pad
+                    x_e = x_e[:,dec_pad_left:-dec_pad_right] #w/ 1 more dec_pad
+                else:
+                    x = x[:,dec_pad_left:] #w/ 1 more dec_pad
+                    x_e = x_e[:,dec_pad_left:] #w/ 1 more dec_pad
+                idx_in += 1
+                qzx, z, h_z = model_encoder_clean(x, outpad_right=outpad_rights[idx_in], do=True)
+                qzx_e, z_e, h_z_e = model_encoder_noise(x_e, outpad_right=outpad_rights[idx_in], do=True)
+                idx_in_1 = idx_in-1
+                feat_len = x.shape[1]
+                x = x[:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
+                x_e = x_e[:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
+                x_sc, h_x_sc = model_classifier(feat=x)
+                x_e_sc, h_x_e_sc = model_classifier(feat=x_e)
+                ## latent src. reconst.
+                idx_in += 1
+                pxz, x_rec, h_x_rec = model_decoder_clean(z, outpad_right=outpad_rights[idx_in], do=True)
+                pxz_e, x_e_rec, h_x_e_rec = model_decoder_noise(z_e, outpad_right=outpad_rights[idx_in], do=True)
+                idx_in_1 = idx_in-1
+                feat_len = z.shape[1]
+                z = z[:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
+                z_e = z_e[:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
+                qzx = qzx[:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
+                qzx_e = qzx_e[:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
+                z_sc, h_z_sc = model_classifier(lat=z)
+                z_e_sc, h_z_e_sc = model_classifier(lat=z_e)
+                x_rec_sc, h_x_rec_sc = model_classifier(feat=x_rec)
+                x_e_rec_sc, h_x_e_rec_sc = model_classifier(feat=x_e_rec)
 
             # samples check
             with torch.no_grad():
-                i = np.random.randint(0, batch_melsp_rec[0].shape[0])
-                logging.info("%d %s %d %d %d %d %s" % (i, \
+                i = np.random.randint(0, y_rec.shape[0])
+                logging.info("%d %s %d %d %d %d" % (i, \
                     os.path.join(os.path.basename(os.path.dirname(featfile[i])),os.path.basename(featfile[i])), \
-                        f_ss, f_es, flens[i], max_flen, spk_cv[0][i]))
-                logging.info(batch_melsp_rec[0][i,:2,:4])
-                if args.n_half_cyc > 1:
-                    logging.info(batch_melsp_rec[1][i,:2,:4])
+                        f_ss, f_es, flens[i], max_flen))
+                logging.info(y_rec[i,:2,:4])
+                logging.info(x[i,:2,:4])
+                logging.info(x_rec[i,:2,:4])
+                logging.info(x_e[i,:2,:4])
+                logging.info(x_e_rec[i,:2,:4])
                 logging.info(batch_melsp[i,:2,:4])
-                logging.info(batch_melsp_cv[0][i,:2,:4])
-                logging.info(batch_lf0_rec[0][i,:2,0])
-                if args.n_half_cyc > 1:
-                    logging.info(batch_lf0_rec[1][i,:2,0])
-                logging.info(batch_excit[i,:2,0])
-                logging.info(batch_lf0_cv[0][i,:2,0])
-                logging.info(torch.exp(batch_lf0_rec[0][i,:2,1]))
-                if args.n_half_cyc > 1:
-                    logging.info(torch.exp(batch_lf0_rec[1][i,:2,1]))
-                logging.info(torch.exp(batch_excit[i,:2,1]))
-                logging.info(torch.exp(batch_lf0_cv[0][i,:2,1]))
-                logging.info(torch.exp(batch_excit_cv[0][i,:2,1]))
-                logging.info(batch_lf0_rec[0][i,:2,2])
-                if args.n_half_cyc > 1:
-                    logging.info(batch_lf0_rec[1][i,:2,2])
-                logging.info(batch_excit[i,:2,2])
-                logging.info(batch_lf0_cv[0][i,:2,2])
-                logging.info(-torch.exp(batch_lf0_rec[0][i,:2,3:]))
-                if args.n_half_cyc > 1:
-                    logging.info(-torch.exp(batch_lf0_rec[1][i,:2,3:]))
-                logging.info(-torch.exp(batch_excit[i,:2,3:]))
-                logging.info(-torch.exp(batch_lf0_cv[0][i,:2,3:]))
-                #logging.info(qy_logits[0][i,:2])
-                #logging.info(batch_sc[i,0])
-                #logging.info(qy_logits[1][i,:2])
-                #logging.info(batch_sc_cv[0][i,0])
-                #logging.info(torch.max(z[0][i,5:10], -1))
-                #unique, counts = np.unique(torch.max(z[0][i], -1)[1].cpu().data.numpy(), return_counts=True)
-                #logging.info(dict(zip(unique, counts)))
 
             # Losses computation
             batch_loss = 0
@@ -2847,8 +2566,10 @@ def main():
                         if not torch.isinf(batch_loss_px_ms_err_) and not torch.isnan(batch_loss_px_ms_err_) and batch_loss_px_ms_err_ <= 3:
                             batch_loss_px_ms_err_select += batch_loss_px_ms_err_
 
+                        batch_feat_rec_sc_ = batch_feat_rec_sc[i][k,:flens_utt]
+                        batch_z_sc_ = batch_z_sc[i][k,:flens_utt]
                         batch_sc_cv_ = batch_sc_cv[i//2][k,:flens_utt]
-                        batch_loss_sc_z_kl_select += torch.mean(kl_categorical_categorical_logits(p_spk, logits_p_spk, batch_z_sc[i][k,:flens_utt]))
+                        batch_loss_sc_z_kl_select += torch.mean(kl_categorical_categorical_logits(p_spk, logits_p_spk, batch_z_sc_))
                         if i % 2 == 0:
                             ## conversion
                             if flens_utt > 1:
@@ -2860,12 +2581,13 @@ def main():
 
                             batch_loss_qy_py_ce_select += torch.mean(criterion_ce(qy_logits_select_, batch_sc_)) \
                                                                 + torch.mean(criterion_ce(qy_logits_e_select_, batch_sc_))
-                            batch_loss_sc_feat_kl_select += torch.mean(criterion_ce(batch_feat_rec_sc[i][k,:flens_utt], batch_sc_)) \
-                                                                + torch.mean(criterion_ce(batch_feat_cv_sc[i//2][k,:flens_utt], batch_sc_cv_))
+                            batch_feat_cv_sc_ = batch_feat_cv_sc[i//2][k,:flens_utt]
+                            batch_loss_sc_feat_kl_select += torch.mean(criterion_ce(batch_feat_rec_sc_, batch_sc_)) \
+                                                                + torch.mean(criterion_ce(batch_feat_cv_sc_, batch_sc_cv_))
                         else:
                             batch_loss_qy_py_ce_select += torch.mean(criterion_ce(qy_logits_select_, batch_sc_cv_)) \
                                                                 + torch.mean(criterion_ce(qy_logits_e_select_, batch_sc_cv_))
-                            batch_loss_sc_feat_kl_select += torch.mean(criterion_ce(batch_feat_rec_sc[i][k,:flens_utt], batch_sc_))
+                            batch_loss_sc_feat_kl_select += torch.mean(criterion_ce(batch_feat_rec_sc_, batch_sc_))
 
                         batch_loss_qz_pz_kl_select += torch.mean(torch.sum(kl_laplace(qz_alpha[i][k,:flens_utt]), -1)) \
                                                         + torch.mean(torch.sum(kl_laplace(qz_alpha_e[i][k,:flens_utt]), -1))
@@ -2922,51 +2644,18 @@ def main():
                     continue
 
             # loss_compute
-            uv = batch_excit[:,:,0]
-            f0 = torch.exp(batch_excit[:,:,1])
             melsp = batch_melsp
             melsp_rest = (torch.exp(melsp)-1)/10000
-            uvcap = batch_excit[:,:,2]
-            cap = -torch.exp(batch_excit[:,:,3:])
-            sc_onehot = F.one_hot(batch_sc, num_classes=n_spk).float()
-            batch_loss_sc_feat_in_ = torch.mean(criterion_ce(batch_feat_in_sc.reshape(-1, n_spk), batch_sc.reshape(-1)).reshape(batch_sc.shape[0], -1), -1)
-            batch_loss_sc_feat_in = batch_loss_sc_feat_in_.mean()
-            batch_loss += batch_loss_sc_feat_in_.sum()
+            sc_ones = torch.ones_like(batch_y_sc[:,:,0])
+            batch_loss_sc_y_ = torch.mean(criterion_ce(batch_y_sc.reshape(-1, 3), (sc_ones*0).reshape(-1)).reshape(sc_ones.shape[0], -1), -1)
+            batch_loss_sc_y = batch_loss_sc_y_.mean()
+            batch_loss += batch_loss_sc_y_.sum()
             for i in range(args.n_half_cyc):
                 ## reconst. [i % 2 == 0] / cyclic reconst. [i % 2 == 1]
                 melsp_est = batch_melsp_rec[i]
                 melsp_est_rest = (torch.exp(melsp_est)-1)/10000
-                uv_est = batch_lf0_rec[i][:,:,0]
-                f0_est = torch.exp(batch_lf0_rec[i][:,:,1])
-                uvcap_est = batch_lf0_rec[i][:,:,2]
-                cap_est = -torch.exp(batch_lf0_rec[i][:,:,3:])
-                ## conversion
-                if i % 2 == 0:
-                    f0cv = torch.exp(batch_excit_cv[i//2][:,:,1])
-                    melsp_cv = batch_melsp_cv[i//2]
-                    uv_cv = batch_lf0_cv[i//2][:,:,0]
-                    f0_cv = torch.exp(batch_lf0_cv[i//2][:,:,1])
-                    uvcap_cv = batch_lf0_cv[i//2][:,:,2]
-                    cap_cv = -torch.exp(batch_lf0_cv[i//2][:,:,3:])
-                else:
-                    sc_cv_onehot = F.one_hot(batch_sc_cv[i//2], num_classes=n_spk).float()
 
                 ## U/V, lf0, codeap, melsp acc.
-                batch_loss_uv_ = torch.mean(100*criterion_l1(uv_est, uv), -1)
-                batch_loss_uv[i] = batch_loss_uv_.mean()
-                batch_loss_f0_ = torch.sqrt(torch.mean(criterion_l2(f0_est, f0), -1))
-                batch_loss_f0[i] = batch_loss_f0_.mean()
-                batch_loss_px[i] = batch_loss_uv[i] + batch_loss_f0[i]
-                if batch_loss_f0[i] < 50: #prevent nan instability of RAdam in the early stage
-                    batch_loss_px_sum = batch_loss_uv_.sum() + batch_loss_f0_.sum()
-                else:
-                    batch_loss_px_sum = batch_loss_uv_.sum() + batch_loss_f0[i]
-                batch_loss_uvcap_ = torch.mean(100*criterion_l1(uvcap_est, uvcap), -1)
-                batch_loss_uvcap[i] = batch_loss_uvcap_.mean()
-                batch_loss_cap_ = torch.mean(torch.sum(criterion_l1(cap_est, cap), -1), -1)
-                batch_loss_cap[i] = batch_loss_cap_.mean()
-                batch_loss_px[i] += batch_loss_uvcap[i] + batch_loss_cap[i]
-                batch_loss_px_sum += batch_loss_uvcap_.sum() + batch_loss_cap_.sum()
                 batch_loss_melsp_ = torch.mean(torch.sum(criterion_l1(melsp_est, melsp), -1), -1)
                 batch_loss_px_sum += batch_loss_melsp_.sum()
                 batch_loss_melsp[i] = batch_loss_melsp_.mean()
@@ -2982,64 +2671,20 @@ def main():
                 if not torch.isinf(batch_loss_ms_err[i]) and not torch.isnan(batch_loss_ms_err[i]) and batch_loss_ms_err[i] <= 3:
                     batch_loss_px_sum += batch_loss_px_ms_err_.sum()
 
-                ## conversion
-                if i % 2 == 0:
-                    batch_loss_uv_cv[i//2] = torch.mean(torch.mean(100*criterion_l1(uv_cv, uv), -1))
-                    batch_loss_f0_cv_ = torch.sqrt(torch.mean(criterion_l2(f0_cv, f0cv), -1))
-                    batch_loss_f0_cv[i//2] = batch_loss_f0_cv_.mean()
-                    batch_loss_px[i] += batch_loss_f0_cv[i//2]
-                    if batch_loss_f0_cv[i//2] < 50: #prevent nan instability of RAdam in the early stage
-                        batch_loss_px_sum += batch_loss_f0_cv_.sum()
-                    else:
-                        batch_loss_px_sum += batch_loss_f0_cv[i//2]
-                    batch_loss_uvcap_cv[i//2] = torch.mean(torch.mean(100*criterion_l1(uvcap_cv, uvcap), -1))
-                    batch_loss_cap_cv[i//2] = torch.mean(torch.sqrt(torch.mean(torch.sum(criterion_l2(cap_cv, cap), -1), -1)))
-                    batch_loss_melsp_cv[i//2] = torch.mean(torch.mean(torch.sum(criterion_l1(melsp_cv, melsp), -1), -1))
-
                 # KL-div latent-posterior, CE and error-percentage speaker-posterior
                 batch_loss_sc_feat_ = torch.mean(criterion_ce(batch_feat_rec_sc[i].reshape(-1, n_spk), batch_sc.reshape(-1)).reshape(batch_sc.shape[0], -1), -1)
                 batch_loss_sc_feat[i] = batch_loss_sc_feat_.mean()
-                if i % 2 == 0:
-                    batch_loss_qy_py_ = torch.mean(criterion_ce(qy_logits[i].reshape(-1, n_spk), batch_sc.reshape(-1)).reshape(batch_sc.shape[0], -1), -1)
-                    batch_loss_qy_py[i] = batch_loss_qy_py_.mean()
-                    batch_loss_qy_py_err_ = torch.mean(100*torch.sum(criterion_l1(F.softmax(qy_logits[i], dim=-1), sc_onehot), -1), -1)
-                    batch_loss_qy_py_err[i] = batch_loss_qy_py_err_.mean()
-                    batch_loss_sc_feat_cv_ = torch.mean(criterion_ce(batch_feat_cv_sc[i//2].reshape(-1, n_spk), batch_sc_cv[i//2].reshape(-1)).reshape(batch_sc_cv[i//2].shape[0], -1), -1)
-                    batch_loss_sc_feat_cv[i//2] = batch_loss_sc_feat_cv_.mean()
-                    if args.n_half_cyc == 1:
-                        batch_loss_qy_py[i+1] = torch.mean(criterion_ce(qy_logits[i+1].reshape(-1, n_spk), batch_sc_cv[i//2].reshape(-1)).reshape(batch_sc_cv[i//2].shape[0], -1), -1).mean()
-                        batch_loss_qy_py_err[i+1] = torch.mean(100*torch.sum(criterion_l1(F.softmax(qy_logits[i+1], dim=-1), F.one_hot(batch_sc_cv[i//2], num_classes=n_spk).float()), -1), -1).mean()
-                        batch_loss_qz_pz[i+1] = torch.mean(torch.sum(kl_laplace(qz_alpha[i+1]), -1), -1).mean()
-                    batch_loss_sc_feat_kl = batch_loss_sc_feat_.sum() + batch_loss_sc_feat_cv_.sum()
-                else:
-                    batch_loss_qy_py_ = torch.mean(criterion_ce(qy_logits[i].reshape(-1, n_spk), batch_sc_cv[i//2].reshape(-1)).reshape(batch_sc_cv[i//2].shape[0], -1), -1)
-                    batch_loss_qy_py[i] = batch_loss_qy_py_.mean()
-                    batch_loss_qy_py_err_ = torch.mean(100*torch.sum(criterion_l1(F.softmax(qy_logits[i], dim=-1), sc_cv_onehot), -1), -1)
-                    batch_loss_qy_py_err[i] = batch_loss_qy_py_err_.mean()
-                    batch_loss_sc_feat_kl = batch_loss_sc_feat_.sum()
+                batch_loss_sc_feat_cv_ = torch.mean(criterion_ce(batch_feat_cv_sc[i//2].reshape(-1, n_spk), batch_sc_cv[i//2].reshape(-1)).reshape(batch_sc_cv[i//2].shape[0], -1), -1)
+                batch_loss_sc_feat_cv[i//2] = batch_loss_sc_feat_cv_.mean()
+                batch_loss_sc_feat_kl = batch_loss_sc_feat_.sum() + batch_loss_sc_feat_cv_.sum()
                 batch_loss_qz_pz_ = torch.mean(torch.sum(kl_laplace(qz_alpha[i]), -1), -1)
                 batch_loss_qz_pz[i] = batch_loss_qz_pz_.mean()
                 batch_loss_sc_z_ = torch.mean(kl_categorical_categorical_logits(p_spk, logits_p_spk, batch_z_sc[i]), -1)
                 batch_loss_sc_z[i] = batch_loss_sc_z_.mean()
-                if i % 2 == 0:
-                    batch_loss_qy_py_e_ = torch.mean(criterion_ce(qy_logits_e[i].reshape(-1, n_spk), batch_sc.reshape(-1)).reshape(batch_sc.shape[0], -1), -1)
-                    batch_loss_qy_py_e[i] = batch_loss_qy_py_e_.mean()
-                    batch_loss_qy_py_err_e_ = torch.mean(100*torch.sum(criterion_l1(F.softmax(qy_logits_e[i], dim=-1), sc_onehot), -1), -1)
-                    batch_loss_qy_py_err_e[i] = batch_loss_qy_py_err_e_.mean()
-                    if args.n_half_cyc == 1:
-                        batch_loss_qy_py_e[i+1] = torch.mean(criterion_ce(qy_logits_e[i+1].reshape(-1, n_spk), batch_sc_cv[i//2].reshape(-1)).reshape(batch_sc_cv[i//2].shape[0], -1), -1).mean()
-                        batch_loss_qy_py_err_e[i+1] = torch.mean(100*torch.sum(criterion_l1(F.softmax(qy_logits_e[i+1], dim=-1), F.one_hot(batch_sc_cv[i//2], num_classes=n_spk).float()), -1), -1).mean()
-                        batch_loss_qz_pz_e[i+1] = torch.mean(torch.sum(kl_laplace(qz_alpha_e[i+1]), -1), -1).mean()
-                else:
-                    batch_loss_qy_py_e_ = torch.mean(criterion_ce(qy_logits_e[i].reshape(-1, n_spk), batch_sc_cv[i//2].reshape(-1)).reshape(batch_sc_cv[i//2].shape[0], -1), -1)
-                    batch_loss_qy_py_e[i] = batch_loss_qy_py_e_.mean()
-                    batch_loss_qy_py_err_e_ = torch.mean(100*torch.sum(criterion_l1(F.softmax(qy_logits_e[i], dim=-1), sc_cv_onehot), -1), -1)
-                    batch_loss_qy_py_err_e[i] = batch_loss_qy_py_err_e_.mean()
                 batch_loss_qz_pz_e_ = torch.mean(torch.sum(kl_laplace(qz_alpha_e[i]), -1), -1)
                 batch_loss_qz_pz_e[i] = batch_loss_qz_pz_e_.mean()
 
                 batch_loss_sc_z_kl = batch_loss_sc_z_.sum()
-                batch_loss_qy_py_ce = batch_loss_qy_py_.sum() + batch_loss_qy_py_e_.sum()
                 batch_loss_qz_pz_kl = batch_loss_qz_pz_.sum() + batch_loss_qz_pz_e_.sum()
 
                 # elbo
@@ -3070,44 +2715,10 @@ def main():
                 loss_qy_py_err_e[i].append(batch_loss_qy_py_err_e[i].item())
                 loss_qz_pz_e[i].append(batch_loss_qz_pz_e[i].item())
                 ## in-domain reconst.
-                total_train_loss["train/loss_uv-%d"%(i+1)].append(batch_loss_uv[i].item())
-                total_train_loss["train/loss_f0-%d"%(i+1)].append(batch_loss_f0[i].item())
-                total_train_loss["train/loss_uvcap-%d"%(i+1)].append(batch_loss_uvcap[i].item())
-                total_train_loss["train/loss_cap-%d"%(i+1)].append(batch_loss_cap[i].item())
                 total_train_loss["train/loss_melsp-%d"%(i+1)].append(batch_loss_melsp[i].item())
                 total_train_loss["train/loss_melsp_dB-%d"%(i+1)].append(batch_loss_melsp_dB[i].item())
-                loss_uv[i].append(batch_loss_uv[i].item())
-                loss_f0[i].append(batch_loss_f0[i].item())
-                loss_uvcap[i].append(batch_loss_uvcap[i].item())
-                loss_cap[i].append(batch_loss_cap[i].item())
                 loss_melsp[i].append(batch_loss_melsp[i].item())
                 loss_melsp_dB[i].append(batch_loss_melsp_dB[i].item())
-                ## conversion
-                if i % 2 == 0:
-                    total_train_loss["train/loss_sc_feat_cv-%d"%(i+1)].append(batch_loss_sc_feat_cv[i//2].item())
-                    total_train_loss["train/loss_melsp_cv-%d"%(i+1)].append(batch_loss_melsp_cv[i//2].item())
-                    total_train_loss["train/loss_uv_cv-%d"%(i+1)].append(batch_loss_uv_cv[i//2].item())
-                    total_train_loss["train/loss_f0_cv-%d"%(i+1)].append(batch_loss_f0_cv[i//2].item())
-                    loss_melsp_cv[i//2].append(batch_loss_melsp_cv[i//2].item())
-                    loss_uv_cv[i//2].append(batch_loss_uv_cv[i//2].item())
-                    loss_f0_cv[i//2].append(batch_loss_f0_cv[i//2].item())
-                    total_train_loss["train/loss_uvcap_cv-%d"%(i+1)].append(batch_loss_uvcap_cv[i//2].item())
-                    total_train_loss["train/loss_cap_cv-%d"%(i+1)].append(batch_loss_cap_cv[i//2].item())
-                    loss_uvcap_cv[i//2].append(batch_loss_uvcap_cv[i//2].item())
-                    loss_cap_cv[i//2].append(batch_loss_cap_cv[i//2].item())
-                if args.n_half_cyc == 1:
-                    total_train_loss["train/loss_qy_py-%d"%(i+2)].append(batch_loss_qy_py[i+1].item())
-                    total_train_loss["train/loss_qy_py_err-%d"%(i+2)].append(batch_loss_qy_py_err[i+1].item())
-                    total_train_loss["train/loss_qz_pz-%d"%(i+2)].append(batch_loss_qz_pz[i+1].item())
-                    total_train_loss["train/loss_qy_py_e-%d"%(i+2)].append(batch_loss_qy_py_e[i+1].item())
-                    total_train_loss["train/loss_qy_py_err_e-%d"%(i+2)].append(batch_loss_qy_py_err_e[i+1].item())
-                    total_train_loss["train/loss_qz_pz_e-%d"%(i+2)].append(batch_loss_qz_pz_e[i+1].item())
-                    loss_qy_py[i+1].append(batch_loss_qy_py[i+1].item())
-                    loss_qy_py_err[i+1].append(batch_loss_qy_py_err[i+1].item())
-                    loss_qz_pz[i+1].append(batch_loss_qz_pz[i+1].item())
-                    loss_qy_py_e[i+1].append(batch_loss_qy_py_e[i+1].item())
-                    loss_qy_py_err_e[i+1].append(batch_loss_qy_py_err_e[i+1].item())
-                    loss_qz_pz_e[i+1].append(batch_loss_qz_pz_e[i+1].item())
 
             optimizer.zero_grad()
             batch_loss.backward()
