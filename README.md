@@ -7,6 +7,7 @@
 * Created experiment branch (exp) for agile update version
     * Added Laplace fine-sampling for fine-structure recovery of mel-spectrogram
     * Added the use of mel-filterbank to encode WORLD spectrum instead of mel-cepstrum
+    * Added VAE-based underdetermined Blind Source Separation (BSS), e.g., for noisy mel-spectrogram
     * Contents will be merged with v2.[] and master when confirmed
 * Lots of work to be done...
     * CycleVAE with mcep+excit
