@@ -1816,11 +1816,10 @@ def main():
             #    or (pair_exist and eval_loss_melsp_dB_src_trg <= min_eval_loss_melsp_dB_src_trg) \
             #            or ((eval_loss_melsp_dB[0]+eval_loss_melsp_dB_std[0]) <= (min_eval_loss_melsp_dB[0]+min_eval_loss_melsp_dB_std[0])) \
             if (pair_exist and eval_loss_melsp_dB_src_trg <= min_eval_loss_melsp_dB_src_trg) \
-                or (eval_loss_laplace <= min_eval_loss_laplace) \
-                    or ((eval_loss_laplace_cv[0]-eval_loss_laplace[0]) >= (min_eval_loss_laplace_cv[0]-min_eval_loss_laplace[0]) \
-                        and (eval_loss_melsp_dB[0] <= min_eval_loss_melsp_dB[0])) \
-                    or ((eval_loss_melsp_cv[0]-eval_loss_melsp[0]) >= (min_eval_loss_melsp_cv[0]-min_eval_loss_melsp[0]) \
-                        and (eval_loss_melsp_dB[0] <= min_eval_loss_melsp_dB[0])):
+                or ((eval_loss_laplace_cv[0]-eval_loss_laplace[0]) >= (min_eval_loss_laplace_cv[0]-min_eval_loss_laplace[0]) \
+                    and (eval_loss_laplace[0] <= min_eval_loss_laplace[0])) \
+                or ((eval_loss_melsp_cv[0]-eval_loss_melsp[0]) >= (min_eval_loss_melsp_cv[0]-min_eval_loss_melsp[0]) \
+                    and (eval_loss_melsp_dB[0] <= min_eval_loss_melsp_dB[0])):
                 #or ((eval_loss_melsp_cv[0]-eval_loss_melsp[0]) >= (min_eval_loss_melsp_cv[0]-min_eval_loss_melsp[0])) \
                 #    or (eval_loss_melsp_dB[0] <= min_eval_loss_melsp_dB[0]):
                 min_eval_loss_gv_src_src = eval_loss_gv_src_src
@@ -2396,6 +2395,7 @@ def main():
                     flens_utt = flens_acc[k]
                     logging.info('%s %d' % (featfile[k], flens_utt))
                     melsp = batch_melsp[k,:flens_utt]
+                    melsp_rest = (torch.exp(melsp)-1)/10000
                     magsp = batch_magsp[k,:flens_utt]
 
                     batch_sc_ = batch_sc[k,:flens_utt]
@@ -2404,6 +2404,7 @@ def main():
                     for i in range(args.n_half_cyc):
                         ## U/V, lf0, codeap, melsp acc.
                         melsp_est = batch_melsp_rec_post[i][k,:flens_utt]
+                        melsp_est_rest = (torch.exp(melsp_est)-1)/10000
                         magsp_est = batch_magsp_rec_post[i][k,:flens_utt]
 
                         if melsp_est.shape[0] > 1:
@@ -2425,7 +2426,7 @@ def main():
                                 batch_loss_px_select += torch.mean(torch.sum(criterion_l1(magsp_est, magsp), -1)) \
                                                             + torch.mean(torch.mean(criterion_l1(magsp_est, magsp), -1))
 
-                        batch_loss_px_ms_norm_, batch_loss_px_ms_err_ = criterion_ms(melsp_est, melsp)
+                        batch_loss_px_ms_norm_, batch_loss_px_ms_err_ = criterion_ms(melsp_est_rest, melsp_rest)
                         if not torch.isinf(batch_loss_px_ms_norm_) and not torch.isnan(batch_loss_px_ms_norm_) and batch_loss_px_ms_norm_ <= 3:
                             batch_loss_px_ms_norm_select += batch_loss_px_ms_norm_
                         if not torch.isinf(batch_loss_px_ms_err_) and not torch.isnan(batch_loss_px_ms_err_) and batch_loss_px_ms_err_ <= 3:

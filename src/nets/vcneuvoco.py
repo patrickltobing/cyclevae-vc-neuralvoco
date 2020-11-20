@@ -653,6 +653,11 @@ def kl_normal_normal(mu_q, var_q, p):
     return torch.mean(torch.sum(0.5*(torch.pow(mu_q-mu_p, 2)/var_p + var_q/var_p - 1 + torch.log(var_p/var_q)), -1)) # B x T x C --> B x T --> 1
 
 
+def neg_entropy_laplace(log_b):
+    #-ln(2be) = -((ln(2)+1) + ln(b))
+    return -(1.69314718055994530941723212145818 + log_b)
+
+
 def kl_laplace(param):
     """ - ln(λ_i) + |θ_i| + λ_i * exp(−|θ_i|/λ_i) − 1 """
 
@@ -722,6 +727,341 @@ def kl_laplace_laplace(q, p):
         mu_abs = torch.abs(q[:,:D]-p[:,:D])
 
         return torch.mean(torch.sum(torch.log(scale_p/scale_q) + mu_abs/scale_p + (scale_q/scale_p)*torch.exp(-mu_abs/scale_q) - 1, -1)) # T x C --> T --> 1
+
+
+class GRU_VAE_ENCODER_(nn.Module):
+    def __init__(self, in_dim=50, lat_dim=50, hidden_layers=1, hidden_units=1024, kernel_size=7,
+            dilation_size=1, do_prob=0, use_weight_norm=True, causal_conv=False, right_size=0,
+                pad_first=True, scale_out_flag=False, n_spk=None, cont=True):
+        super(GRU_VAE_ENCODER_, self).__init__()
+        self.in_dim = in_dim
+        self.lat_dim = lat_dim
+        self.hidden_layers = hidden_layers
+        self.hidden_units = hidden_units
+        self.kernel_size = kernel_size
+        self.dilation_size = dilation_size
+        self.do_prob = do_prob
+        self.causal_conv = causal_conv
+        self.right_size = right_size
+        self.pad_first = pad_first
+        self.use_weight_norm = use_weight_norm
+        self.cont = cont
+        if self.cont:
+            self.out_dim = self.lat_dim*2
+        else:
+            self.out_dim = self.lat_dim
+        self.n_spk = n_spk
+        if self.n_spk is not None:
+            self.out_dim += self.n_spk
+        self.scale_out_flag = scale_out_flag
+
+        # Normalization layer
+        self.scale_in = nn.Conv1d(self.in_dim, self.in_dim, 1)
+
+        # Conv. layers
+        if self.right_size <= 0:
+            if not self.causal_conv:
+                self.conv = TwoSidedDilConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size,
+                                            layers=self.dilation_size, pad_first=self.pad_first)
+                self.pad_left = self.conv.padding
+                self.pad_right = self.conv.padding
+            else:
+                self.conv = CausalDilConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size,
+                                            layers=self.dilation_size, pad_first=self.pad_first)
+                self.pad_left = self.conv.padding
+                self.pad_right = 0
+        else:
+            self.conv = SkewedConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size,
+                                        right_size=self.right_size, pad_first=self.pad_first)
+            self.pad_left = self.conv.left_size
+            self.pad_right = self.conv.right_size
+        self.gru_in_dim = self.in_dim*self.conv.rec_field
+        if self.do_prob > 0:
+            self.conv_drop = nn.Dropout(p=self.do_prob)
+
+        # GRU layer(s)
+        if self.do_prob > 0 and self.hidden_layers > 1:
+            self.gru = nn.GRU(self.gru_in_dim, self.hidden_units, self.hidden_layers,
+                                dropout=self.do_prob, batch_first=True)
+        else:
+            self.gru = nn.GRU(self.gru_in_dim, self.hidden_units, self.hidden_layers,
+                                batch_first=True)
+        if self.do_prob > 0:
+            self.gru_drop = nn.Dropout(p=self.do_prob)
+
+        # Output layers
+        self.out = nn.Conv1d(self.hidden_units, self.out_dim, 1)
+        if self.scale_out_flag:
+            self.scale_out = nn.Conv1d(self.lat_dim, self.lat_dim, 1)
+
+        # apply weight norm
+        if use_weight_norm:
+            self.apply_weight_norm()
+        else:
+            self.apply(initialize)
+
+    def forward(self, x, h=None, do=False, sampling=True, outpad_right=0):
+        x_in = self.conv(self.scale_in(x.transpose(1,2))).transpose(1,2)
+        # Input s layers
+        if self.do_prob > 0 and do:
+            s = self.conv_drop(x_in) # B x C x T --> B x T x C
+        else:
+            s = x_in # B x C x T --> B x T x C
+        if outpad_right > 0:
+            # GRU s layers
+            if h is None:
+                out, h = self.gru(s[:,:-outpad_right]) # B x T x C
+            else:
+                out, h = self.gru(s[:,:-outpad_right], h) # B x T x C
+            out_, _ = self.gru(s[:,-outpad_right:], h) # B x T x C
+            s = torch.cat((out, out_), 1)
+        else:
+            # GRU s layers
+            if h is None:
+                s, h = self.gru(s) # B x T x C
+            else:
+                s, h = self.gru(s, h) # B x T x C
+        # Output s layers
+        if self.do_prob > 0 and do:
+            s = self.out(self.gru_drop(s).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
+        else:
+            s = self.out(s.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
+
+        if self.n_spk is not None: #with speaker posterior
+            if self.cont: #continuous latent
+                spk_logits = F.selu(out[:,:,:self.n_spk])
+                if self.scale_out_flag:
+                    mus = self.scale_out(F.tanhshrink(s[:,:,self.n_spk:-self.lat_dim]).transpose(1,2)).transpose(1,2)
+                else:
+                    mus = F.tanhshrink(s[:,:,self.n_spk:-self.lat_dim])
+                log_scales = F.logsigmoid(s[:,:,-self.lat_dim:])
+                if sampling:
+                    if do:
+                        return spk_logits, torch.cat((mus, torch.clamp(log_scales, min=CLIP_1E16)), 2), \
+                                sampling_laplace(mus, log_scales), h.detach()
+                    else:
+                        return spk_logits, torch.cat((mus, log_scales), 2), \
+                                sampling_laplace(mus, log_scales), h.detach()
+                else:
+                    return spk_logits, torch.cat((mus, log_scales), 2), mus, h.detach()
+            else: #discrete latent
+                if self.scale_out_flag:
+                    return F.selu(out[:,:,:self.n_spk]), \
+                        self.scale_out(F.tanhshrink(s[:,:,-self.lat_dim:]).transpose(1,2)).transpose(1,2), \
+                            h.detach()
+                else:
+                    return F.selu(out[:,:,:self.n_spk]), F.tanhshrink(s[:,:,-self.lat_dim:]), h.detach()
+        else: #without speaker posterior
+            if self.cont: #continuous latent
+                if self.scale_out_flag:
+                    mus = self.scale_out(F.tanhshrink(s[:,:,:self.lat_dim]).transpose(1,2)).transpose(1,2)
+                else:
+                    mus = F.tanhshrink(s[:,:,:self.lat_dim])
+                log_scales = F.logsigmoid(s[:,:,self.lat_dim:])
+                if sampling:
+                    if do:
+                        return torch.cat((mus, torch.clamp(log_scales, min=CLIP_1E16)), 2), \
+                                sampling_laplace(mus, log_scales), h.detach()
+                    else:
+                        return torch.cat((mus, log_scales), 2), \
+                                sampling_laplace(mus, log_scales), h.detach()
+                else:
+                    return torch.cat((mus, log_scales), 2), mus, h.detach()
+            else: #discrete latent
+                if self.scale_out_flag:
+                    return self.scale_out(F.tanhshrink(s).transpose(1,2)).transpose(1,2), h.detach()
+                else:
+                    return F.tanhshrink(s), h.detach()
+
+    def apply_weight_norm(self):
+        """Apply weight normalization module from all of the layers."""
+        def _apply_weight_norm(m):
+            if isinstance(m, torch.nn.Conv1d):
+                torch.nn.utils.weight_norm(m)
+                logging.info(f"Weight norm is applied to {m}.")
+
+        self.apply(_apply_weight_norm)
+
+    def remove_weight_norm(self):
+        """Remove weight normalization module from all of the layers."""
+        def _remove_weight_norm(m):
+            try:
+                if isinstance(m, torch.nn.Conv1d):
+                    torch.nn.utils.remove_weight_norm(m)
+                    logging.info(f"Weight norm is removed from {m}.")
+            except ValueError:
+                return
+
+        self.apply(_remove_weight_norm)
+
+
+class GRU_SPEC_DECODER_(nn.Module):
+    def __init__(self, feat_dim=50, out_dim=50, hidden_layers=1, hidden_units=1024, causal_conv=False,
+            kernel_size=7, dilation_size=1, do_prob=0, n_spk=14, use_weight_norm=True,
+                excit_dim=None, pad_first=True, right_size=None, pdf=False, scale_in_flag=False):
+        super(GRU_SPEC_DECODER_, self).__init__()
+        self.n_spk = n_spk
+        self.feat_dim = feat_dim
+        if self.n_spk is not None:
+            self.in_dim = self.n_spk+self.feat_dim
+        else:
+            self.in_dim = self.feat_dim
+        self.spec_dim = out_dim
+        self.excit_dim = excit_dim
+        self.hidden_layers = hidden_layers
+        self.hidden_units = hidden_units
+        self.kernel_size = kernel_size
+        self.dilation_size = dilation_size
+        self.do_prob = do_prob
+        self.causal_conv = causal_conv
+        self.use_weight_norm = use_weight_norm
+        self.pad_first = pad_first
+        self.right_size = right_size
+        self.pdf = pdf
+        if self.pdf:
+            self.out_dim = self.spec_dim*2
+        else:
+            self.out_dim = self.spec_dim
+        self.scale_in_flag = scale_in_flag
+
+        if self.excit_dim is not None:
+            if self.scale_in_flag:
+                self.scale_in = nn.Conv1d(self.feat_dim+self.excit_dim, self.feat_dim+self.excit_dim, 1)
+            else:
+                self.scale_in = nn.Conv1d(self.excit_dim, self.excit_dim, 1)
+            self.in_dim += self.excit_dim
+        elif self.scale_in_flag:
+            self.scale_in = nn.Conv1d(self.feat_dim, self.feat_dim, 1)
+
+        # Conv. layers
+        if self.right_size <= 0:
+            if not self.causal_conv:
+                self.conv = TwoSidedDilConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size,
+                                            layers=self.dilation_size, pad_first=self.pad_first)
+                self.pad_left = self.conv.padding
+                self.pad_right = self.conv.padding
+            else:
+                self.conv = CausalDilConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size,
+                                            layers=self.dilation_size, pad_first=self.pad_first)
+                self.pad_left = self.conv.padding
+                self.pad_right = 0
+        else:
+            self.conv = SkewedConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size,
+                                        right_size=self.right_size, pad_first=self.pad_first)
+            self.pad_left = self.conv.left_size
+            self.pad_right = self.conv.right_size
+
+        if self.do_prob > 0:
+            self.conv_drop = nn.Dropout(p=self.do_prob)
+
+        # GRU layer(s)
+        if self.do_prob > 0 and self.hidden_layers > 1:
+            self.gru = nn.GRU(self.in_dim*self.conv.rec_field, self.hidden_units, self.hidden_layers,
+                                dropout=self.do_prob, batch_first=True)
+        else:
+            self.gru = nn.GRU(self.in_dim*self.conv.rec_field, self.hidden_units, self.hidden_layers,
+                                batch_first=True)
+        if self.do_prob > 0:
+            self.gru_drop = nn.Dropout(p=self.do_prob)
+
+        # Output layers
+        self.out = nn.Conv1d(self.hidden_units, self.out_dim, 1)
+
+        # De-normalization layers
+        self.scale_out = nn.Conv1d(self.spec_dim, self.spec_dim, 1)
+
+        # apply weight norm
+        if self.use_weight_norm:
+            self.apply_weight_norm()
+        else:
+            self.apply(initialize)
+
+    def forward(self, z, y=None, h=None, do=False, e=None, outpad_right=0, sampling=True):
+        if y is not None:
+            if len(y.shape) == 2:
+                y = F.one_hot(y, num_classes=self.n_spk).float()
+            if e is not None:
+                if self.scale_in_flag:
+                    z = torch.cat((y, self.scale_in((torch.cat(e, z), 2).transpose(1,2)).transpose(1,2)), 2) # B x T_frm x C
+                else:
+                    z = torch.cat((y, self.scale_in(e.transpose(1,2)).transpose(1,2), z), 2) # B x T_frm x C
+            else:
+                if self.scale_in_flag:
+                    z = torch.cat((y, self.scale_in(z.transpose(1,2)).transpose(1,2)), 2) # B x T_frm x C
+                else:
+                    z = torch.cat((y, z), 2) # B x T_frm x C
+        else:
+            if e is not None:
+                if self.scale_in_flag:
+                    z = self.scale_in((torch.cat(e, z), 2).transpose(1,2)).transpose(1,2) # B x T_frm x C
+                else:
+                    z = torch.cat((self.scale_in(e.transpose(1,2)).transpose(1,2), z), 2) # B x T_frm x C
+            else:
+                if self.scale_in_flag:
+                    z = self.scale_in(z.transpose(1,2)).transpose(1,2) # B x T_frm x C
+        # Input e layers
+        if self.do_prob > 0 and do:
+            e = self.conv_drop(self.conv(z.transpose(1,2)).transpose(1,2)) # B x C x T --> B x T x C
+        else:
+            e = self.conv(z.transpose(1,2)).transpose(1,2) # B x C x T --> B x T x C
+        if outpad_right > 0:
+            # GRU e layers
+            if h is None:
+                out, h = self.gru(e[:,:-outpad_right]) # B x T x C
+            else:
+                out, h = self.gru(e[:,:-outpad_right], h) # B x T x C
+            out_, _ = self.gru(e[:,-outpad_right:], h) # B x T x C
+            e = torch.cat((out, out_), 1)
+        else:
+            # GRU e layers
+            if h is None:
+                e, h = self.gru(e) # B x T x C
+            else:
+                e, h = self.gru(e, h) # B x T x C
+        # Output e layers
+        if self.do_prob > 0 and do:
+            e = self.out(self.gru_drop(e).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
+        else:
+            e = self.out(e.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
+
+        if self.pdf:
+            if self.scale_out:
+                mus = self.scale_out(F.tanhshrink(e[:,:,:self.spec_dim]).transpose(1,2)).transpose(1,2)
+            else:
+                mus = F.tanhshrink(e[:,:,:self.spec_dim])
+            log_scales = F.logsigmoid(e[:,:,self.spec_dim:])
+            if sampling:
+                if do:
+                    return torch.cat((mus, torch.clamp(log_scales, min=CLIP_1E16)), 2), \
+                            sampling_laplace(mus, log_scales), h.detach()
+                else:
+                    return torch.cat((mus, log_scales), 2), \
+                            sampling_laplace(mus, log_scales), h.detach()
+            else:
+                return torch.cat((mus, log_scales), 2), mus, h.detach()
+        else:
+            return self.scale_out(F.tanhshrink(e).transpose(1,2)).transpose(1,2), h.detach()
+
+    def apply_weight_norm(self):
+        """Apply weight normalization module from all of the layers."""
+        def _apply_weight_norm(m):
+            if isinstance(m, torch.nn.Conv1d):
+                torch.nn.utils.weight_norm(m)
+                logging.info(f"Weight norm is applied to {m}.")
+
+        self.apply(_apply_weight_norm)
+
+    def remove_weight_norm(self):
+        """Remove weight normalization module from all of the layers."""
+        def _remove_weight_norm(m):
+            try:
+                if isinstance(m, torch.nn.Conv1d):
+                    torch.nn.utils.remove_weight_norm(m)
+                    logging.info(f"Weight norm is removed from {m}.")
+            except ValueError:
+                return
+
+        self.apply(_remove_weight_norm)
 
 
 class GRU_VAE_ENCODER(nn.Module):
@@ -1036,8 +1376,8 @@ class GRU_VAE_ENCODER(nn.Module):
 
 
 class GRU_LAT_FEAT_CLASSIFIER(nn.Module):
-    def __init__(self, lat_dim=None, feat_dim=50, n_spk=14, hidden_layers=1, hidden_units=32, use_weight_norm=True,
-            adversarial=False, feat_aux_dim=None, do_prob=0):
+    def __init__(self, lat_dim=None, feat_dim=50, n_spk=14, hidden_layers=1, hidden_units=32,
+            use_weight_norm=True, adversarial=False, feat_aux_dim=None, do_prob=0):
         super(GRU_LAT_FEAT_CLASSIFIER, self).__init__()
         self.lat_dim = lat_dim
         self.feat_aux_dim = feat_aux_dim

@@ -1045,3 +1045,48 @@ class FeatureDatasetEvalCycMceplf0WavVAE(Dataset):
                         'cv_src': cv_src, 'h_src_trg': h_src_trg, 'flen_src_trg': flen_src_trg, 'featfile': featfile_src, \
                         'file_src_trg_flag': file_src_trg_flag, 'spk_trg': spk_trg, 'spcidx_src': spcidx_src, \
                         'spcidx_src_trg': spcidx_src_trg, 'flen_spc_src': flen_spc_src, 'flen_spc_src_trg': flen_spc_src_trg}
+
+
+class FeatureDatasetBSSVAE(Dataset):
+    """Dataset for melsp VAE-based BSS
+    """
+
+    def __init__(self, feat_list, pad_feat_transform, string_path):
+        self.feat_list = feat_list
+        self.pad_feat_transform = pad_feat_transform
+        self.string_path = string_path
+
+    def __len__(self):
+        return len(self.feat_list)
+
+    def __getitem__(self, idx):
+        featfile = self.feat_list[idx]
+        feat = read_hdf5(featfile, self.string_path)
+        #if self.excit_dim is not None:
+        #    feat = np.c_[read_hdf5(featfile, '/feat_mceplf0cap')[:,:self.excit_dim], read_hdf5(featfile, self.string_path)]
+        #if self.magsp:
+        #    feat_magsp = read_hdf5(featfile, '/magsp')
+        frm_len = len(read_hdf5(featfile, '/f0_range'))
+        #featfile_spk = os.path.basename(os.path.dirname(featfile))
+
+        spcidx = read_hdf5(featfile, '/spcidx_range')[0]
+        f_ss = spcidx[0]
+        f_es = spcidx[-1]
+        if f_ss < 0:
+            f_ss = 0
+        if f_es > frm_len:
+            f_es = frm_len
+        spcidx_s_e = [f_ss, f_es]
+        feat = feat[spcidx_s_e[0]:spcidx_s_e[-1]]
+        #if self.magsp and self.mel:
+        #    feat_magsp = feat_magsp[spcidx_s_e[0]:spcidx_s_e[-1]]
+        flen = feat.shape[0]
+
+        #mean_trg_list, std_trg_list, trg_code_list, pair_spk_list = \
+        #    proc_random_spkcv_statcvexcit(src_idx, self.spk_list, self.n_cv, flen, self.n_spk, \
+        #        self.stat_spk_list, self.mean_path, self.scale_path)
+
+        feat = torch.FloatTensor(self.pad_feat_transform(feat))
+        #feat_magsp = torch.FloatTensor(self.pad_feat_transform(feat_magsp))
+
+        return {'flen': flen, 'featfile': featfile, 'feat': feat}

@@ -482,6 +482,12 @@ def main():
             args.right_size_dec = args.right_size_lf0
     args.fftsize = 2 ** (len(bin(args.batch_size)) - 2 + 1)
     args.string_path = "/log_1pmelmagsp"
+    args.hidden_units_enc = 512
+    #args.hidden_units_enc_lf0 = 384
+    args.hidden_units_enc_lf0 = 512
+    args.hidden_units_dec = 640
+    #args.hidden_units_dec = 832
+    args.hidden_units_lf0 = 192
     torch.save(args, args.expdir + "/model.conf")
 
     # define network
@@ -521,7 +527,7 @@ def main():
         n_spk=n_spk,
         lat_dim=args.lat_dim_e,
         hidden_layers=args.hidden_layers_enc,
-        hidden_units=args.hidden_units_enc,
+        hidden_units=args.hidden_units_enc_lf0,
         kernel_size=args.kernel_size_enc,
         dilation_size=args.dilation_size_enc,
         causal_conv=args.causal_conv_enc,
@@ -530,6 +536,7 @@ def main():
         pad_first=True,
         right_size=args.right_size_enc,
         do_prob=args.do_prob)
+        #hidden_units=args.hidden_units_enc,
     logging.info(model_encoder_excit)
     model_decoder_excit = GRU_EXCIT_DECODER(
         feat_dim=args.lat_dim_e,
@@ -708,7 +715,7 @@ def main():
     #optimizer = torch.optim.Adam(module_list, lr=args.lr)
 
     # resume
-    if args.pretrained is not None and args.spkidtr_dim > 0:
+    if args.pretrained is not None and args.resume is None and args.spkidtr_dim > 0:
         checkpoint = torch.load(args.pretrained)
         #model_encoder_melsp.load_state_dict(checkpoint["model_encoder_melsp"])
         #model_decoder_melsp.load_state_dict(checkpoint["model_decoder_melsp"])
@@ -2806,7 +2813,7 @@ def main():
                     flens_utt = flens_acc[k]
                     logging.info('%s %d' % (featfile[k], flens_utt))
                     melsp = batch_melsp[k,:flens_utt]
-                    melsp_rest = (torch.exp(batch_melsp[k,:flens_utt])-1)/10000
+                    melsp_rest = (torch.exp(melsp)-1)/10000
                     batch_excit_select = batch_excit[k,:flens_utt]
                     uv = batch_excit_select[:,0]
                     f0 = torch.exp(batch_excit_select[:,1])
@@ -2826,6 +2833,7 @@ def main():
                         uvcap_est = batch_lf0_rec_select[:,2]
                         cap_est = -torch.exp(batch_lf0_rec_select[:,3:])
                         melsp_est = batch_melsp_rec[i][k,:flens_utt]
+                        melsp_est_rest = (torch.exp(melsp_est)-1)/10000
 
                         ## U/V, lf0, codeap, melsp acc.
                         if flens_utt > 1:
@@ -2841,7 +2849,7 @@ def main():
                                                         + torch.mean(100*criterion_l1(uvcap_est, uvcap_select)) \
                                                             + torch.mean(torch.sum(criterion_l1(cap_est, cap), -1))
 
-                        batch_loss_px_ms_norm_, batch_loss_px_ms_err_ = criterion_ms(melsp_est, melsp)
+                        batch_loss_px_ms_norm_, batch_loss_px_ms_err_ = criterion_ms(melsp_est_rest, melsp_rest)
                         if not torch.isinf(batch_loss_px_ms_norm_) and not torch.isnan(batch_loss_px_ms_norm_) and batch_loss_px_ms_norm_ <= 3:
                             batch_loss_px_ms_norm_select += batch_loss_px_ms_norm_
                         if not torch.isinf(batch_loss_px_ms_err_) and not torch.isnan(batch_loss_px_ms_err_) and batch_loss_px_ms_err_ <= 3:

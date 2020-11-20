@@ -226,9 +226,9 @@ batch_size_utt_eval_wave: 14
 
 n_workers: 2
 
-mdl_name: cycmelspxlf0capvae-laplace
+mdl_name: bssmelspvae-laplace
 
-mdl_name_post: post_cycmelspxlf0capvae-laplace
+mdl_name_post: post_bssmelspvae-laplace
 
 #mdl_name_wave: wavernn_dualgru_compact_lpc_mband_9bit
 mdl_name_wave: wavernn_dualgru_compact_lpc_mband_16bit
