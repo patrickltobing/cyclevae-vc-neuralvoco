@@ -482,12 +482,13 @@ def main():
             args.right_size_dec = args.right_size_lf0
     args.fftsize = 2 ** (len(bin(args.batch_size)) - 2 + 1)
     args.string_path = "/log_1pmelmagsp"
-    args.hidden_units_enc = 512
-    #args.hidden_units_enc_lf0 = 384
-    args.hidden_units_enc_lf0 = 512
-    args.hidden_units_dec = 640
-    #args.hidden_units_dec = 832
-    args.hidden_units_lf0 = 192
+    #args.hidden_units_enc = 512
+    ##args.hidden_units_enc_lf0 = 384
+    #args.hidden_units_enc_lf0 = 512
+    #args.hidden_units_dec = 512
+    ##args.hidden_units_dec = 640
+    ##args.hidden_units_dec = 832
+    #args.hidden_units_lf0 = 192
     torch.save(args, args.expdir + "/model.conf")
 
     # define network

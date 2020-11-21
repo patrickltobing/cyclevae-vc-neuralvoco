@@ -18,16 +18,17 @@ def padding(x, flen, value=0):
     diff = flen - x.shape[0]
     x_len = len(x.shape)
     if diff > 0:
-        if x_len > 1: #features pad replicate
-            if value is not None:
-                x = np.r_[x, np.ones((diff,)+x.shape[1:]) * value]
-            else:
-                x = np.r_[x, np.ones((diff,)+x.shape[1:]) * x[-1:]]
-        else: #waveform pad zeros
-            if value is not None:
+        if x_len > 1:
+            if value is not None: #pad value
+                x = np.r_[x, np.ones((diff,) + x.shape[1:]) * value]
+            else: #pad replicate
+                x = np.r_[x, np.ones((diff,) + x.shape[1:]) * x[-1:]]
+        else:
+            if value is not None: #pad value
                 x = np.r_[x, np.ones(diff) * value]
-            else:
-                x = np.r_[x, np.zeros(diff)]
+            else: #pad replicate
+                #x = np.r_[x, np.zeros(diff)]
+                x = np.r_[x, np.ones(diff) * x[-1:]]
     return x
 
 
@@ -1047,14 +1048,20 @@ class FeatureDatasetEvalCycMceplf0WavVAE(Dataset):
                         'spcidx_src_trg': spcidx_src_trg, 'flen_spc_src': flen_spc_src, 'flen_spc_src_trg': flen_spc_src_trg}
 
 
-class FeatureDatasetBSSVAE(Dataset):
-    """Dataset for melsp VAE-based BSS
+class FeatureDatasetVAE(Dataset):
+    """Dataset for VAE
     """
 
-    def __init__(self, feat_list, pad_feat_transform, string_path):
+    def __init__(self, feat_list, pad_feat_transform, string_path, magsp=False, spk_list=None):
         self.feat_list = feat_list
         self.pad_feat_transform = pad_feat_transform
         self.string_path = string_path
+        self.magsp = magsp
+        self.spk_list = spk_list
+        if "mel" in self.string_path:
+            self.mel = True
+        else:
+            self.mel = False
 
     def __len__(self):
         return len(self.feat_list)
@@ -1064,10 +1071,7 @@ class FeatureDatasetBSSVAE(Dataset):
         feat = read_hdf5(featfile, self.string_path)
         #if self.excit_dim is not None:
         #    feat = np.c_[read_hdf5(featfile, '/feat_mceplf0cap')[:,:self.excit_dim], read_hdf5(featfile, self.string_path)]
-        #if self.magsp:
-        #    feat_magsp = read_hdf5(featfile, '/magsp')
         frm_len = len(read_hdf5(featfile, '/f0_range'))
-        #featfile_spk = os.path.basename(os.path.dirname(featfile))
 
         spcidx = read_hdf5(featfile, '/spcidx_range')[0]
         f_ss = spcidx[0]
@@ -1078,15 +1082,28 @@ class FeatureDatasetBSSVAE(Dataset):
             f_es = frm_len
         spcidx_s_e = [f_ss, f_es]
         feat = feat[spcidx_s_e[0]:spcidx_s_e[-1]]
-        #if self.magsp and self.mel:
-        #    feat_magsp = feat_magsp[spcidx_s_e[0]:spcidx_s_e[-1]]
         flen = feat.shape[0]
+        if self.spk_list is not None:
+            idx_spk = self.spk_list.index(os.path.basename(os.path.dirname(featfile)))
+            spk_code = torch.LongTensor(self.pad_feat_transform(np.ones(flen)*idx_spk))
 
         #mean_trg_list, std_trg_list, trg_code_list, pair_spk_list = \
         #    proc_random_spkcv_statcvexcit(src_idx, self.spk_list, self.n_cv, flen, self.n_spk, \
         #        self.stat_spk_list, self.mean_path, self.scale_path)
 
         feat = torch.FloatTensor(self.pad_feat_transform(feat))
-        #feat_magsp = torch.FloatTensor(self.pad_feat_transform(feat_magsp))
-
-        return {'flen': flen, 'featfile': featfile, 'feat': feat}
+        if self.magsp:
+            if self.mel:
+                feat_magsp = read_hdf5(featfile, '/magsp')[spcidx_s_e[0]:spcidx_s_e[-1]]
+            else:
+                feat_magsp = read_hdf5(featfile, '/worldsp')[spcidx_s_e[0]:spcidx_s_e[-1]]
+            feat_magsp = torch.FloatTensor(self.pad_feat_transform(feat_magsp))
+            if self.spk_list is not None:
+                return {'flen': flen, 'featfile': featfile, 'feat': feat, 'feat_magsp': feat_magsp, 'sc': spk_code}
+            else:
+                return {'flen': flen, 'featfile': featfile, 'feat': feat, 'feat_magsp': feat_magsp}
+        else:
+            if self.spk_list is not None:
+                return {'flen': flen, 'featfile': featfile, 'feat': feat, 'sc': spk_code}
+            else:
+                return {'flen': flen, 'featfile': featfile, 'feat': feat}

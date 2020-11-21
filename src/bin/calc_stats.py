@@ -373,6 +373,9 @@ def main():
         write_hdf5(args.stats, "/gv_melsp_mean", gv_melsp_mean)
         write_hdf5(args.stats, "/gv_melsp_var", gv_melsp_var)
 
+        scaler_melworldsp = StandardScaler()
+        scaler_melworldsp.partial_fit(melworldsp)
+
         mean_melworldsp = scaler_melworldsp.mean_
         scale_melworldsp = scaler_melworldsp.scale_
 

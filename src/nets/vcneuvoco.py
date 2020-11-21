@@ -996,8 +996,7 @@ class GRU_SPEC_DECODER_(nn.Module):
                     z = self.scale_in((torch.cat(e, z), 2).transpose(1,2)).transpose(1,2) # B x T_frm x C
                 else:
                     z = torch.cat((self.scale_in(e.transpose(1,2)).transpose(1,2), z), 2) # B x T_frm x C
-            else:
-                if self.scale_in_flag:
+            elif self.scale_in_flag:
                     z = self.scale_in(z.transpose(1,2)).transpose(1,2) # B x T_frm x C
         # Input e layers
         if self.do_prob > 0 and do:
@@ -1059,6 +1058,185 @@ class GRU_SPEC_DECODER_(nn.Module):
                     torch.nn.utils.remove_weight_norm(m)
                     logging.info(f"Weight norm is removed from {m}.")
             except ValueError:
+                return
+
+        self.apply(_remove_weight_norm)
+
+
+class GRU_POST_NET_(nn.Module):
+    def __init__(self, spec_dim=80, excit_dim=6, hidden_layers=1, hidden_units=1024, causal_conv=True,
+            kernel_size=7, dilation_size=1, do_prob=0, n_spk=14, use_weight_norm=True, 
+                pad_first=True, right_size=None, res=False, laplace=False, ar=False):
+        super(GRU_POST_NET_, self).__init__()
+        self.n_spk = n_spk
+        self.spec_dim = spec_dim
+        self.excit_dim = excit_dim
+        if self.excit_dim is not None:
+            self.feat_dim = self.spec_dim+self.excit_dim
+        else:
+            self.feat_dim = self.spec_dim
+        self.ar = ar
+        if self.n_spk is not None:
+            self.in_dim = self.feat_dim+self.n_spk
+        else:
+            self.in_dim = self.feat_dim
+        self.laplace = laplace
+        if not self.laplace:
+            self.out_dim = self.spec_dim
+        else:
+            self.out_dim = self.spec_dim*2
+        self.hidden_layers = hidden_layers
+        self.hidden_units = hidden_units
+        self.kernel_size = kernel_size
+        self.dilation_size = dilation_size
+        self.do_prob = do_prob
+        self.causal_conv = causal_conv
+        self.use_weight_norm = use_weight_norm
+        self.pad_first = pad_first
+        self.right_size = right_size
+        if self.laplace:
+            self.res = True
+        else:
+            self.res = res
+
+        self.scale_in = nn.Conv1d(self.feat_dim, self.feat_dim, 1)
+        if self.ar:
+            self.scale_in_spec = nn.Conv1d(self.spec_dim, self.spec_dim, 1)
+
+        if self.right_size <= 0:
+            if not self.causal_conv:
+                self.conv = TwoSidedDilConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size,
+                                            layers=self.dilation_size, nonlinear=False, pad_first=self.pad_first)
+                self.pad_left = self.conv.padding
+                self.pad_right = self.conv.padding
+            else:
+                self.conv = CausalDilConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size,
+                                            layers=self.dilation_size, nonlinear=False, pad_first=self.pad_first)
+                self.pad_left = self.conv.padding
+                self.pad_right = 0
+        else:
+            self.conv = SkewedConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size,
+                                        right_size=self.right_size, nonlinear=False, pad_first=self.pad_first)
+            self.pad_left = self.conv.left_size
+            self.pad_right = self.conv.right_size
+
+        if self.do_prob > 0:
+            self.conv_drop = nn.Dropout(p=self.do_prob)
+
+        # GRU layer(s)
+        if not self.ar:
+            if self.do_prob > 0 and self.hidden_layers > 1:
+                self.gru = nn.GRU(self.in_dim*self.conv.rec_field, self.hidden_units, self.hidden_layers, \
+                                    dropout=self.do_prob, bidirectional=False, batch_first=True)
+            else:
+                self.gru = nn.GRU(self.in_dim*self.conv.rec_field, self.hidden_units, self.hidden_layers, \
+                                    bidirectional=False, batch_first=True)
+        else:
+            if self.do_prob > 0 and self.hidden_layers > 1:
+                self.gru = nn.GRU(self.in_dim*self.conv.rec_field+self.spec_dim, self.hidden_units, self.hidden_layers, \
+                                    dropout=self.do_prob, bidirectional=False, batch_first=True)
+            else:
+                self.gru = nn.GRU(self.in_dim*self.conv.rec_field+self.spec_dim, self.hidden_units, self.hidden_layers, \
+                                    bidirectional=False, batch_first=True)
+        if self.do_prob > 0:
+            self.gru_drop = nn.Dropout(p=self.do_prob)
+
+        # Output layers
+        self.out = nn.Conv1d(self.hidden_units, self.out_dim, 1)
+
+        # De-normalization layers
+        self.scale_out = nn.Conv1d(self.spec_dim, self.spec_dim, 1)
+
+        # apply weight norm
+        if self.use_weight_norm:
+            self.apply_weight_norm()
+        #    #torch.nn.utils.remove_weight_norm(self.scale_out)
+        else:
+            self.apply(initialize)
+
+    def forward(self, x, y=None, e=None, h=None, do=False, outpad_right=0, x_prev=None, x_prev_1=None):
+        if y is not None:
+            if len(y.shape) == 2:
+                if e is not None:
+                    z = torch.cat((F.one_hot(y, num_classes=self.n_spk).float(), self.scale_in(torch.cat((e, x), 2).transpose(1,2)).transpose(1,2)), 2) # B x T_frm x C
+                else:
+                    z = torch.cat((F.one_hot(y, num_classes=self.n_spk).float(), self.scale_in(x.transpose(1,2)).transpose(1,2)), 2) # B x T_frm x C
+            else:
+                if e is not None:
+                    z = torch.cat((y, self.scale_in(torch.cat((e, x), 2).transpose(1,2)).transpose(1,2)), 2) # B x T_frm x C
+                else:
+                    z = torch.cat((y, self.scale_in(x.transpose(1,2)).transpose(1,2)), 2) # B x T_frm x C
+        else:
+            if e is not None:
+                z = self.scale_in(torch.cat((e, x), 2).transpose(1,2)).transpose(1,2) # B x T_frm x C
+            else:
+                z = self.scale_in(x.transpose(1,2)).transpose(1,2) # B x T_frm x C
+        # Input e layers
+        if self.do_prob > 0 and do:
+            e = self.conv_drop(self.conv(z.transpose(1,2)).transpose(1,2)) # B x C x T --> B x T x C
+        else:
+            e = self.conv(z.transpose(1,2)).transpose(1,2) # B x C x T --> B x T x C
+        if outpad_right > 0:
+            # GRU e layers
+            if h is None:
+                out, h = self.gru(e[:,:-outpad_right]) # B x T x C
+            else:
+                out, h = self.gru(e[:,:-outpad_right], h) # B x T x C
+            out_, _ = self.gru(e[:,-outpad_right:], h) # B x T x C
+            e = torch.cat((out, out_), 1)
+        else:
+            # GRU e layers
+            if h is None:
+                e, h = self.gru(e) # B x T x C
+            else:
+                e, h = self.gru(e, h) # B x T x C
+        # Output e layers
+        if self.do_prob > 0 and do:
+            e = self.out(self.gru_drop(e).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
+        else:
+            e = self.out(e.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
+
+        if self.laplace:
+            if self.pad_right == 0:
+                x_ = x[:,self.pad_left:]
+            else:
+                x_ = x[:,self.pad_left:-self.pad_right]
+            mus_e = self.scale_out(F.tanhshrink(e[:,:,:self.spec_dim]).transpose(1,2)).transpose(1,2)
+            mus = x_+mus_e
+            log_scales = F.logsigmoid(e[:,:,self.spec_dim:])
+            e = sampling_laplace(mus_e, log_scales)
+            if do:
+                return torch.cat((mus, torch.clamp(log_scales, min=CLIP_1E16)), 2), x_+e, h.detach()
+            else:
+                return torch.cat((mus, log_scales), 2), x_+e, h.detach()
+        else:
+            if self.res:
+                if self.pad_right == 0:
+                    return x[:,self.pad_left:]+self.scale_out(e.transpose(1,2)).transpose(1,2), h.detach()
+                else:
+                    return x[:,self.pad_left:-self.pad_right]+self.scale_out(e.transpose(1,2)).transpose(1,2), h.detach()
+            else:
+                return self.scale_out(e.transpose(1,2)).transpose(1,2), h.detach()
+
+    def apply_weight_norm(self):
+        """Apply weight normalization module from all of the layers."""
+        def _apply_weight_norm(m):
+            if isinstance(m, torch.nn.Conv1d):
+                torch.nn.utils.weight_norm(m)
+                #logging.debug(f"Weight norm is applied to {m}.")
+                logging.info(f"Weight norm is applied to {m}.")
+
+        self.apply(_apply_weight_norm)
+
+    def remove_weight_norm(self):
+        """Remove weight normalization module from all of the layers."""
+        def _remove_weight_norm(m):
+            try:
+                if isinstance(m, torch.nn.Conv1d):
+                    torch.nn.utils.remove_weight_norm(m)
+                    #logging.debug(f"Weight norm is removed from {m}.")
+                    logging.info(f"Weight norm is removed from {m}.")
+            except ValueError:  # this module didn't have weight norm
                 return
 
         self.apply(_remove_weight_norm)
