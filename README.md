@@ -8,6 +8,7 @@
     * Added Laplace fine-sampling for fine-structure recovery of mel-spectrogram
     * Added the use of mel-filterbank to encode WORLD spectrum instead of mel-cepstrum
     * Contents will be merged with v2.[] and master when confirmed
+* v2.0 --> v2.1
 * Lots of work to be done...
     * CycleVAE with mcep+excit
     * CycleVQVAE (mcep,mcep+excit,melsp)
