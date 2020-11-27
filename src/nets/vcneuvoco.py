@@ -2250,7 +2250,7 @@ class ModulationSpectrumLoss(nn.Module):
             else:
                 diff = magsp_y - magsp_x
                 norm = LA.norm(diff, 'fro') / LA.norm(magsp_y, 'fro') + diff.abs().sum() / magsp_y.sum()
-                if x.shape[1] > 1:
+                if x.shape[0] > 1:
                     log_diff = torch.log10(torch.clamp(magsp_y, min=1e-13)) - torch.log10(torch.clamp(magsp_x, min=1e-13))
                     err = log_diff.abs().mean() + (log_diff**2).mean().sqrt()
                 else:
