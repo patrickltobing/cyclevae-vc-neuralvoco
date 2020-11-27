@@ -1363,14 +1363,9 @@ def main():
                         eval_loss_mcep_rec[i], eval_loss_mcep_rec_std[i],
                         eval_loss_powmcep[i], eval_loss_powmcep_std[i], eval_loss_mcep[i], eval_loss_mcep_std[i])
             logging.info("%s (%.3f min., %.3f sec / batch)" % (text_log, total / 60.0, total / iter_count))
-            #if (pair_exist and (eval_loss_mcd_src_trg+eval_loss_mcd_src_trg_std) <= (min_eval_loss_mcd_src_trg+min_eval_loss_mcd_src_trg_std)) \
-            #    or (pair_exist and eval_loss_mcd_src_trg <= min_eval_loss_mcd_src_trg) \
-            #            or ((eval_loss_mcep[0]+eval_loss_mcep_std[0]) <= (min_eval_loss_mcep[0]-min_eval_loss_mcep_std[0])) \
             if (pair_exist and eval_loss_mcd_src_trg <= min_eval_loss_mcd_src_trg) \
                 or ((eval_loss_mcep_cv[0]-eval_loss_mcep_rec[0]) >= (min_eval_loss_mcep_cv[0]-min_eval_loss_mcep_rec[0]) \
                     and (eval_loss_mcep[0] <= min_eval_loss_mcep[0])):
-                #or ((eval_loss_mcep_cv[0]-eval_loss_mcep_rec[0]) >= (min_eval_loss_mcep_cv[0]-min_eval_loss_mcep_rec[0])) \
-                #    or (eval_loss_mcep[0] <= min_eval_loss_mcep[0]):
                 min_eval_loss_gv_src_src = eval_loss_gv_src_src
                 min_eval_loss_gv_src_trg = eval_loss_gv_src_trg
                 if pair_exist:

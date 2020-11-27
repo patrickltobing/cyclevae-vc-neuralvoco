@@ -1935,8 +1935,6 @@ def main():
                         eval_loss_magsp[i], eval_loss_magsp_std[i], eval_loss_magsp_dB[i], eval_loss_magsp_dB_std[i])
             logging.info("%s (%.3f min., %.3f sec / batch)" % (text_log, total / 60.0, total / iter_count))
             if (pair_exist and eval_loss_melsp_dB_src_trg <= min_eval_loss_melsp_dB_src_trg) \
-                or ((eval_loss_laplace_cv[0]-eval_loss_laplace[0]) >= (min_eval_loss_laplace_cv[0]-min_eval_loss_laplace[0]) \
-                    and (eval_loss_laplace[0] <= min_eval_loss_laplace[0])) \
                 or ((eval_loss_melsp_cv[0]-eval_loss_melsp[0]) >= (min_eval_loss_melsp_cv[0]-min_eval_loss_melsp[0]) \
                     and (eval_loss_melsp_dB[0] <= min_eval_loss_melsp_dB[0])):
                 min_eval_loss_gv_src_src = eval_loss_gv_src_src
