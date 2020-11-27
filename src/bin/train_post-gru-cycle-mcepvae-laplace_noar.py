@@ -489,7 +489,7 @@ def main():
         right_size=args.right_size_post,
         do_prob=args.do_prob)
     logging.info(model_post)
-    criterion_ms = ModulationSpectrumLoss(args.fftsize)
+    criterion_ms = ModulationSpectrumLoss(args.fftsize, post=True)
     criterion_ce = torch.nn.CrossEntropyLoss(reduction='none')
     criterion_l1 = torch.nn.L1Loss(reduction='none')
     criterion_l2 = torch.nn.MSELoss(reduction='none')

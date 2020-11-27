@@ -230,7 +230,7 @@ def main():
                         logging.info(torch.mean(F.softmax(spk_logits[:,outpad_lefts[0]:], dim=-1), 1))
 
                     cvmcep_src, _ = model_decoder((torch.ones((1, lat_src.shape[1]))*spk_idx).cuda().long(), lat_src)
-                    cvmcep_src_post, _ = model_post((torch.ones((1, cvmcep_src.shape[1]))*spk_idx).cuda().long(), cvmcep_src,
+                    cvmcep_src_post, _ = model_post(cvmcep_src, y=(torch.ones((1, cvmcep_src.shape[1]))*spk_idx).cuda().long(),
                                         e=F.pad(feat_excit[:,:,:2].transpose(1,2), (outpad_lefts[1],outpad_rights[1]), "replicate").transpose(1,2))
                                         #e=F.pad(feat_excit.transpose(1,2), (outpad_lefts[1],outpad_rights[1]), "replicate").transpose(1,2))
                     if model_post.pad_right > 0:
@@ -248,7 +248,7 @@ def main():
                         logging.info(torch.mean(F.softmax(spk_logits[:,outpad_lefts[3]:], dim=-1), 1))
 
                     cvmcep_cyc, _ = model_decoder((torch.ones((1, lat_rec.shape[1]))*spk_idx).cuda().long(), lat_rec)
-                    cvmcep_cyc_post, _ = model_post((torch.ones((1, cvmcep_cyc.shape[1]))*spk_idx).cuda().long(), cvmcep_cyc,
+                    cvmcep_cyc_post, _ = model_post(cvmcep_cyc, y=(torch.ones((1, cvmcep_cyc.shape[1]))*spk_idx).cuda().long(),
                                         e=F.pad(feat_excit[:,:,:2].transpose(1,2), (outpad_lefts[4],outpad_rights[4]), "replicate").transpose(1,2))
                                         #e=F.pad(feat_excit.transpose(1,2), (outpad_lefts[4],outpad_rights[4]), "replicate").transpose(1,2))
 

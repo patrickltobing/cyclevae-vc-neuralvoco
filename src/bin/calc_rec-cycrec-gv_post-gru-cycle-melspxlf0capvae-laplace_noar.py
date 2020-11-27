@@ -313,7 +313,7 @@ def main():
                         e_post = cvlf0_src[:,model_decoder_melsp.pad_left:-model_decoder_melsp.pad_right]
                     else:
                         e_post = cvlf0_src[:,model_decoder_melsp.pad_left:]
-                    cvmelsp_src_post, _ = model_post(src_code, cvmelsp_src, e=e_post)
+                    cvmelsp_src_post, _ = model_post(cvmelsp_src, y=src_code, e=e_post)
 
                     if model_post.pad_right > 0:
                         cvmelsp_src = cvmelsp_src[:,model_post.pad_left:-model_post.pad_right]
@@ -358,7 +358,7 @@ def main():
                         e_post = cvlf0_cyc[:,model_decoder_melsp.pad_left:-model_decoder_melsp.pad_right]
                     else:
                         e_post = cvlf0_cyc[:,model_decoder_melsp.pad_left:]
-                    cvmelsp_cyc_post, _ = model_post(src_code, cvmelsp_cyc, e=e_post)
+                    cvmelsp_cyc_post, _ = model_post(cvmelsp_cyc, y=src_code, e=e_post)
 
                     if outpad_rights[1] > 0:
                         cvlf0_src = cvlf0_src[:,outpad_lefts[1]:-outpad_rights[1]]

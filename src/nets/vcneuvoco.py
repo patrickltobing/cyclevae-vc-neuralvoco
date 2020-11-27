@@ -1161,7 +1161,7 @@ class GRU_POST_NET(nn.Module):
         else:
             self.apply(initialize)
 
-    def forward(self, x, y=None, e=None, h=None, do=False, outpad_right=0):
+    def forward(self, x, y=None, e=None, h=None, do=False, outpad_right=0, scale_fact=None):
         if y is not None:
             if len(y.shape) == 2:
                 if e is not None:
@@ -1211,7 +1211,10 @@ class GRU_POST_NET(nn.Module):
             mus_e = self.scale_out(F.tanhshrink(e[:,:,:self.spec_dim]).transpose(1,2)).transpose(1,2)
             mus = x_+mus_e
             log_scales = F.logsigmoid(e[:,:,self.spec_dim:])
-            e = sampling_laplace(mus_e, log_scales)
+            if scale_fact is None:
+                e = sampling_laplace(mus_e, log_scales)
+            else:
+                e = sampling_laplace(mus_e, log_scales+scale_fact)
             if do:
                 return torch.cat((mus, torch.clamp(log_scales, min=CLIP_1E16)), 2), x_+e, h.detach()
             else:
@@ -2200,87 +2203,60 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND(nn.Module):
 
 
 class ModulationSpectrumLoss(nn.Module):
-    def __init__(self, fftsize=256):
+    def __init__(self, fftsize=256, post=False):
         super(ModulationSpectrumLoss, self).__init__()
         self.fftsize = fftsize
+        self.post = post
 
     def forward(self, x, y):
         """ x : B x T x C / T x C
             y : B x T x C / T x C
-            ##return : B, B / 1, 1 [frobenius-norm, L1-loss]
-            ##return : B, B, B or 1, 1, 1 [frobenius-norm, nuclear-norm, L1-norm]
-            return : B, B or 1, 1 [frobenius-norm, L1-norm] """
+            return : B, B or 1, 1 [norm, error in log10] """
         if len(x.shape) > 2: # B x T x C
             padded_x = F.pad(x, (0, 0, 0, self.fftsize-x.shape[1]), "constant", 0)
             padded_y = F.pad(y, (0, 0, 0, self.fftsize-y.shape[1]), "constant", 0)
-            #csp_x = torch.clamp(torch.rfft(padded_x, 3, onesided=False), -1e12, 1e12)
-            #csp_y = torch.clamp(torch.rfft(padded_y, 3, onesided=False), -1e12, 1e12)
-            #csp_x = torch.rfft(padded_x, 3, onesided=False)
-            #logging.info(csp_x.shape)
-            #logging.info(csp_x[0,0,0])
-            #logging.info(csp_x[0,0,0,0]**2+csp_x[0,0,0,1]**2)
-            #csp_y = torch.rfft(padded_y, 3, onesided=False)
+
             csp_x = torch.fft.fftn(padded_x)
-            #logging.info(csp_x.shape)
-            #logging.info(csp_x[0,0,0])
-            #logging.info(torch.abs(csp_x[0,0,0])**2)
             csp_y = torch.fft.fftn(padded_y)
-            #logging.info("ms")
-            #logging.info(torch.isinf(csp_x.mean()))
-            #logging.info(torch.isinf(csp_y.mean()))
-            #magsp_x = (csp_x[:,:,:,0]**2 + csp_x[:,:,:,1]**2).sqrt()
-            #magsp_x = torch.clamp(csp_x[:,:,:,0]**2 + csp_x[:,:,:,1]**2, min=1e-7).sqrt()
+
             magsp_x = torch.abs(csp_x)
-            #logging.info(csp_x.max())
-            #logging.info(csp_x.min())
-            #logging.info(torch.isinf((csp_x[:,:,:,0]**2).mean()))
-            #logging.info(torch.isinf((csp_x[:,:,:,1]**2).mean()))
-            #logging.info(torch.isinf(magsp_x.mean()))
-            #magsp_y = (csp_y[:,:,:,0]**2 + csp_y[:,:,:,1]**2).sqrt()
-            #magsp_y = torch.clamp(csp_y[:,:,:,0]**2 + csp_y[:,:,:,1]**2, min=1e-7).sqrt()
             magsp_y = torch.abs(csp_y)
-            #logging.info(torch.isinf(magsp_y.mean()))
-            err = magsp_y - magsp_x
-            fro = LA.norm(err, 'fro', dim=(1,2)) / LA.norm(magsp_y, 'fro', dim=(1,2))
-            #nuc = LA.norm(err, 'nuc', dim=(1,2)) / LA.norm(magsp_y, 'nuc', dim=(1,2))
-            l1 = err.abs().sum(-1).sum(-1) / magsp_y.sum(-1).sum(-1)
-            #norm = LA.norm(magsp_y - magsp_x, 'fro', dim=(1,2)) / LA.norm(magsp_y, 'fro', dim=(1,2))
-            #err = F.l1_loss(torch.log10(magsp_y), torch.log10(magsp_x), reduction='none').mean(-1).mean(-1)
-            #err = F.l1_loss(torch.log10(magsp_y), torch.log10(magsp_x), reduction='none').sum(-1).mean(-1)
-            #logging.info(csp_x.shape)
-            #logging.info(csp_y.shape)
-            #logging.info(magsp_x.shape)
-            #logging.info(magsp_y.shape)
+
+            if not self.post:
+                norm = (magsp_y-magsp_x).abs().sum(-1).sum(-1) / magsp_y.sum(-1).sum(-1)
+                err = (torch.log10(torch.clamp(magsp_y, min=1e-13)) - torch.log10(torch.clamp(magsp_x, min=1e-13))).abs().mean(-1).mean(-1)
+            else:
+                diff = magsp_y - magsp_x
+                norm = LA.norm(diff, 'fro', dim=(1,2)) / LA.norm(magsp_y, 'fro', dim=(1,2)) \
+                        + diff.abs().sum(-1).sum(-1) / magsp_y.sum(-1).sum(-1)
+                if x.shape[1] > 1:
+                    log_diff = torch.log10(torch.clamp(magsp_y, min=1e-13)) - torch.log10(torch.clamp(magsp_x, min=1e-13))
+                    err = log_diff.abs().mean(-1).mean(-1) + (log_diff**2).mean(-1).mean(-1).sqrt()
+                else:
+                    err = (torch.log10(torch.clamp(magsp_y, min=1e-13)) - torch.log10(torch.clamp(magsp_x, min=1e-13))).abs().mean(-1).mean(-1)
         else: # T x C
             padded_x = F.pad(x, (0, self.fftsize-x.shape[1]), "constant", 0)
             padded_y = F.pad(y, (0, self.fftsize-y.shape[1]), "constant", 0)
-            #csp_x = torch.clamp(torch.rfft(padded_x, 2, onesided=False), -1e12, 1e12)
-            #csp_y = torch.clamp(torch.rfft(padded_y, 2, onesided=False), -1e12, 1e12)
-            #csp_x = torch.rfft(padded_x, 2, onesided=False)
-            #csp_y = torch.rfft(padded_y, 2, onesided=False)
+
             csp_x = torch.fft.fftn(padded_x)
             csp_y = torch.fft.fftn(padded_y)
-            #magsp_x = (csp_x[:,:,0]**2 + csp_x[:,:,1]**2).sqrt()
-            #magsp_x = torch.clamp(csp_x[:,:,0]**2 + csp_x[:,:,1]**2, min=1e-7).sqrt()
+
             magsp_x = torch.abs(csp_x)
-            #magsp_y = (csp_y[:,:,0]**2 + csp_y[:,:,1]**2).sqrt()
-            #magsp_y = torch.clamp(csp_y[:,:,0]**2 + csp_y[:,:,1]**2, min=1e-7).sqrt()
             magsp_y = torch.abs(csp_y)
-            err = magsp_y - magsp_x
-            fro = LA.norm(err, 'fro') / LA.norm(magsp_y, 'fro')
-            #nuc = LA.norm(err, 'nuc') / LA.norm(magsp_y, 'nuc')
-            l1 = err.abs().sum() / magsp_y.sum()
-            #norm = torch.norm(magsp_y - magsp_x, 'fro') / torch.norm(magsp_y, 'fro')
-            #err = F.l1_loss(torch.log10(magsp_y), torch.log10(magsp_x), reduction='none').sum(-1).mean()
-            #err = F.l1_loss(torch.log10(magsp_y), torch.log10(magsp_x), reduction='none').mean()
-            #err = F.l1_loss(torch.log10(magsp_y), torch.log10(magsp_x), reduction='none').sum(-1).mean()
-            #logging.info(csp_x.shape)
-            #logging.info(csp_y.shape)
-            #logging.info(magsp_x.shape)
-            #logging.info(magsp_y.shape)
-        #return norm, err
-        #return fro, nuc, l1
-        return fro, l1
+
+            if not self.post:
+                norm = (magsp_y-magsp_x).abs().sum() / magsp_y.sum()
+                err = (torch.log10(torch.clamp(magsp_y, min=1e-13)) - torch.log10(torch.clamp(magsp_x, min=1e-13))).abs().mean()
+            else:
+                diff = magsp_y - magsp_x
+                norm = LA.norm(diff, 'fro') / LA.norm(magsp_y, 'fro') + diff.abs().sum() / magsp_y.sum()
+                if x.shape[1] > 1:
+                    log_diff = torch.log10(torch.clamp(magsp_y, min=1e-13)) - torch.log10(torch.clamp(magsp_x, min=1e-13))
+                    err = log_diff.abs().mean() + (log_diff**2).mean().sqrt()
+                else:
+                    err = (torch.log10(torch.clamp(magsp_y, min=1e-13)) - torch.log10(torch.clamp(magsp_x, min=1e-13))).abs().mean()
+
+        return norm, err
 
 
 class LaplaceWavLoss(nn.Module):

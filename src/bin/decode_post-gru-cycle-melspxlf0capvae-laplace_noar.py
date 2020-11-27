@@ -424,7 +424,7 @@ def main():
                             e_post = cvlf0_src[:,model_decoder_melsp.pad_left:-model_decoder_melsp.pad_right]
                         else:
                             e_post = cvlf0_src[:,model_decoder_melsp.pad_left:]
-                        cvmelsp_src_post, _ = model_post(src_code, cvmelsp_src, e=e_post)
+                        cvmelsp_src_post, _ = model_post(cvmelsp_src, y=src_code, e=e_post)
 
                         if model_post.pad_right > 0:
                             cvmelsp_src = cvmelsp_src[:,model_post.pad_left:-model_post.pad_right]
@@ -463,7 +463,7 @@ def main():
                             e_post = cvlf0[:,model_decoder_melsp.pad_left:-model_decoder_melsp.pad_right]
                         else:
                             e_post = cvlf0[:,model_decoder_melsp.pad_left:]
-                        cvmelsp_post, _ = model_post(trg_code, cvmelsp, e=e_post)
+                        cvmelsp_post, _ = model_post(cvmelsp, y=trg_code, e=e_post)
 
                         if model_post.pad_right > 0:
                             cvmelsp = cvmelsp[:,model_post.pad_left:-model_post.pad_right]
@@ -508,7 +508,7 @@ def main():
                             e_post = cvlf0_cyc[:,model_decoder_melsp.pad_left:-model_decoder_melsp.pad_right]
                         else:
                             e_post = cvlf0_cyc[:,model_decoder_melsp.pad_left:]
-                        cvmelsp_cyc_post, _ = model_post(src_code, cvmelsp_cyc, e=e_post)
+                        cvmelsp_cyc_post, _ = model_post(cvmelsp_cyc, y=src_code, e=e_post)
                     #else: # if using interpolated spk-code
                     #    z_interpolate = []
                     #    z_e_interpolate = []
