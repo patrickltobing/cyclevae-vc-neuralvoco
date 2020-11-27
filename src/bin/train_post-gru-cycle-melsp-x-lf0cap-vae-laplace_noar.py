@@ -516,7 +516,8 @@ def main():
             args.right_size_lf0 = args.right_size_dec
         else:
             args.right_size_dec = args.right_size_lf0
-    args.fftsize = 2 ** (len(bin(args.batch_size)) - 2 + 1)
+    #args.fftsize = 2 ** (len(bin(args.batch_size)) - 2 + 1)
+    args.fftsize = 2 ** (len(bin(200)) - 2 + 1)
     args.string_path = "/log_1pmelmagsp"
     #args.hidden_units_enc = 512
     ##args.hidden_units_enc_lf0 = 384

@@ -498,7 +498,8 @@ def main():
     args.cap_dim = mean_cap.shape[0]
 
     # save args as conf
-    args.fftsize = 2 ** (len(bin(args.batch_size)) - 2 + 1)
+    #args.fftsize = 2 ** (len(bin(args.batch_size)) - 2 + 1)
+    args.fftsize = 2 ** (len(bin(200)) - 2 + 1)
     args.string_path = "/log_1pmelmagsp"
     #args.hidden_units_enc = 512
     ###args.hidden_units_enc_lf0 = 384

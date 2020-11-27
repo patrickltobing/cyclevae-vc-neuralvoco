@@ -433,7 +433,8 @@ def main():
     scale_stats_post = torch.cat((scale_stats[:2], scale_stats[args.excit_dim:]))
 
     # save args as conf
-    args.fftsize = 2 ** (len(bin(args.batch_size)) - 2 + 1)
+    #args.fftsize = 2 ** (len(bin(args.batch_size)) - 2 + 1)
+    args.fftsize = 2 ** (len(bin(200)) - 2 + 1)
     args.string_path = "/feat_mceplf0cap"
     torch.save(args, args.expdir + "/model.conf")
 
