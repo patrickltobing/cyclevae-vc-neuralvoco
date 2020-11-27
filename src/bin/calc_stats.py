@@ -167,7 +167,7 @@ def main():
 
             count += 1
             #logging.info("cpu %d %d %d %d %d %d %d %d %d %d %d %d" % (cpu, count, len(feat_mceplf0cap_arr),
-            logging.info("cpu %d %d %d %d %d %d %d %d %d %d %d %d" % (cpu, count, len(feat_mceplf0cap_arr),
+            logging.info("cpu %d %d %d %d %d %d %d %d %d %d" % (cpu, count, len(feat_mceplf0cap_arr),
                     len(feat_orglf0_arr), len(varmcep_arr), len(f0_arr), len(melsp_arr), len(varmelsp_arr),
                         len(melworldsp_arr), len(varmelworldsp_arr)))
                         #len(magsp_arr), len(varmagsp_arr), len(melworldsp_arr), len(varmelworldsp_arr)))
