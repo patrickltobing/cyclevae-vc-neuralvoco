@@ -28,10 +28,14 @@ Set `spks` and `data_name` variables in `run.sh` accordingly
 
 Set `STAGE 0` to accomodate your training/development/testing dataset list
 
+Set F0 and power threshold configuration files for each speaker in `conf/*.f0` or `conf/*.pow` (calculate speaker histogram with `STAGE init`)
+
 
 ## STAGE description
 
 `stage=0123` for data list preparation, feature extraction, statistics calculation, and pre-emphasis, respectively
+
+`stage=init` for histogram calculation of F0 and power statistics (for speaker F0 and power threshold configurations)
 
 `stage=4` for CycleVAE-based VC with mel-cepstrum training
 
@@ -46,10 +50,6 @@ Set `STAGE 0` to accomodate your training/development/testing dataset list
 `stage=89` for shallow WaveNet decoding with natural features and de-emphasis, respectively
 
 `stage=ab` for shallow WaveNet decoding with converted features and de-emphasis, respectively
-
-`stage=ft` for shallow WaveNEt fine-tuning with reconstructed/cyclic-reconstructed mel-spectrogram
-
-`stage=cd` for fine-tuned shallow WaveNet decoding with converted features and de-emphasis, respectively
 
 
 ## Some variable descriptions on `conf/config.yml`
@@ -87,10 +87,6 @@ Set `STAGE 0` to accomodate your training/development/testing dataset list
 
 `min_idx_wave` checkpoint index for shallow WaveNEt model
 
-`idx_resume_wave_ft` checkpoint index for resume training of fine-tuned shallow WaveNet model
-
-`min_idx_wave_ft` checkpoint index for fine-tuned shallow WaveNet model
-
 `spks_trg_rec` speaker list in reconstruction/cyclic-reconstruction for shallow WaveNet fine-tuning
 
 `spks_src_dec` source speaker in conversion
@@ -104,16 +100,11 @@ Set `STAGE 0` to accomodate your training/development/testing dataset list
 
 ## References
 
-[1] P. L. Tobing, Y.-C. Wu, T. Hayashi, K. Kobayashi, and T. Toda, "Non-parallel
-voice conversion with cyclic variational autoencoder," in Proc. INTERSPEECH,
-Graz, Austria, Sep. 2019, pp. 674--678.
+[1] P. L. Tobing, Y.-C. Wu, T. Hayashi, K. Kobayashi, and T. Toda, "Non-parallel voice conversion with cyclic variational autoencoder," in Proc. INTERSPEECH, Graz, Austria, Sep. 2019, pp. 674--678.
 
-[2] P. L. Tobing, T. Hayashi, and T. Toda, "Investigation of shallow WaveNet vocoder
-with Laplacian distribution output," in Proc. IEEE ASRU, Sentosa, Singapore,
-Dec. 2019, pp. 176--183.
+[2] P. L. Tobing, T. Hayashi, and T. Toda, "Investigation of shallow WaveNet vocoder with Laplacian distribution output," in Proc. IEEE ASRU, Sentosa, Singapore, Dec. 2019, pp. 176--183.
 
-[3] P. L. Tobing, Y.-C. Wu, T. Hayashi, K. Kobayashi, and T. Toda, “Efficient shallow WaveNet vocoder using multiple samples output
-based on Laplacian distribution and linear prediction,” in Proc. ICASSP, Barcelona, Spain, May 2020, pp. 7204–-7208.
+[3] P. L. Tobing, Y.-C. Wu, T. Hayashi, K. Kobayashi, and T. Toda, “Efficient shallow WaveNet vocoder using multiple samples output based on Laplacian distribution and linear prediction,” in Proc. ICASSP, Barcelona, Spain, May 2020, pp. 7204–-7208.
 
 
 ## Contact

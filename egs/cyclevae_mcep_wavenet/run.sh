@@ -28,9 +28,6 @@
 # 9: restore noise shaping step [de-emphasis] from copy-synthesis
 # a: vc decoding step with wavenet [converted waveform with neural vocoder]
 # b: restore noise shaping step [de-emphasis] from vc
-# ft: fine-tune pretrained wavernn with reconst. featurs
-# c: vc decoding step with fine-tuned wavernn [converted waveform with neural vocoder]
-# d: restore noise shaping step [de-emphasis] from vc using fine-tuned wavernn
 # }}}
 #stage=0
 #stage=init
@@ -59,12 +56,6 @@
 #stage=ab
 #stage=a
 #stage=b
-#stage=56ft
-#stage=5ft
-#stage=ft
-#stage=c
-#stage=d
-#stage=cd
 
 ##number of parallel jobs in feature extraction / noise-shaping proc. / statistics calculation
 n_jobs=1
@@ -277,33 +268,28 @@ right_size_wave=`awk '{if ($1 == "right_size_wave:") print $2}' conf/config.yml`
 #     DECODING/FINE-TUNING SETTING    #
 #######################################
 
-#idx_resume_cycvae=9 #for resume cyclevae
+#idx_resume_cycvae= #for resume cyclevae
 idx_resume_cycvae=0 #set <= 0 for not resume
 
-#idx_resume=21 #for resume post-net
+#idx_resume= #for resume post-net
 idx_resume=0 #set <= 0 for not resume
 
-#idx_resume_wave=85 #for resume wavernn
+#idx_resume_wave= #for resume wavernn
 idx_resume_wave=0 #set <= 0 for not resume
 
-#idx_resume_wave_ft=85 #for resume fine-tune wavernn
-idx_resume_wave_ft=0 #set <= 0 for not resume
-
-min_idx_cycvae=67 #for raw cyclevae
+min_idx_cycvae= #for raw cyclevae
 #min_idx_cycvae=1
 
 if [ $mdl_name_post == none ]; then
-    min_idx=
+    min_idx= #for cyclevae without post-net
+    #min_idx=1
 else
-    min_idx=53 #for cyclevae with post-net
+    min_idx= #for cyclevae with post-net
     #min_idx=1
 fi
 
-min_idx_wave=360 #for wavenet
+min_idx_wave= #for wavenet
 #min_idx_wave=1
-
-min_idx_wave_ft=360 #for fine-tuned wavenet
-#min_idx_wave_ft=1
 
 gv_coeff=`awk '{if ($1 == "gv_coeff:") print $2}' conf/config.yml`
 
@@ -947,7 +933,7 @@ echo ${spk_list}
 
 echo $mdl_name
 if [ $mdl_name == "cycmcepvae-laplace" ]; then
-    setting=${mdl_name}_${data_name}_lr${lr}_bs${batch_size}_bsu${batch_size_utt}_bsue${batch_size_utt_eval}_lat${lat_dim}_hue${hidden_units_enc}_hle${hidden_layers_enc}_hud${hidden_units_dec}_hld${hidden_layers_dec}_kse${kernel_size_enc}_dse${dilation_size_enc}_ksd${kernel_size_dec}_dsd${dilation_size_dec}_rse${right_size_enc}_rsd${right_size_dec}_do${do_prob}_ep${epoch_count}_mcep${powmcep_dim}_nhcyc${n_half_cyc}
+    setting=${mdl_name}_${data_name}_lr${lr}_bs${batch_size}_bsu${batch_size_utt}_bsue${batch_size_utt_eval}_lat${lat_dim}_hue${hidden_units_enc}_hud${hidden_units_dec}_kse${kernel_size_enc}_ksd${kernel_size_dec}_rse${right_size_enc}_rsd${right_size_dec}_do${do_prob}_ep${epoch_count}_mcep${powmcep_dim}_nhcyc${n_half_cyc}
 fi
 
 # STAGE 4 {{
@@ -1039,7 +1025,7 @@ echo $min_idx_cycvae $setting
 echo $mdl_name_post
 setting_cycvae=${setting}
 if [ $mdl_name_post == "post_cycmcepvae-laplace" ]; then
-    setting=${mdl_name_post}_${data_name}_lr${lr}_bs${batch_size}_bsu${batch_size_utt}_bsue${batch_size_utt_eval}_lat${lat_dim}_hue${hidden_units_enc}_hle${hidden_layers_enc}_hud${hidden_units_dec}_hld${hidden_layers_dec}_hlp${hidden_layers_post}_hup${hidden_units_post}_kse${kernel_size_enc}_dse${dilation_size_enc}_ksd${kernel_size_dec}_ksp${kernel_size_post}_dsd${dilation_size_dec}_rse${right_size_enc}_dsp${dilation_size_post}_rsd${right_size_dec}_rsp${right_size_post}_do${do_prob}_ep${epoch_count}_mcep${powmcep_dim}_nhcyc${n_half_cyc}
+    setting=${mdl_name_post}_${data_name}_lr${lr}_bs${batch_size}_bsu${batch_size_utt}_bsue${batch_size_utt_eval}_lat${lat_dim}_hue${hidden_units_enc}_hud${hidden_units_dec}_hup${hidden_units_post}_kse${kernel_size_enc}_ksd${kernel_size_dec}_ksp${kernel_size_post}_rse${right_size_enc}_rsd${right_size_dec}_rsp${right_size_post}_do${do_prob}_ep${epoch_count}_mcep${powmcep_dim}_nhcyc${n_half_cyc}
 fi
 
 # STAGE post {{
@@ -1141,6 +1127,10 @@ if [ `echo ${stage} | grep post` ];then
 fi
 # }}}
 
+
+if [ $mdl_name_post == none ]; then
+    expdir=${expdir_cycvae}
+fi
 
 # STAGE 5 {{{
 if [ `echo ${stage} | grep 5` ];then
@@ -1615,196 +1605,6 @@ if [ `echo ${stage} | grep b` ];then
         # restore noise shaping
         ${train_cmd} --num-threads ${n_jobs} \
             ${expdir_wave}/${log}/noise_shaping_restore_${min_idx_cycvae}-${min_idx}-${min_idx_wave}_${spk_src}-${spk_trg}.log \
-            noise_shaping_emph.py \
-                --waveforms ${scp} \
-                --writedir ${outdir}_restored/${spk_src}-${spk_trg} \
-                --alpha ${alpha} \
-                --fs ${fs} \
-                --inv true \
-                --n_jobs ${n_jobs}
-
-        #fi
-    #done
-fi
-# }}}
-done
-done
-fi
-
-
-echo $mdl_name_wave
-if [ $mdl_name_wave == "wavenet" ]; then
-    if [ $use_mcep == "true" ]; then
-        setting_wave=${mdl_name_wave}_${data_name}_lr${lr}_bs${batch_size_wave}_bsu${batch_size_utt_wave}_bsue${batch_size_utt_eval_wave}_hc${hid_chn}_sc${skip_chn}_dd${dilation_depth}_dr${dilation_repeat}_ksw${kernel_size_wave}_dsw${dilation_size_wave}_do${do_prob}_ep${epoch_count_wave}_mcep${use_mcep}_rs${right_size_wave}
-    else
-        setting_wave=${mdl_name_wave}_${data_name}_lr${lr}_bs${batch_size_wave}_bsu${batch_size_utt_wave}_bsue${batch_size_utt_eval_wave}_hc${hid_chn}_sc${skip_chn}_dd${dilation_depth}_dr${dilation_repeat}_ksw${kernel_size_wave}_dsw${dilation_size_wave}_do${do_prob}_ep${epoch_count_wave}_mcep${use_mcep}_rs${right_size_wave}_exc${with_excit}
-    fi
-
-fi
-
-# STAGE ft {{
-# set variables
-expdir_wave_ft=exp/ft-${min_idx_cycvae}-${min_idx}-${min_idx_wave}_${setting_wave}
-mkdir -p $expdir_wave_ft
-if [ `echo ${stage} | grep ft` ];then
-    if [ $use_mcep == "false" ]; then
-        powmcep_dim=$mel_dim
-    fi
-    echo "###########################################################"
-    echo "#               WAVEFORM MODELING STEP                    #"
-    echo "###########################################################"
-    echo $min_idx_cycvae $min_idx $min_idx_wave $expdir_wave_ft
-    
-    if [ $mdl_name_wave == "wavenet" ];then
-        feats=${expdir_wave_ft}/feats_tr.scp
-        feats_eval=${expdir_wave_ft}/feats_ev.scp
-        waveforms=${expdir_wave_ft}/wavs_tr.scp
-        waveforms_eval=${expdir_wave_ft}/wavs_ev.scp
-        ### Use these if using reconst./cyclic reconst. feats
-        cat data/${trn}/feats_ft.scp > ${feats}
-        cat data/${dev}/feats_ft.scp > ${feats_eval}
-        cat data/${trn}/wav_ns_ft.scp > ${waveforms}
-        cat data/${dev}/wav_ns_ft.scp > ${waveforms_eval}
-        if [ $idx_resume_wave_ft -gt 0 ]; then
-            ${cuda_cmd} ${expdir_wave_ft}/log/train_resume-${idx_resume_wave_ft}.log \
-                train_wavenet.py \
-                    --waveforms ${waveforms} \
-                    --waveforms_eval $waveforms_eval \
-                    --feats ${feats} \
-                    --feats_eval $feats_eval \
-                    --stats data/${trn}/stats_jnt.h5 \
-                    --expdir ${expdir_wave_ft} \
-                    --lr ${lr} \
-                    --do_prob ${do_prob} \
-                    --epoch_count ${epoch_count_wave} \
-                    --upsampling_factor ${upsampling_factor} \
-                    --hid_chn ${hid_chn} \
-                    --skip_chn ${skip_chn} \
-                    --dilation_depth ${dilation_depth} \
-                    --dilation_repeat ${dilation_repeat} \
-                    --batch_size ${batch_size_wave} \
-                    --mcep_dim ${powmcep_dim} \
-                    --kernel_size_wave ${kernel_size_wave} \
-                    --dilation_size_wave ${dilation_size_wave} \
-                    --batch_size_utt ${batch_size_utt_wave} \
-                    --batch_size_utt_eval ${batch_size_utt_eval_wave} \
-                    --n_workers ${n_workers} \
-                    --pad_len ${pad_len} \
-                    --right_size ${right_size_wave} \
-                    --with_excit ${with_excit} \
-                    --string_path ${string_path} \
-                    --string_path_ft ${string_path_rec} \
-                    --pretrained ${expdir_wave}/checkpoint-${min_idx_wave}.pkl \
-                    --resume ${expdir_wave_ft}/checkpoint-${idx_resume_wave_ft}.pkl \
-                    --GPU_device ${GPU_device}
-        else
-            ${cuda_cmd} ${expdir_wave_ft}/log/train.log \
-                train_wavenet.py \
-                    --waveforms ${waveforms} \
-                    --waveforms_eval $waveforms_eval \
-                    --feats ${feats} \
-                    --feats_eval $feats_eval \
-                    --stats data/${trn}/stats_jnt.h5 \
-                    --expdir ${expdir_wave_ft} \
-                    --lr ${lr} \
-                    --do_prob ${do_prob} \
-                    --epoch_count ${epoch_count_wave} \
-                    --upsampling_factor ${upsampling_factor} \
-                    --hid_chn ${hid_chn} \
-                    --skip_chn ${skip_chn} \
-                    --dilation_depth ${dilation_depth} \
-                    --dilation_repeat ${dilation_repeat} \
-                    --batch_size ${batch_size_wave} \
-                    --mcep_dim ${powmcep_dim} \
-                    --kernel_size_wave ${kernel_size_wave} \
-                    --dilation_size_wave ${dilation_size_wave} \
-                    --batch_size_utt ${batch_size_utt_wave} \
-                    --batch_size_utt_eval ${batch_size_utt_eval_wave} \
-                    --n_workers ${n_workers} \
-                    --pad_len ${pad_len} \
-                    --right_size ${right_size_wave} \
-                    --with_excit ${with_excit} \
-                    --string_path ${string_path} \
-                    --string_path_ft ${string_path_rec} \
-                    --pretrained ${expdir_wave}/checkpoint-${min_idx_wave}.pkl \
-                    --GPU_device ${GPU_device}
-        fi
-    fi
-fi
-# }}}
-
-
-# STAGE c {{{
-if [ `echo ${stage} | grep c` ] || [ `echo ${stage} | grep d` ];then
-for spk_src in ${spks_src_dec[@]};do
-for spk_trg in ${spks_trg_dec[@]};do
-        if [ $mdl_name_wave == "wavenet" ]; then
-            #outdir=${expdir_wave_ft}/${mdl_name_post}-${mdl_name_wave}-${data_name}_dev-${epoch_count_wave}-${batch_size_wave}-${min_idx_cycvae}-${min_idx}-${min_idx_wave}-${min_idx_wave_ft}
-            outdir=${expdir_wave_ft}/${mdl_name_post}-${mdl_name_wave}-${data_name}_tst-${epoch_count_wave}-${batch_size_wave}-${min_idx_cycvae}-${min_idx}-${min_idx_wave}-${min_idx_wave_ft}
-        fi
-if [ `echo ${stage} | grep c` ];then
-        echo $spk_src $spk_trg $min_idx $min_idx_wave $min_idx_wave_ft
-     #   for spk_src in ${spks_src[@]};do
-        #if [ $spk_src != $spk_trg ]; then
-        echo $data_name $mdl_name_post $mdl_name_wave
-        echo $outdir
-        echo "###################################################"
-        echo "#               DECODING STEP                     #"
-        echo "###################################################"
-        echo ${setting_wave}
-        checkpoint=${expdir_wave_ft}/checkpoint-${min_idx_wave_ft}.pkl
-        config=${expdir_wave_ft}/model.conf
-
-        #feats=data/${dev}/feats_cv_${spk_src}-${spk_trg}.scp
-        feats=data/${tst}/feats_cv_${spk_src}-${spk_trg}.scp
-        #if [ -n "$(echo $spk_src | sed -n 's/\(p\)/\1/p')" ]; then
-        #    feats=data/${tst}/feats.scp
-        #else
-        #    #feats=data/${dev}/feats.scp
-        #    feats=data/${tst}/feats.scp
-        #fi
-        #feats=data/${trn}/feats.scp
-
-        feats_scp=${expdir_wave_ft}/feats_${min_idx_cycvae}-${min_idx}-${min_idx_wave}-${min_idx_wave_ft}_${spk_src}-${spk_trg}.scp
-        #cat $feats | grep "\/${spk_src}-${spk_trg}\/" | head -n 9 > ${feats_scp}
-        cat $feats | grep "\/${spk_src}-${spk_trg}\/" > ${feats_scp}
-        #head -n 3 ${feats_scp}
-
-        # decode
-        if [ $mdl_name_wave == "wavenet" ]; then
-            #${cuda_cmd} ${expdir_wave_ft}/log/decode_dev_${min_idx_cycvae}-${min_idx}-${min_idx_wave}-${min_idx_wave_ft}_${spk_src}-${spk_trg}.log \
-            ${cuda_cmd} ${expdir_wave_ft}/log/decode_tst_${min_idx_cycvae}-${min_idx}-${min_idx_wave}-${min_idx_wave_ft}_${spk_src}-${spk_trg}.log \
-                decode_wavenet.py \
-                    --feats ${feats_scp} \
-                    --outdir ${outdir}/${spk_src}-${spk_trg} \
-                    --checkpoint ${checkpoint} \
-                    --config ${config} \
-                    --fs ${fs} \
-                    --batch_size ${decode_batch_size} \
-                    --n_gpus ${n_gpus} \
-                    --string_path ${string_path_cv} \
-                    --GPU_device_str ${GPU_device_str}
-                    #--waveforms ${scp} \
-        fi
-fi
-# }}}
-
-
-# STAGE d {{{
-if [ `echo ${stage} | grep d` ];then
-    echo "###########################################################"
-    echo "#             RESTORE NOISE SHAPING STEP                  #"
-    echo "###########################################################"
-    #outdir=${expdir}/wav_${setting}_dev-${min_idx}
-    #[ ! -e exp/noise_shaping/${setting} ] && mkdir -p exp/noise_shaping/${setting}
-    #nj=0
-        # make scp of each speaker
-        scp=${expdir_wave_ft}/wav_generated_${min_idx_cycvae}-${min_idx}-${min_idx_wave}-${min_idx_wave_ft}_${spk_src}-${spk_trg}.scp
-        find ${outdir}/${spk_src}-${spk_trg} -name "*.wav" | grep "\/${spk_src}-${spk_trg}\/" | sort > ${scp}
-
-        # restore noise shaping
-        ${train_cmd} --num-threads ${n_jobs} \
-            ${expdir_wave_ft}/${log}/noise_shaping_restore_${min_idx_cycvae}-${min_idx}-${min_idx_wave}-${min_idx_wave_ft}_${spk_src}-${spk_trg}.log \
             noise_shaping_emph.py \
                 --waveforms ${scp} \
                 --writedir ${outdir}_restored/${spk_src}-${spk_trg} \

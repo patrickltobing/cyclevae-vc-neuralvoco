@@ -795,10 +795,11 @@ def main():
                 text_log += " [%d] %.6f (+- %.6f) %.6f (+- %.6f) %%" % (i+1, eval_loss_ce[i], eval_loss_ce_std[i], eval_loss_err[i], eval_loss_err_std[i])
             logging.info("%s ;; (%.3f min., %.3f sec / batch)" % (text_log, total / 60.0, total / iter_count))
             if (eval_loss_ce_avg+eval_loss_ce_avg_std) <= (min_eval_loss_ce_avg+min_eval_loss_ce_avg_std) \
-                or (eval_loss_ce_avg+eval_loss_ce_avg_std+eval_loss_err_avg) \
-                    <= (min_eval_loss_ce_avg+min_eval_loss_ce_avg_std+min_eval_loss_err_avg) \
-                    or (eval_loss_ce_avg+eval_loss_err_avg <= min_eval_loss_ce_avg+min_eval_loss_err_avg) \
-                        or (eval_loss_ce_avg <= min_eval_loss_ce_avg):
+                or eval_loss_ce_avg <= min_eval_loss_ce_avg \
+                    or round(eval_loss_ce_avg+eval_loss_ce_avg_std,2) <= round(min_eval_loss_ce_avg+min_eval_loss_ce_avg_std,2) \
+                        or round(eval_loss_ce_avg,2) <= round(min_eval_loss_ce_avg,2) \
+                            or (eval_loss_err_avg <= min_eval_loss_err_avg) and ((round(eval_loss_ce_avg,2)-0.01) <= round(min_eval_loss_ce_avg,2)) \
+                                or ((eval_loss_err_avg+eval_loss_err_avg_std) <= (min_eval_loss_err_avg+min_eval_loss_err_avg_std)) and ((round(eval_loss_ce_avg,2)-0.01) <= round(min_eval_loss_ce_avg,2)):
                 min_eval_loss_ce_avg = eval_loss_ce_avg
                 min_eval_loss_ce_avg_std = eval_loss_ce_avg_std
                 min_eval_loss_err_avg = eval_loss_err_avg

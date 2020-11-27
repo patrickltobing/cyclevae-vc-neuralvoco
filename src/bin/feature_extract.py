@@ -456,6 +456,7 @@ def main():
 
                 write_hdf5(hdf5name, "/log_1pmelmagsp", np.log(1+10000*melmagsp))
                 write_hdf5(hdf5name, "/magsp", magspec)
+                #write_hdf5(hdf5name, "/log_1pmagsp", np.log(1+10000*magspec))
                 write_hdf5(hdf5name, "/log_1pmelworldsp", np.log(1+10000*melworldsp))
                 write_hdf5(hdf5name, "/worldsp", spc_range)
 

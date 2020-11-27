@@ -277,7 +277,8 @@ class FeatureDatasetNeuVoco(Dataset):
                 x = torch.LongTensor(self.pad_wav_transform(x)) # disc in/trg
             else:
                 x = torch.FloatTensor(self.pad_wav_transform(x)) # cont trg_n_bands
-                x_f = torch.FloatTensor(self.pad_wav_f_transform(x_f)) # cont trg_full
+                if self.wav_transform is not None and self.wav_transform_out is not None:
+                    x_f = torch.FloatTensor(self.pad_wav_f_transform(x_f)) # cont trg_full
 
             if self.spk_list is not None:
                 featfile_spk = os.path.basename(os.path.dirname(featfile)).split("-")[0]

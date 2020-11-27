@@ -258,7 +258,7 @@ def main():
                     start = time.time()
                     logging.info(batch_feat.shape)
 
-                    batch_feat = F.pad(batch_feat.transpose(1,2), (model_waveform.pad_left,model_waveform.pad_right), "replicate").transpose(1,2)
+                    #batch_feat = F.pad(batch_feat.transpose(1,2), (model_waveform.pad_left,model_waveform.pad_right), "replicate").transpose(1,2)
                     samples = model_waveform.generate(batch_feat)
                     logging.info(samples.shape) # B x n_bands x T//n_bands
                     samples = pqmf.synthesis(samples)[:,0].cpu().data.numpy() # B x 1 x T --> B x T

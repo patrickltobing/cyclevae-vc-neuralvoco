@@ -28,10 +28,14 @@ Set `spks` and `data_name` variables in `run.sh` accordingly
 
 Set `STAGE 0` to accomodate your training/development/testing dataset list
 
+Set F0 and power threshold configuration files for each speaker in `conf/*.f0` or `conf/*.pow` (calculate speaker histogram with `STAGE init`)
+
 
 ## STAGE description
 
 `stage=0123` for data list preparation, feature extraction, statistics calculation, and pre-emphasis/multiband-analysis, respectively
+
+`stage=init` for histogram calculation of F0 and power statistics (for speaker F0 and power threshold configurations)
 
 `stage=4` for CycleVAE-based VC with mel-spectrogram training
 
@@ -46,10 +50,6 @@ Set `STAGE 0` to accomodate your training/development/testing dataset list
 `stage=89` for multiband WaveRNN decoding with natural features and de-emphasis, respectively
 
 `stage=ab` for multiband WaveRNN decoding with converted features and de-emphasis, respectively
-
-`stage=ft` for multiband WaveRNN fine-tuning with reconstructed/cyclic-reconstructed mel-spectrogram
-
-`stage=cd` for fine-tuned multiband WaveRNN decoding with converted features and de-emphasis, respectively
 
 
 ## Some variable descriptions on `conf/config.yml`
@@ -88,10 +88,6 @@ Set `STAGE 0` to accomodate your training/development/testing dataset list
 `idx_resume_wave` checkpoint index for resume training of shallow WaveNEt model
 
 `min_idx_wave` checkpoint index for WaveRNN model
-
-`idx_resume_wave_ft` checkpoint index for resume training of fine-tuned shallow WaveNet model
-
-`min_idx_wave_ft` checkpoint index for fine-tuned WaveRNN model
 
 `spks_trg_rec` speaker list in reconstruction/cyclic-reconstruction for WaveRNN fine-tuning
 

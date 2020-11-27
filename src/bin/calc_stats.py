@@ -70,13 +70,15 @@ def main():
     logging.info("number of training utterances = "+str(len(filenames)))
 
     def calc_stats(filenames, cpu, feat_mceplf0cap_list, feat_orglf0_list, varmcep_list, f0_list,
-            melsp_list, varmelsp_list, melworldsp_list, varmelworldsp_list):
+            mmelsp_list, varmelsp_list, magsp_list, varmagsp_list, melworldsp_list, varmelworldsp_list):
         feat_mceplf0cap_arr = None
         feat_orglf0_arr = None
         varmcep_arr = None
         f0_arr = None
         melsp_arr = None
         varmelsp_arr = None
+        magsp_arr = None
+        varmagsp_arr = None
         melworldsp_arr = None
         varmelworldsp_arr = None
         count = 0
@@ -89,6 +91,8 @@ def main():
             logging.info(feat_orglf0.shape)
             melsp = read_hdf5(filename, "/log_1pmelmagsp")
             logging.info(melsp.shape)
+            #magsp = read_hdf5(filename, "/log_1pmagsp")
+            #logging.info(magsp.shape)
             melworldsp = read_hdf5(filename, "/log_1pmelworldsp")
             logging.info(melworldsp.shape)
             if feat_mceplf0cap_arr is not None:
@@ -99,6 +103,7 @@ def main():
                 feat_orglf0_arr = np.r_[feat_orglf0_arr, feat_orglf0]
             else:
                 feat_orglf0_arr = feat_orglf0
+
             logging.info('feat')
             logging.info(feat_mceplf0cap_arr.shape)
             logging.info(feat_orglf0_arr.shape)
@@ -120,6 +125,7 @@ def main():
             else:
                 f0_arr = f0
             logging.info(f0_arr.shape)
+
             if melsp_arr is not None:
                 melsp_arr = np.r_[melsp_arr, melsp]
             else:
@@ -132,6 +138,20 @@ def main():
                 varmelsp_arr = np.var((np.exp(melsp)-1)/10000, axis=0, keepdims=True)
             logging.info('var melsp')
             logging.info(varmelsp_arr.shape)
+
+            #if magsp_arr is not None:
+            #    magsp_arr = np.r_[magsp_arr, magsp]
+            #else:
+            #    magsp_arr = magsp
+            #logging.info(magsp_arr.shape)
+            #if varmagsp_arr is not None:
+            #    varmagsp_arr = np.r_[varmagsp_arr, np.var((np.exp(magsp)-1)/10000, axis=0, \
+            #                            keepdims=True)]
+            #else:
+            #    varmagsp_arr = np.var((np.exp(magsp)-1)/10000, axis=0, keepdims=True)
+            #logging.info('var magsp')
+            #logging.info(varmagsp_arr.shape)
+
             if melworldsp_arr is not None:
                 melworldsp_arr = np.r_[melworldsp_arr, melworldsp]
             else:
@@ -144,11 +164,14 @@ def main():
                 varmelworldsp_arr = np.var((np.exp(melworldsp)-1)/10000, axis=0, keepdims=True)
             logging.info('var melworldsp')
             logging.info(varmelworldsp_arr.shape)
+
             count += 1
-            logging.info("cpu %d %d %d %d %d %d %d %d %d %d" % (cpu, count, len(feat_mceplf0cap_arr),
-                    len(feat_orglf0_arr), len(varmcep_arr), len(f0_arr), len(melsp_arr),
-                        len(varmelsp_arr), len(melworldsp_arr), len(varmelworldsp_arr)))
-            #if count >= 5:
+            #logging.info("cpu %d %d %d %d %d %d %d %d %d %d %d %d" % (cpu, count, len(feat_mceplf0cap_arr),
+            logging.info("cpu %d %d %d %d %d %d %d %d %d %d %d %d" % (cpu, count, len(feat_mceplf0cap_arr),
+                    len(feat_orglf0_arr), len(varmcep_arr), len(f0_arr), len(melsp_arr), len(varmelsp_arr),
+                        len(melworldsp_arr), len(varmelworldsp_arr)))
+                        #len(magsp_arr), len(varmagsp_arr), len(melworldsp_arr), len(varmelworldsp_arr)))
+            #if count >= 1:
             #    break
 
         feat_mceplf0cap_list.append(feat_mceplf0cap_arr)
@@ -157,6 +180,8 @@ def main():
         f0_list.append(f0_arr)
         melsp_list.append(melsp_arr)
         varmelsp_list.append(varmelsp_arr)
+        #magsp_list.append(magsp_arr)
+        #varmagsp_list.append(varmagsp_arr)
         melworldsp_list.append(melworldsp_arr)
         varmelworldsp_list.append(varmelworldsp_arr)
 
@@ -176,12 +201,14 @@ def main():
         f0_list = manager.list()
         melsp_list = manager.list()
         varmelsp_list = manager.list()
+        magsp_list = manager.list()
+        varmagsp_list = manager.list()
         melworldsp_list = manager.list()
         varmelworldsp_list = manager.list()
         for i, feat_list in enumerate(feat_lists):
             p = mp.Process(target=calc_stats, args=(feat_list, i+1, feat_mceplf0cap_list,
                         feat_orglf0_list, varmcep_list, f0_list, melsp_list, varmelsp_list,
-                        melworldsp_list, varmelworldsp_list,))
+                        magsp_list, varmagsp_list, melworldsp_list, varmelworldsp_list,))
             p.start()
             processes.append(p)
 
@@ -261,6 +288,30 @@ def main():
         logging.info('var melsp: %d' % (len(var_melsp)))
         logging.info(var_melsp.shape)
 
+        #magsp = None
+        #for i in range(len(magsp_list)):
+        #    if magsp_list[i] is not None:
+        #        logging.info(i)
+        #        logging.info(magsp_list[i].shape)
+        #        if magsp is not None:
+        #            magsp = np.r_[magsp, magsp_list[i]]
+        #        else:
+        #            magsp = magsp_list[i]
+        #logging.info('magsp: %d' % (len(magsp)))
+        #logging.info(magsp.shape)
+
+        #var_magsp = None
+        #for i in range(len(varmagsp_list)):
+        #    if varmagsp_list[i] is not None:
+        #        logging.info(i)
+        #        logging.info(varmagsp_list[i].shape)
+        #        if var_magsp is not None:
+        #            var_magsp = np.r_[var_magsp, varmagsp_list[i]]
+        #        else:
+        #            var_magsp = varmagsp_list[i]
+        #logging.info('var magsp: %d' % (len(var_magsp)))
+        #logging.info(var_magsp.shape)
+
         melworldsp = None
         for i in range(len(melworldsp_list)):
             if melworldsp_list[i] is not None:
@@ -307,9 +358,6 @@ def main():
         #write_hdf5(args.stats, "/min_melsp", min_melsp)
         #write_hdf5(args.stats, "/max_melsp", max_melsp)
 
-        scaler_melsp = StandardScaler()
-        scaler_melsp.partial_fit(melsp)
-
         mean_feat_mceplf0cap = scaler_feat_mceplf0cap.mean_
         scale_feat_mceplf0cap = scaler_feat_mceplf0cap.scale_
 
@@ -351,6 +399,9 @@ def main():
         write_hdf5(args.stats, "/lf0_range_mean", lf0_range_mean)
         write_hdf5(args.stats, "/lf0_range_std", lf0_range_std)
 
+        scaler_melsp = StandardScaler()
+        scaler_melsp.partial_fit(melsp)
+
         mean_melsp = scaler_melsp.mean_
         scale_melsp = scaler_melsp.scale_
 
@@ -372,6 +423,23 @@ def main():
         write_hdf5(args.stats, "/scale_melsp", scale_melsp)
         write_hdf5(args.stats, "/gv_melsp_mean", gv_melsp_mean)
         write_hdf5(args.stats, "/gv_melsp_var", gv_melsp_var)
+
+        #scaler_magsp = StandardScaler()
+        #scaler_magsp.partial_fit(magsp)
+
+        #mean_magsp = scaler_magsp.mean_
+        #scale_magsp = scaler_magsp.scale_
+
+        #gv_magsp_mean = np.mean(np.array(var_magsp), axis=0)
+        #gv_magsp_var = np.var(np.array(var_magsp), axis=0)
+        #logging.info(gv_magsp_mean)
+        #logging.info(gv_magsp_var)
+        #logging.info(mean_magsp)
+        #logging.info(scale_magsp)
+        #write_hdf5(args.stats, "/mean_magsp", mean_magsp)
+        #write_hdf5(args.stats, "/scale_magsp", scale_magsp)
+        #write_hdf5(args.stats, "/gv_magsp_mean", gv_magsp_mean)
+        #write_hdf5(args.stats, "/gv_magsp_var", gv_magsp_var)
 
         scaler_melworldsp = StandardScaler()
         scaler_melworldsp.partial_fit(melworldsp)

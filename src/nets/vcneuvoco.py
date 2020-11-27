@@ -18,6 +18,8 @@ from torch.autograd import Function
 
 from torch.distributions.one_hot_categorical import OneHotCategorical
 
+from torch import linalg as LA
+
 import numpy as np
 
 CLIP_1E16 = -14.162084148244246758816564788835
@@ -729,13 +731,15 @@ def kl_laplace_laplace(q, p):
         return torch.mean(torch.sum(torch.log(scale_p/scale_q) + mu_abs/scale_p + (scale_q/scale_p)*torch.exp(-mu_abs/scale_q) - 1, -1)) # T x C --> T --> 1
 
 
-class GRU_VAE_ENCODER_(nn.Module):
+class GRU_VAE_ENCODER(nn.Module):
     def __init__(self, in_dim=50, lat_dim=50, hidden_layers=1, hidden_units=1024, kernel_size=7,
             dilation_size=1, do_prob=0, use_weight_norm=True, causal_conv=False, right_size=0,
-                pad_first=True, scale_out_flag=False, n_spk=None, cont=True):
-        super(GRU_VAE_ENCODER_, self).__init__()
+                pad_first=True, scale_out_flag=False, n_spk=None, cont=True, mid_dim_fact=None,
+                    scale_in_flag=True):
+        super(GRU_VAE_ENCODER, self).__init__()
         self.in_dim = in_dim
         self.lat_dim = lat_dim
+        self.mid_dim_fact = mid_dim_fact
         self.hidden_layers = hidden_layers
         self.hidden_units = hidden_units
         self.kernel_size = kernel_size
@@ -753,10 +757,19 @@ class GRU_VAE_ENCODER_(nn.Module):
         self.n_spk = n_spk
         if self.n_spk is not None:
             self.out_dim += self.n_spk
+        self.scale_in_flag = scale_in_flag
         self.scale_out_flag = scale_out_flag
 
         # Normalization layer
-        self.scale_in = nn.Conv1d(self.in_dim, self.in_dim, 1)
+        if self.scale_in_flag:
+            self.scale_in = nn.Conv1d(self.in_dim, self.in_dim, 1)
+
+        # Conv. reduction
+        if self.mid_dim_fact is not None:
+            self.mid_dim = self.in_dim // self.mid_dim_fact
+            conv_mid = [nn.Conv1d(self.in_dim, self.mid_dim, 1), nn.ReLU()]
+            self.conv_mid = nn.Sequential(*conv_mid)
+            self.in_dim = self.mid_dim
 
         # Conv. layers
         if self.right_size <= 0:
@@ -801,7 +814,16 @@ class GRU_VAE_ENCODER_(nn.Module):
             self.apply(initialize)
 
     def forward(self, x, h=None, do=False, sampling=True, outpad_right=0):
-        x_in = self.conv(self.scale_in(x.transpose(1,2))).transpose(1,2)
+        if self.scale_in_flag:
+            if self.mid_dim_fact is None:
+                x_in = self.conv(self.scale_in(x.transpose(1,2))).transpose(1,2)
+            else:
+                x_in = self.conv(self.conv_mid(self.scale_in(x.transpose(1,2)))).transpose(1,2)
+        else:
+            if self.mid_dim_fact is not None:
+                x_in = self.conv(self.conv_mid(x.transpose(1,2))).transpose(1,2)
+            else:
+                x_in = self.conv(x.transpose(1,2)).transpose(1,2)
         # Input s layers
         if self.do_prob > 0 and do:
             s = self.conv_drop(x_in) # B x C x T --> B x T x C
@@ -829,7 +851,7 @@ class GRU_VAE_ENCODER_(nn.Module):
 
         if self.n_spk is not None: #with speaker posterior
             if self.cont: #continuous latent
-                spk_logits = F.selu(out[:,:,:self.n_spk])
+                spk_logits = F.selu(s[:,:,:self.n_spk])
                 if self.scale_out_flag:
                     mus = self.scale_out(F.tanhshrink(s[:,:,self.n_spk:-self.lat_dim]).transpose(1,2)).transpose(1,2)
                 else:
@@ -846,11 +868,11 @@ class GRU_VAE_ENCODER_(nn.Module):
                     return spk_logits, torch.cat((mus, log_scales), 2), mus, h.detach()
             else: #discrete latent
                 if self.scale_out_flag:
-                    return F.selu(out[:,:,:self.n_spk]), \
+                    return F.selu(s[:,:,:self.n_spk]), \
                         self.scale_out(F.tanhshrink(s[:,:,-self.lat_dim:]).transpose(1,2)).transpose(1,2), \
                             h.detach()
                 else:
-                    return F.selu(out[:,:,:self.n_spk]), F.tanhshrink(s[:,:,-self.lat_dim:]), h.detach()
+                    return F.selu(s[:,:,:self.n_spk]), F.tanhshrink(s[:,:,-self.lat_dim:]), h.detach()
         else: #without speaker posterior
             if self.cont: #continuous latent
                 if self.scale_out_flag:
@@ -895,11 +917,11 @@ class GRU_VAE_ENCODER_(nn.Module):
         self.apply(_remove_weight_norm)
 
 
-class GRU_SPEC_DECODER_(nn.Module):
+class GRU_SPEC_DECODER(nn.Module):
     def __init__(self, feat_dim=50, out_dim=50, hidden_layers=1, hidden_units=1024, causal_conv=False,
             kernel_size=7, dilation_size=1, do_prob=0, n_spk=14, use_weight_norm=True,
                 excit_dim=None, pad_first=True, right_size=None, pdf=False, scale_in_flag=False):
-        super(GRU_SPEC_DECODER_, self).__init__()
+        super(GRU_SPEC_DECODER, self).__init__()
         self.n_spk = n_spk
         self.feat_dim = feat_dim
         if self.n_spk is not None:
@@ -1024,18 +1046,15 @@ class GRU_SPEC_DECODER_(nn.Module):
             e = self.out(e.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
 
         if self.pdf:
-            if self.scale_out:
-                mus = self.scale_out(F.tanhshrink(e[:,:,:self.spec_dim]).transpose(1,2)).transpose(1,2)
-            else:
-                mus = F.tanhshrink(e[:,:,:self.spec_dim])
+            mus = self.scale_out(F.tanhshrink(e[:,:,:self.spec_dim]).transpose(1,2)).transpose(1,2)
             log_scales = F.logsigmoid(e[:,:,self.spec_dim:])
             if sampling:
                 if do:
                     return torch.cat((mus, torch.clamp(log_scales, min=CLIP_1E16)), 2), \
                             sampling_laplace(mus, log_scales), h.detach()
                 else:
-                    return torch.cat((mus, log_scales), 2), \
-                            sampling_laplace(mus, log_scales), h.detach()
+                    return torch.cat((mus, log_scales), 2), sampling_laplace(mus, log_scales), \
+                            h.detach()
             else:
                 return torch.cat((mus, log_scales), 2), mus, h.detach()
         else:
@@ -1063,11 +1082,11 @@ class GRU_SPEC_DECODER_(nn.Module):
         self.apply(_remove_weight_norm)
 
 
-class GRU_POST_NET_(nn.Module):
+class GRU_POST_NET(nn.Module):
     def __init__(self, spec_dim=80, excit_dim=6, hidden_layers=1, hidden_units=1024, causal_conv=True,
             kernel_size=7, dilation_size=1, do_prob=0, n_spk=14, use_weight_norm=True, 
-                pad_first=True, right_size=None, res=False, laplace=False, ar=False):
-        super(GRU_POST_NET_, self).__init__()
+                pad_first=True, right_size=None, res=False, laplace=False):
+        super(GRU_POST_NET, self).__init__()
         self.n_spk = n_spk
         self.spec_dim = spec_dim
         self.excit_dim = excit_dim
@@ -1075,7 +1094,6 @@ class GRU_POST_NET_(nn.Module):
             self.feat_dim = self.spec_dim+self.excit_dim
         else:
             self.feat_dim = self.spec_dim
-        self.ar = ar
         if self.n_spk is not None:
             self.in_dim = self.feat_dim+self.n_spk
         else:
@@ -1100,23 +1118,21 @@ class GRU_POST_NET_(nn.Module):
             self.res = res
 
         self.scale_in = nn.Conv1d(self.feat_dim, self.feat_dim, 1)
-        if self.ar:
-            self.scale_in_spec = nn.Conv1d(self.spec_dim, self.spec_dim, 1)
 
         if self.right_size <= 0:
             if not self.causal_conv:
                 self.conv = TwoSidedDilConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size,
-                                            layers=self.dilation_size, nonlinear=False, pad_first=self.pad_first)
+                                            layers=self.dilation_size, pad_first=self.pad_first)
                 self.pad_left = self.conv.padding
                 self.pad_right = self.conv.padding
             else:
                 self.conv = CausalDilConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size,
-                                            layers=self.dilation_size, nonlinear=False, pad_first=self.pad_first)
+                                            layers=self.dilation_size, pad_first=self.pad_first)
                 self.pad_left = self.conv.padding
                 self.pad_right = 0
         else:
             self.conv = SkewedConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size,
-                                        right_size=self.right_size, nonlinear=False, pad_first=self.pad_first)
+                                        right_size=self.right_size, pad_first=self.pad_first)
             self.pad_left = self.conv.left_size
             self.pad_right = self.conv.right_size
 
@@ -1124,20 +1140,12 @@ class GRU_POST_NET_(nn.Module):
             self.conv_drop = nn.Dropout(p=self.do_prob)
 
         # GRU layer(s)
-        if not self.ar:
-            if self.do_prob > 0 and self.hidden_layers > 1:
-                self.gru = nn.GRU(self.in_dim*self.conv.rec_field, self.hidden_units, self.hidden_layers, \
-                                    dropout=self.do_prob, bidirectional=False, batch_first=True)
-            else:
-                self.gru = nn.GRU(self.in_dim*self.conv.rec_field, self.hidden_units, self.hidden_layers, \
-                                    bidirectional=False, batch_first=True)
+        if self.do_prob > 0 and self.hidden_layers > 1:
+            self.gru = nn.GRU(self.in_dim*self.conv.rec_field, self.hidden_units, self.hidden_layers,
+                                dropout=self.do_prob, batch_first=True)
         else:
-            if self.do_prob > 0 and self.hidden_layers > 1:
-                self.gru = nn.GRU(self.in_dim*self.conv.rec_field+self.spec_dim, self.hidden_units, self.hidden_layers, \
-                                    dropout=self.do_prob, bidirectional=False, batch_first=True)
-            else:
-                self.gru = nn.GRU(self.in_dim*self.conv.rec_field+self.spec_dim, self.hidden_units, self.hidden_layers, \
-                                    bidirectional=False, batch_first=True)
+            self.gru = nn.GRU(self.in_dim*self.conv.rec_field, self.hidden_units, self.hidden_layers,
+                                batch_first=True)
         if self.do_prob > 0:
             self.gru_drop = nn.Dropout(p=self.do_prob)
 
@@ -1150,11 +1158,10 @@ class GRU_POST_NET_(nn.Module):
         # apply weight norm
         if self.use_weight_norm:
             self.apply_weight_norm()
-        #    #torch.nn.utils.remove_weight_norm(self.scale_out)
         else:
             self.apply(initialize)
 
-    def forward(self, x, y=None, e=None, h=None, do=False, outpad_right=0, x_prev=None, x_prev_1=None):
+    def forward(self, x, y=None, e=None, h=None, do=False, outpad_right=0):
         if y is not None:
             if len(y.shape) == 2:
                 if e is not None:
@@ -1212,18 +1219,17 @@ class GRU_POST_NET_(nn.Module):
         else:
             if self.res:
                 if self.pad_right == 0:
-                    return x[:,self.pad_left:]+self.scale_out(e.transpose(1,2)).transpose(1,2), h.detach()
+                    return x[:,self.pad_left:]+self.scale_out(F.tanhshrink(e).transpose(1,2)).transpose(1,2), h.detach()
                 else:
-                    return x[:,self.pad_left:-self.pad_right]+self.scale_out(e.transpose(1,2)).transpose(1,2), h.detach()
+                    return x[:,self.pad_left:-self.pad_right]+self.scale_out(F.tanhshrink(e).transpose(1,2)).transpose(1,2), h.detach()
             else:
-                return self.scale_out(e.transpose(1,2)).transpose(1,2), h.detach()
+                return self.scale_out(F.tanhshrink(e).transpose(1,2)).transpose(1,2), h.detach()
 
     def apply_weight_norm(self):
         """Apply weight normalization module from all of the layers."""
         def _apply_weight_norm(m):
             if isinstance(m, torch.nn.Conv1d):
                 torch.nn.utils.weight_norm(m)
-                #logging.debug(f"Weight norm is applied to {m}.")
                 logging.info(f"Weight norm is applied to {m}.")
 
         self.apply(_apply_weight_norm)
@@ -1234,320 +1240,8 @@ class GRU_POST_NET_(nn.Module):
             try:
                 if isinstance(m, torch.nn.Conv1d):
                     torch.nn.utils.remove_weight_norm(m)
-                    #logging.debug(f"Weight norm is removed from {m}.")
                     logging.info(f"Weight norm is removed from {m}.")
-            except ValueError:  # this module didn't have weight norm
-                return
-
-        self.apply(_remove_weight_norm)
-
-
-class GRU_VAE_ENCODER(nn.Module):
-    def __init__(self, in_dim=50, n_spk=14, lat_dim=50, hidden_layers=1, hidden_units=1024, kernel_size=7,
-            dilation_size=1, do_prob=0, bi=False, nonlinear_conv=False, n_quantize=None, excit_dim=None,
-                use_weight_norm=True, causal_conv=False, cont=True, ar=False, right_size=0, pad_first=True):
-        super(GRU_VAE_ENCODER, self).__init__()
-        self.in_dim = in_dim
-        self.n_spk = n_spk
-        self.lat_dim = lat_dim
-        self.hidden_layers = hidden_layers
-        self.hidden_units = hidden_units
-        self.kernel_size = kernel_size
-        self.dilation_size = dilation_size
-        self.do_prob = do_prob
-        self.bi = bool(bi)
-        self.nonlinear_conv = nonlinear_conv
-        self.causal_conv = causal_conv
-        self.cont = cont
-        self.right_size = right_size
-        self.pad_first = pad_first
-        self.use_weight_norm = use_weight_norm
-        self.n_quantize = n_quantize
-        self.excit_dim = excit_dim
-        if self.cont:
-            self.out_dim = self.n_spk+self.lat_dim*2
-        else:
-            self.out_dim = self.n_spk+self.lat_dim
-        self.ar = ar
-        if self.bi:
-            self.hidden_units_out = 2*self.hidden_units
-        else:
-            self.hidden_units_out = self.hidden_units
-
-        # Normalization layer
-        if self.n_quantize is None:
-            self.scale_in = nn.Conv1d(self.in_dim, self.in_dim, 1)
-        elif self.n_quantize is not None and self.excit_dim is not None:
-            self.scale_in = nn.Conv1d(self.excit_dim, self.excit_dim, 1)
-
-        # Conv. layers
-        if self.n_quantize is not None:
-            if self.excit_dim is not None:
-                self.spec_dim = self.in_dim - self.excit_dim
-            else:
-                self.spec_dim = self.in_dim
-            self.spec_emb_dim = self.n_quantize // 4
-            self.embed_spec = nn.Embedding(self.n_quantize, self.spec_emb_dim)
-            self.spec_in_dim = self.spec_emb_dim * self.spec_dim
-            if self.kernel_size > 1:
-                if self.right_size <= 0:
-                    if not self.causal_conv:
-                        self.conv = TwoSidedDilConv1d(in_dim=self.in_dim-self.spec_dim+self.spec_in_dim, kernel_size=self.kernel_size, \
-                                                    layers=self.dilation_size, nonlinear=self.nonlinear_conv, pad_first=self.pad_first)
-                        self.pad_left = self.conv.padding
-                        self.pad_right = self.conv.padding
-                    else:
-                        self.conv = CausalDilConv1d(in_dim=self.in_dim-self.spec_dim+self.spec_in_dim, kernel_size=self.kernel_size, \
-                                                    layers=self.dilation_size, nonlinear=self.nonlinear_conv, pad_first=self.pad_first)
-                        self.pad_left = self.conv.padding
-                        self.pad_right = 0
-                else:
-                    self.conv = SkewedConv1d(in_dim=self.in_dim-self.spec_dim+self.spec_in_dim, kernel_size=self.kernel_size, \
-                                                right_size=self.right_size, nonlinear=self.nonlinear_conv, pad_first=self.pad_first)
-                    self.pad_left = self.conv.left_size
-                    self.pad_right = self.conv.right_size
-                self.s_dim = 320
-                conv_in = [nn.Conv1d(self.conv.out_dim, self.s_dim, 1), nn.ReLU()]
-                self.conv_in = nn.Sequential(*conv_in)
-                self.gru_in_dim = self.s_dim
-            else:
-                self.s_dim = 320
-                conv_in = [nn.Conv1d(self.in_dim-self.spec_dim+self.spec_in_dim, self.s_dim, 1), nn.ReLU()]
-                self.conv_in = nn.Sequential(*conv_in)
-                self.gru_in_dim = self.s_dim
-                self.pad_left = 0
-                self.pad_right = 0
-        else:
-            if self.right_size <= 0:
-                if not self.causal_conv:
-                    self.conv = TwoSidedDilConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size, \
-                                                layers=self.dilation_size, nonlinear=self.nonlinear_conv, pad_first=self.pad_first)
-                    self.pad_left = self.conv.padding
-                    self.pad_right = self.conv.padding
-                else:
-                    self.conv = CausalDilConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size, \
-                                                layers=self.dilation_size, nonlinear=self.nonlinear_conv, pad_first=self.pad_first)
-                    self.pad_left = self.conv.padding
-                    self.pad_right = 0
-            else:
-                self.conv = SkewedConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size, \
-                                            right_size=self.right_size, nonlinear=self.nonlinear_conv, pad_first=self.pad_first)
-                self.pad_left = self.conv.left_size
-                self.pad_right = self.conv.right_size
-            self.gru_in_dim = self.in_dim*self.conv.rec_field
-        if self.do_prob > 0:
-            self.conv_drop = nn.Dropout(p=self.do_prob)
-
-        # GRU layer(s)
-        if self.do_prob > 0 and self.hidden_layers > 1:
-            if self.ar:
-                self.gru = nn.GRU(self.gru_in_dim+self.out_dim, self.hidden_units, self.hidden_layers, \
-                                    dropout=self.do_prob, bidirectional=self.bi, batch_first=True)
-            else:
-                self.gru = nn.GRU(self.gru_in_dim, self.hidden_units, self.hidden_layers, \
-                                    dropout=self.do_prob, bidirectional=self.bi, batch_first=True)
-        else:
-            if self.ar:
-                self.gru = nn.GRU(self.gru_in_dim+self.out_dim, self.hidden_units, self.hidden_layers, \
-                                    bidirectional=self.bi, batch_first=True)
-            else:
-                self.gru = nn.GRU(self.gru_in_dim, self.hidden_units, self.hidden_layers, \
-                                    bidirectional=self.bi, batch_first=True)
-        if self.do_prob > 0:
-            self.gru_drop = nn.Dropout(p=self.do_prob)
-
-        # Output layers
-        self.out = nn.Conv1d(self.hidden_units_out, self.out_dim, 1)
-
-        # apply weight norm
-        if use_weight_norm:
-            self.apply_weight_norm()
-        else:
-            self.apply(initialize)
-
-    def forward(self, x, yz_in=None, h=None, do=False, sampling=True, outpad_right=0):
-        if self.n_quantize is None:
-            x_in = self.conv(self.scale_in(x.transpose(1,2))).transpose(1,2)
-        else:
-            if self.excit_dim is not None:
-                e_in = self.scale_in(x[:,:,:self.excit_dim].transpose(1,2))
-                x_in = torch.cat((e_in, self.embed_spec(x[:,:,self.excit_dim:].long()).reshape(x.shape[0], x.shape[1], -1).transpose(1,2)), 1)
-            else:
-                x_in = self.embed_spec(x.long()).reshape(x.shape[0], x.shape[1], -1).transpose(1,2)
-            if self.kernel_size > 1:
-                x_in = self.conv_in(self.conv(x_in)).transpose(1,2)
-            else:
-                x_in = self.conv_in(x_in).transpose(1,2)
-        if not self.ar:
-            # Input s layers
-            if self.do_prob > 0 and do:
-                s = self.conv_drop(x_in) # B x C x T --> B x T x C
-            else:
-                s = x_in # B x C x T --> B x T x C
-            if outpad_right > 0:
-                # GRU s layers
-                if h is None:
-                    out, h = self.gru(s[:,:-outpad_right]) # B x T x C
-                else:
-                    out, h = self.gru(s[:,:-outpad_right], h) # B x T x C
-                out_, _ = self.gru(s[:,-outpad_right:], h) # B x T x C
-                s = torch.cat((out, out_), 1)
-            else:
-                # GRU s layers
-                if h is None:
-                    s, h = self.gru(s) # B x T x C
-                else:
-                    s, h = self.gru(s, h) # B x T x C
-            # Output s layers
-            if self.do_prob > 0 and do:
-                s = self.out(self.gru_drop(s).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-            else:
-                s = self.out(s.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-
-            if self.cont:
-                qy_logits = F.selu(s[:,:,:self.n_spk])
-                qz_alpha = torch.cat((s[:,:,self.n_spk:self.n_spk+self.lat_dim], F.logsigmoid(s[:,:,self.n_spk+self.lat_dim:])), 2)
-
-                if sampling:
-                    return qy_logits, qz_alpha, h.detach()
-                else:
-                    return qy_logits, qz_alpha, qz_alpha[:,:,:self.lat_dim], h.detach()
-            else:
-                return F.selu(s[:,:,:self.n_spk]), s[:,:,self.n_spk:], h.detach()
-        else:
-            # Input layers
-            if self.do_prob > 0 and do:
-                x_conv = self.conv_drop(x_in) # B x C x T --> B x T x C
-            else:
-                x_conv = x_in # B x C x T --> B x T x C
-
-            T = x_conv.shape[1]
-            T_last = T-outpad_right
-
-            # GRU layers
-            if h is None:
-                out, h = self.gru(torch.cat((x_conv[:,:1], yz_in), 2)) # B x T x C
-            else:
-                out, h = self.gru(torch.cat((x_conv[:,:1], yz_in), 2), h) # B x T x C
-            if self.do_prob > 0 and do:
-                out = self.out(self.gru_drop(out).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-            else:
-                out = self.out(out.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-            qy_logit = F.selu(out[:,:,:self.n_spk])
-            if self.cont:
-                qz_alpha = torch.cat((out[:,:,self.n_spk:self.n_spk+self.lat_dim], F.logsigmoid(out[:,:,self.n_spk+self.lat_dim:])), 2)
-            else:
-                qz_alpha = out[:,:,self.n_spk:]
-            yz_in = torch.cat((qy_logit, qz_alpha), 2)
-            qy_logits = qy_logit
-            qz_alphas = qz_alpha
-            if self.cont:
-                if self.do_prob > 0 and do:
-                    for t in range(1,T_last):
-                        out, h = self.gru(torch.cat((x_conv[:,t:t+1], yz_in), 2), h) # B x T x C
-                        out = self.out(self.gru_drop(out).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                        qy_logit = F.selu(out[:,:,:self.n_spk])
-                        qz_alpha = torch.cat((out[:,:,self.n_spk:self.n_spk+self.lat_dim], F.logsigmoid(out[:,:,self.n_spk+self.lat_dim:])), 2)
-                        yz_in = torch.cat((qy_logit, qz_alpha), 2)
-                        qy_logits = torch.cat((qy_logits, qy_logit), 1)
-                        qz_alphas = torch.cat((qz_alphas, qz_alpha), 1)
-                    if T_last < T:
-                        h_ = h
-                        yz_in_ = yz_in
-                        for t in range(T_last,T):
-                            out, h_ = self.gru(torch.cat((x_conv[:,t:t+1], yz_in_), 2), h_) # B x T x C
-                            out = self.out(self.gru_drop(out).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                            qy_logit = F.selu(out[:,:,:self.n_spk])
-                            qz_alpha = torch.cat((out[:,:,self.n_spk:self.n_spk+self.lat_dim], F.logsigmoid(out[:,:,self.n_spk+self.lat_dim:])), 2)
-                            yz_in_ = torch.cat((qy_logit, qz_alpha), 2)
-                            qy_logits = torch.cat((qy_logits, qy_logit), 1)
-                            qz_alphas = torch.cat((qz_alphas, qz_alpha), 1)
-                else:
-                    for t in range(1,T_last):
-                        out, h = self.gru(torch.cat((x_conv[:,t:t+1], yz_in), 2), h) # B x T x C
-                        out = self.out(out.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                        qy_logit = F.selu(out[:,:,:self.n_spk])
-                        qz_alpha = torch.cat((out[:,:,self.n_spk:self.n_spk+self.lat_dim], F.logsigmoid(out[:,:,self.n_spk+self.lat_dim:])), 2)
-                        yz_in = torch.cat((qy_logit, qz_alpha), 2)
-                        qy_logits = torch.cat((qy_logits, qy_logit), 1)
-                        qz_alphas = torch.cat((qz_alphas, qz_alpha), 1)
-                    if T_last < T:
-                        h_ = h
-                        yz_in_ = yz_in
-                        for t in range(T_last,T):
-                            out, h_ = self.gru(torch.cat((x_conv[:,t:t+1], yz_in_), 2), h_) # B x T x C
-                            out = self.out(out.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                            qy_logit = F.selu(out[:,:,:self.n_spk])
-                            qz_alpha = torch.cat((out[:,:,self.n_spk:self.n_spk+self.lat_dim], F.logsigmoid(out[:,:,self.n_spk+self.lat_dim:])), 2)
-                            yz_in_ = torch.cat((qy_logit, qz_alpha), 2)
-                            qy_logits = torch.cat((qy_logits, qy_logit), 1)
-                            qz_alphas = torch.cat((qz_alphas, qz_alpha), 1)
-                if sampling:
-                    return qy_logits, qz_alphas, h.detach(), yz_in.detach()
-                else:
-                    return qy_logits, qz_alphas, qz_alphas[:,:,:self.lat_dim], h.detach(), yz_in.detach()
-            else:
-                if self.do_prob > 0 and do:
-                    for t in range(1,T_last):
-                        out, h = self.gru(torch.cat((x_conv[:,t:t+1], yz_in), 2), h) # B x T x C
-                        out = self.out(self.gru_drop(out).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                        qy_logit = F.selu(out[:,:,:self.n_spk])
-                        qz_alpha = out[:,:,self.n_spk:]
-                        yz_in = torch.cat((qy_logit, qz_alpha), 2)
-                        qy_logits = torch.cat((qy_logits, qy_logit), 1)
-                        qz_alphas = torch.cat((qz_alphas, qz_alpha), 1)
-                    if T_last < T:
-                        h_ = h
-                        yz_in_ = yz_in
-                        for t in range(T_last,T):
-                            out, h_ = self.gru(torch.cat((x_conv[:,t:t+1], yz_in_), 2), h_) # B x T x C
-                            out = self.out(self.gru_drop(out).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                            qy_logit = F.selu(out[:,:,:self.n_spk])
-                            qz_alpha = out[:,:,self.n_spk:]
-                            yz_in_ = torch.cat((qy_logit, qz_alpha), 2)
-                            qy_logits = torch.cat((qy_logits, qy_logit), 1)
-                            qz_alphas = torch.cat((qz_alphas, qz_alpha), 1)
-                else:
-                    for t in range(1,T_last):
-                        out, h = self.gru(torch.cat((x_conv[:,t:t+1], yz_in), 2), h) # B x T x C
-                        out = self.out(out.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                        qy_logit = F.selu(out[:,:,:self.n_spk])
-                        qz_alpha = out[:,:,self.n_spk:]
-                        yz_in = torch.cat((qy_logit, qz_alpha), 2)
-                        qy_logits = torch.cat((qy_logits, qy_logit), 1)
-                        qz_alphas = torch.cat((qz_alphas, qz_alpha), 1)
-                    if T_last < T:
-                        h_ = h
-                        yz_in_ = yz_in
-                        for t in range(T_last,T):
-                            out, h_ = self.gru(torch.cat((x_conv[:,t:t+1], yz_in_), 2), h_) # B x T x C
-                            out = self.out(out.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                            qy_logit = F.selu(out[:,:,:self.n_spk])
-                            qz_alpha = out[:,:,self.n_spk:]
-                            yz_in_ = torch.cat((qy_logit, qz_alpha), 2)
-                            qy_logits = torch.cat((qy_logits, qy_logit), 1)
-                            qz_alphas = torch.cat((qz_alphas, qz_alpha), 1)
-                return qy_logits, qz_alphas, h.detach(), yz_in.detach()
-
-    def apply_weight_norm(self):
-        """Apply weight normalization module from all of the layers."""
-        def _apply_weight_norm(m):
-            if isinstance(m, torch.nn.Conv1d):
-                torch.nn.utils.weight_norm(m)
-                #logging.debug(f"Weight norm is applied to {m}.")
-                logging.info(f"Weight norm is applied to {m}.")
-
-        self.apply(_apply_weight_norm)
-
-    def remove_weight_norm(self):
-        """Remove weight normalization module from all of the layers."""
-        def _remove_weight_norm(m):
-            try:
-                if isinstance(m, torch.nn.Conv1d):
-                    torch.nn.utils.remove_weight_norm(m)
-                    #logging.debug(f"Weight norm is removed from {m}.")
-                    logging.info(f"Weight norm is removed from {m}.")
-            except ValueError:  # this module didn't have weight norm
+            except ValueError:
                 return
 
         self.apply(_remove_weight_norm)
@@ -1635,7 +1329,6 @@ class GRU_LAT_FEAT_CLASSIFIER(nn.Module):
         def _apply_weight_norm(m):
             if isinstance(m, torch.nn.Conv1d):
                 torch.nn.utils.weight_norm(m)
-                #logging.debug(f"Weight norm is applied to {m}.")
                 logging.info(f"Weight norm is applied to {m}.")
 
         self.apply(_apply_weight_norm)
@@ -1646,9 +1339,8 @@ class GRU_LAT_FEAT_CLASSIFIER(nn.Module):
             try:
                 if isinstance(m, torch.nn.Conv1d):
                     torch.nn.utils.remove_weight_norm(m)
-                    #logging.debug(f"Weight norm is removed from {m}.")
                     logging.info(f"Weight norm is removed from {m}.")
-            except ValueError:  # this module didn't have weight norm
+            except ValueError:
                 return
 
         self.apply(_remove_weight_norm)
@@ -1664,14 +1356,11 @@ class SPKID_TRANSFORM_LAYER(nn.Module):
 
         self.conv = nn.Conv1d(self.n_spk, self.spkidtr_dim, 1)
         deconv = [nn.Conv1d(self.spkidtr_dim, self.n_spk, 1), nn.ReLU()]
-        #deconv = [nn.Conv1d(self.spkidtr_dim, self.n_spk, 1), nn.Sigmoid()]
-        #deconv = [nn.Conv1d(self.spkidtr_dim, self.n_spk, 1), nn.Tanh()]
         self.deconv = nn.Sequential(*deconv)
 
         # apply weight norm
         if self.use_weight_norm:
             self.apply_weight_norm()
-        #    #torch.nn.utils.remove_weight_norm(self.scale_out)
         else:
             self.apply(initialize)
 
@@ -1685,7 +1374,6 @@ class SPKID_TRANSFORM_LAYER(nn.Module):
         def _apply_weight_norm(m):
             if isinstance(m, torch.nn.Conv1d):
                 torch.nn.utils.weight_norm(m)
-                #logging.debug(f"Weight norm is applied to {m}.")
                 logging.info(f"Weight norm is applied to {m}.")
 
         self.apply(_apply_weight_norm)
@@ -1696,639 +1384,8 @@ class SPKID_TRANSFORM_LAYER(nn.Module):
             try:
                 if isinstance(m, torch.nn.Conv1d):
                     torch.nn.utils.remove_weight_norm(m)
-                    #logging.debug(f"Weight norm is removed from {m}.")
                     logging.info(f"Weight norm is removed from {m}.")
-            except ValueError:  # this module didn't have weight norm
-                return
-
-        self.apply(_remove_weight_norm)
-
-
-class GRU_POST_NET(nn.Module):
-    def __init__(self, spec_dim=80, excit_dim=6, hidden_layers=1, hidden_units=1024, causal_conv=True,
-            kernel_size=7, dilation_size=1, do_prob=0, n_spk=14, use_weight_norm=True, 
-                pad_first=True, right_size=None, res=False, laplace=False, ar=False):
-        super(GRU_POST_NET, self).__init__()
-        self.n_spk = n_spk
-        self.spec_dim = spec_dim
-        self.excit_dim = excit_dim
-        if self.excit_dim is not None:
-            self.feat_dim = self.spec_dim+self.excit_dim
-        else:
-            self.feat_dim = self.spec_dim
-        self.ar = ar
-        self.in_dim = self.feat_dim+self.n_spk
-        self.laplace = laplace
-        if not self.laplace:
-            self.out_dim = self.spec_dim
-        else:
-            self.out_dim = self.spec_dim*2
-        self.hidden_layers = hidden_layers
-        self.hidden_units = hidden_units
-        self.kernel_size = kernel_size
-        self.dilation_size = dilation_size
-        self.do_prob = do_prob
-        self.causal_conv = causal_conv
-        self.use_weight_norm = use_weight_norm
-        self.pad_first = pad_first
-        self.right_size = right_size
-        if self.laplace:
-            self.res = True
-        else:
-            self.res = res
-
-        self.scale_in = nn.Conv1d(self.feat_dim, self.feat_dim, 1)
-        if self.ar:
-            self.scale_in_spec = nn.Conv1d(self.spec_dim, self.spec_dim, 1)
-
-        if self.right_size <= 0:
-            if not self.causal_conv:
-                self.conv = TwoSidedDilConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size,
-                                            layers=self.dilation_size, nonlinear=False, pad_first=self.pad_first)
-                self.pad_left = self.conv.padding
-                self.pad_right = self.conv.padding
-            else:
-                self.conv = CausalDilConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size,
-                                            layers=self.dilation_size, nonlinear=False, pad_first=self.pad_first)
-                self.pad_left = self.conv.padding
-                self.pad_right = 0
-        else:
-            self.conv = SkewedConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size,
-                                        right_size=self.right_size, nonlinear=False, pad_first=self.pad_first)
-            self.pad_left = self.conv.left_size
-            self.pad_right = self.conv.right_size
-
-        if self.do_prob > 0:
-            self.conv_drop = nn.Dropout(p=self.do_prob)
-
-        # GRU layer(s)
-        if not self.ar:
-            if self.do_prob > 0 and self.hidden_layers > 1:
-                self.gru = nn.GRU(self.in_dim*self.conv.rec_field, self.hidden_units, self.hidden_layers, \
-                                    dropout=self.do_prob, bidirectional=False, batch_first=True)
-            else:
-                self.gru = nn.GRU(self.in_dim*self.conv.rec_field, self.hidden_units, self.hidden_layers, \
-                                    bidirectional=False, batch_first=True)
-        else:
-            if self.do_prob > 0 and self.hidden_layers > 1:
-                self.gru = nn.GRU(self.in_dim*self.conv.rec_field+self.spec_dim, self.hidden_units, self.hidden_layers, \
-                                    dropout=self.do_prob, bidirectional=False, batch_first=True)
-            else:
-                self.gru = nn.GRU(self.in_dim*self.conv.rec_field+self.spec_dim, self.hidden_units, self.hidden_layers, \
-                                    bidirectional=False, batch_first=True)
-        if self.do_prob > 0:
-            self.gru_drop = nn.Dropout(p=self.do_prob)
-
-        # Output layers
-        self.out = nn.Conv1d(self.hidden_units, self.out_dim, 1)
-
-        # De-normalization layers
-        self.scale_out = nn.Conv1d(self.spec_dim, self.spec_dim, 1)
-
-        # apply weight norm
-        if self.use_weight_norm:
-            self.apply_weight_norm()
-        #    #torch.nn.utils.remove_weight_norm(self.scale_out)
-        else:
-            self.apply(initialize)
-
-    def forward(self, y, x, e=None, h=None, do=False, outpad_right=0, x_prev=None, x_prev_1=None):
-        if len(y.shape) == 2:
-            if e is not None:
-                z = torch.cat((F.one_hot(y, num_classes=self.n_spk).float(), self.scale_in(torch.cat((x, e), 2).transpose(1,2)).transpose(1,2)), 2) # B x T_frm x C
-            else:
-                z = torch.cat((F.one_hot(y, num_classes=self.n_spk).float(), self.scale_in(x.transpose(1,2)).transpose(1,2)), 2) # B x T_frm x C
-        else:
-            if e is not None:
-                z = torch.cat((y, self.scale_in(torch.cat((x, e), 2).transpose(1,2)).transpose(1,2)), 2) # B x T_frm x C
-            else:
-                z = torch.cat((y, self.scale_in(x.transpose(1,2)).transpose(1,2)), 2) # B x T_frm x C
-        # Input e layers
-        if self.do_prob > 0 and do:
-            e = self.conv_drop(self.conv(z.transpose(1,2)).transpose(1,2)) # B x C x T --> B x T x C
-        else:
-            e = self.conv(z.transpose(1,2)).transpose(1,2) # B x C x T --> B x T x C
-        if not self.ar:
-            if outpad_right > 0:
-                # GRU e layers
-                if h is None:
-                    out, h = self.gru(e[:,:-outpad_right]) # B x T x C
-                else:
-                    out, h = self.gru(e[:,:-outpad_right], h) # B x T x C
-                out_, _ = self.gru(e[:,-outpad_right:], h) # B x T x C
-                e = torch.cat((out, out_), 1)
-            else:
-                # GRU e layers
-                if h is None:
-                    e, h = self.gru(e) # B x T x C
-                else:
-                    e, h = self.gru(e, h) # B x T x C
-        else:
-            if x_prev is not None:
-                if self.pad_right == 0:
-                    x_prev = self.scale_in_spec(x_prev[:,self.pad_left:].transpose(1,2)).transpose(1,2)
-                else:
-                    x_prev = self.scale_in_spec(x_prev[:,self.pad_left:-self.pad_right].transpose(1,2)).transpose(1,2)
-                if outpad_right > 0:
-                    # GRU e layers
-                    if h is None:
-                        out, h = self.gru(torch.cat((e, x_prev), 2)[:,:-outpad_right]) # B x T x C
-                    else:
-                        out, h = self.gru(torch.cat((e, x_prev), 2)[:,:-outpad_right], h) # B x T x C
-                    out_, _ = self.gru(torch.cat((e, x_prev), 2)[:,-outpad_right:], h) # B x T x C
-                    e = torch.cat((out, out_), 1)
-                else:
-                    # GRU e layers
-                    if h is None:
-                        e, h = self.gru(torch.cat((e, x_prev), 2)) # B x T x C
-                    else:
-                        e, h = self.gru(torch.cat((e, x_prev), 2), h) # B x T x C
-            else:
-                if x_prev_1 is not None:
-                    x_prev = x_prev_1
-                else:
-                    x_prev = torch.zeros_like(x[:,:1])
-                if self.pad_right == 0:
-                    x_ = x[:,self.pad_left:]
-                else:
-                    x_ = x[:,self.pad_left:-self.pad_right]
-                if h is None:
-                    out, h = self.gru(torch.cat((e[:,:1], x_prev), 2)) # B x T x C
-                else:
-                    out, h = self.gru(torch.cat((e[:,:1], x_prev), 2), h) # B x T x C
-                if self.do_prob > 0 and do:
-                    out = self.out(self.gru_drop(out).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                else:
-                    out = self.out(out.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                mus_e_ = self.scale_out(F.tanhshrink(out[:,:,:self.spec_dim]).transpose(1,2)).transpose(1,2)
-                x_t = x_[:,:1]
-                mus = mus_ = x_t+mus_e_
-                log_scales = log_scales_ = F.logsigmoid(out[:,:,self.spec_dim:])
-                x_e = x_e_ = x_t+sampling_laplace(mus_e_, log_scales_)
-                x_prev = self.scale_in_spec(x_e_.transpose(1,2)).transpose(1,2)
-                if self.do_prob > 0 and do:
-                    if outpad_right > 0:
-                        T = e.shape[1]-outpad_right
-                        for t in range(1,T):
-                            t_1 = t+1
-                            out, h = self.gru(torch.cat((e[:,t:t_1], x_prev), 2), h) # B x T x C
-                            out = self.out(self.gru_drop(out).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                            mus_e_ = self.scale_out(F.tanhshrink(out[:,:,:self.spec_dim]).transpose(1,2)).transpose(1,2)
-                            x_t = x_[:,t:t_1]
-                            mus_ = x_t+mus_e_
-                            log_scales_ = F.logsigmoid(out[:,:,self.spec_dim:])
-                            x_e_ = x_t+sampling_laplace(mus_e_, log_scales_)
-                            x_prev = self.scale_in_spec(x_e_.transpose(1,2)).transpose(1,2)
-                            mus = torch.cat((mus, mus_), 1)
-                            log_scales = torch.cat((log_scales, log_scales_), 1)
-                            x_e = torch.cat((x_e, x_e_), 1)
-                        T = e.shape[1]
-                        t_ = t
-                        h_ = h
-                        x_prev_ = x_prev
-                        for t in range(t_,T):
-                            t_1 = t+1
-                            out, h_ = self.gru(torch.cat((e[:,t:t_1], x_prev_), 2), h_) # B x T x C
-                            out = self.out(self.gru_drop(out).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                            mus_e_ = self.scale_out(F.tanhshrink(out[:,:,:self.spec_dim]).transpose(1,2)).transpose(1,2)
-                            x_t = x_[:,t:t_1]
-                            mus_ = x_t+mus_e_
-                            mus_ = x_t+mus_e_
-                            log_scales_ = F.logsigmoid(out[:,:,self.spec_dim:])
-                            x_e_ = x_t+sampling_laplace(mus_e_, log_scales_)
-                            x_prev_ = self.scale_in_spec(x_e_.transpose(1,2)).transpose(1,2)
-                            mus = torch.cat((mus, mus_), 1)
-                            log_scales = torch.cat((log_scales, log_scales_), 1)
-                            x_e = torch.cat((x_e, x_e_), 1)
-                    else:
-                        T = e.shape[1]
-                        for t in range(1,T):
-                            t_1 = t+1
-                            out, h = self.gru(torch.cat((e[:,t:t_1], x_prev), 2), h) # B x T x C
-                            out = self.out(self.gru_drop(out).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                            mus_e_ = self.scale_out(F.tanhshrink(out[:,:,:self.spec_dim]).transpose(1,2)).transpose(1,2)
-                            x_t = x_[:,t:t_1]
-                            mus_ = x_t+mus_e_
-                            log_scales_ = F.logsigmoid(out[:,:,self.spec_dim:])
-                            x_e_ = x_t+sampling_laplace(mus_e_, log_scales_)
-                            x_prev = self.scale_in_spec(x_e_.transpose(1,2)).transpose(1,2)
-                            mus = torch.cat((mus, mus_), 1)
-                            log_scales = torch.cat((log_scales, log_scales_), 1)
-                            x_e = torch.cat((x_e, x_e_), 1)
-                else:
-                    if outpad_right > 0:
-                        T = e.shape[1]-outpad_right
-                        for t in range(1,T):
-                            t_1 = t+1
-                            out, h = self.gru(torch.cat((e[:,t:t_1], x_prev), 2), h) # B x T x C
-                            out = self.out(out.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                            mus_e_ = self.scale_out(F.tanhshrink(out[:,:,:self.spec_dim]).transpose(1,2)).transpose(1,2)
-                            x_t = x_[:,t:t_1]
-                            mus_ = x_t+mus_e_
-                            log_scales_ = F.logsigmoid(out[:,:,self.spec_dim:])
-                            x_e_ = x_t+sampling_laplace(mus_e_, log_scales_)
-                            x_prev = self.scale_in_spec(x_e_.transpose(1,2)).transpose(1,2)
-                            mus = torch.cat((mus, mus_), 1)
-                            log_scales = torch.cat((log_scales, log_scales_), 1)
-                            x_e = torch.cat((x_e, x_e_), 1)
-                        T = e.shape[1]
-                        t_ = t
-                        h_ = h
-                        x_prev_ = x_prev
-                        for t in range(t_,T):
-                            t_1 = t+1
-                            out, h_ = self.gru(torch.cat((e[:,t:t_1], x_prev_), 2), h_) # B x T x C
-                            out = self.out(out.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                            mus_e_ = self.scale_out(F.tanhshrink(out[:,:,:self.spec_dim]).transpose(1,2)).transpose(1,2)
-                            x_t = x_[:,t:t_1]
-                            mus_ = x_t+mus_e_
-                            log_scales_ = F.logsigmoid(out[:,:,self.spec_dim:])
-                            x_e_ = x_t+sampling_laplace(mus_e_, log_scales_)
-                            x_prev_ = self.scale_in_spec(x_e_.transpose(1,2)).transpose(1,2)
-                            mus = torch.cat((mus, mus_), 1)
-                            log_scales = torch.cat((log_scales, log_scales_), 1)
-                            x_e = torch.cat((x_e, x_e_), 1)
-                    else:
-                        T = e.shape[1]
-                        for t in range(1,T):
-                            t_1 = t+1
-                            out, h = self.gru(torch.cat((e[:,t:t_1], x_prev), 2), h) # B x T x C
-                            out = self.out(out.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                            mus_e_ = self.scale_out(F.tanhshrink(out[:,:,:self.spec_dim]).transpose(1,2)).transpose(1,2)
-                            x_t = x_[:,t:t_1]
-                            mus_ = x_t+mus_e_
-                            log_scales_ = F.logsigmoid(out[:,:,self.spec_dim:])
-                            x_e_ = x_t+sampling_laplace(mus_e_, log_scales_)
-                            x_prev = self.scale_in_spec(x_e_.transpose(1,2)).transpose(1,2)
-                            mus = torch.cat((mus, mus_), 1)
-                            log_scales = torch.cat((log_scales, log_scales_), 1)
-                            x_e = torch.cat((x_e, x_e_), 1)
-                if do:
-                    return mus, torch.clamp(log_scales, min=CLIP_1E16), x_e, x_prev.detach(), h.detach()
-                else:
-                    return mus, log_scales, x_e, x_prev.detach(), h.detach()
-        # Output e layers
-        if self.do_prob > 0 and do:
-            e = self.out(self.gru_drop(e).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-        else:
-            e = self.out(e.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-
-        if self.laplace:
-            if self.pad_right == 0:
-                x_ = x[:,self.pad_left:]
-            else:
-                x_ = x[:,self.pad_left:-self.pad_right]
-            mus_e = self.scale_out(F.tanhshrink(e[:,:,:self.spec_dim]).transpose(1,2)).transpose(1,2)
-            mus = x_+mus_e
-            log_scales = F.logsigmoid(e[:,:,self.spec_dim:])
-            e = sampling_laplace(mus_e, log_scales)
-            if do:
-                return mus, torch.clamp(log_scales, min=CLIP_1E16), x_+e, h.detach()
-            else:
-                return mus, log_scales, x_+e, h.detach()
-        else:
-            if self.res:
-                if self.pad_right == 0:
-                    return x[:,self.pad_left:]+self.scale_out(e.transpose(1,2)).transpose(1,2), h.detach()
-                else:
-                    return x[:,self.pad_left:-self.pad_right]+self.scale_out(e.transpose(1,2)).transpose(1,2), h.detach()
-            else:
-                return self.scale_out(e.transpose(1,2)).transpose(1,2), h.detach()
-
-    def apply_weight_norm(self):
-        """Apply weight normalization module from all of the layers."""
-        def _apply_weight_norm(m):
-            if isinstance(m, torch.nn.Conv1d):
-                torch.nn.utils.weight_norm(m)
-                #logging.debug(f"Weight norm is applied to {m}.")
-                logging.info(f"Weight norm is applied to {m}.")
-
-        self.apply(_apply_weight_norm)
-
-    def remove_weight_norm(self):
-        """Remove weight normalization module from all of the layers."""
-        def _remove_weight_norm(m):
-            try:
-                if isinstance(m, torch.nn.Conv1d):
-                    torch.nn.utils.remove_weight_norm(m)
-                    #logging.debug(f"Weight norm is removed from {m}.")
-                    logging.info(f"Weight norm is removed from {m}.")
-            except ValueError:  # this module didn't have weight norm
-                return
-
-        self.apply(_remove_weight_norm)
-
-
-class GRU_SPEC_DECODER(nn.Module):
-    def __init__(self, feat_dim=50, out_dim=50, hidden_layers=1, hidden_units=1024, causal_conv=False,
-            kernel_size=7, dilation_size=1, do_prob=0, n_spk=14, bi=False, nonlinear_conv=False,
-                use_weight_norm=True, ar=False, cap_dim=None, excit_dim=None, spkidtr_dim=0,
-                    pad_first=True, diff=False, n_quantize=None, n_quantize_reg=None, right_size=None):
-        super(GRU_SPEC_DECODER, self).__init__()
-        self.n_spk = n_spk
-        self.feat_dim = feat_dim
-        self.spkidtr_dim = spkidtr_dim
-        self.in_dim = self.n_spk+self.feat_dim
-        self.cap_dim = cap_dim
-        self.n_quantize = n_quantize
-        if n_quantize_reg is not None:
-            self.n_quantize_reg = n_quantize_reg // 2
-        else:
-            self.n_quantize_reg = None
-        self.spec_dim = out_dim
-        if self.cap_dim is not None:
-            if self.n_quantize is not None:
-                self.spec_dim_out = self.n_quantize // 4
-                self.out_dim = self.spec_dim_out*self.spec_dim + 1 + self.cap_dim
-            else:
-                self.out_dim = self.spec_dim+1+self.cap_dim
-            self.uvcap_dim = self.cap_dim+1
-        else:
-            if self.n_quantize is not None:
-                self.spec_dim_out = self.n_quantize // 4
-                self.out_dim = self.spec_dim_out*self.spec_dim
-            else:
-                self.out_dim = self.spec_dim
-            self.uvcap_dim = 0
-        self.excit_dim = excit_dim
-        self.hidden_layers = hidden_layers
-        self.hidden_units = hidden_units
-        self.kernel_size = kernel_size
-        self.dilation_size = dilation_size
-        self.do_prob = do_prob
-        self.causal_conv = causal_conv
-        self.bi = bool(bi)
-        self.nonlinear_conv = nonlinear_conv
-        self.ar = ar
-        self.use_weight_norm = use_weight_norm
-        self.diff = diff
-        self.pad_first = pad_first
-        self.right_size = right_size
-        if self.bi:
-            self.hidden_units_out = 2*self.hidden_units
-        else:
-            self.hidden_units_out = self.hidden_units
-
-        if self.excit_dim is not None:
-            self.scale_in = nn.Conv1d(self.excit_dim, self.excit_dim, 1)
-            self.in_dim += self.excit_dim
-
-        # Conv. layers
-        if self.spkidtr_dim > 0:
-            self.spkidtr_conv = nn.Conv1d(self.n_spk, self.spkidtr_dim, 1)
-            spkidtr_deconv = [nn.Conv1d(self.spkidtr_dim, self.n_spk, 1), nn.ReLU()]
-            self.spkidtr_deconv = nn.Sequential(*spkidtr_deconv)
-
-        #if not self.causal_conv:
-        #    self.conv = TwoSidedDilConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size, \
-        #                                layers=self.dilation_size, nonlinear=self.nonlinear_conv, pad_first=self.pad_first)
-        #    self.pad_left = self.conv.padding
-        #    self.pad_right = self.conv.padding
-        #else:
-        #    self.conv = CausalDilConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size, \
-        #                                layers=self.dilation_size, nonlinear=self.nonlinear_conv, pad_first=self.pad_first)
-        #    self.pad_left = self.conv.padding
-        #    self.pad_right = 0
-        if self.right_size <= 0:
-            if not self.causal_conv:
-                self.conv = TwoSidedDilConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size, \
-                                            layers=self.dilation_size, nonlinear=self.nonlinear_conv, pad_first=self.pad_first)
-                self.pad_left = self.conv.padding
-                self.pad_right = self.conv.padding
-            else:
-                self.conv = CausalDilConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size, \
-                                            layers=self.dilation_size, nonlinear=self.nonlinear_conv, pad_first=self.pad_first)
-                self.pad_left = self.conv.padding
-                self.pad_right = 0
-        else:
-            self.conv = SkewedConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size, \
-                                        right_size=self.right_size, nonlinear=self.nonlinear_conv, pad_first=self.pad_first)
-            self.pad_left = self.conv.left_size
-            self.pad_right = self.conv.right_size
-
-        if self.do_prob > 0:
-            self.conv_drop = nn.Dropout(p=self.do_prob)
-
-        # GRU layer(s)
-        if self.do_prob > 0 and self.hidden_layers > 1:
-            if self.ar:
-                self.gru = nn.GRU(self.in_dim*self.conv.rec_field+self.out_dim, self.hidden_units, self.hidden_layers, \
-                                    dropout=self.do_prob, bidirectional=self.bi, batch_first=True)
-            else:
-                self.gru = nn.GRU(self.in_dim*self.conv.rec_field, self.hidden_units, self.hidden_layers, \
-                                    dropout=self.do_prob, bidirectional=self.bi, batch_first=True)
-        else:
-            if self.ar:
-                self.gru = nn.GRU(self.in_dim*self.conv.rec_field+self.out_dim, self.hidden_units, self.hidden_layers, \
-                                    bidirectional=self.bi, batch_first=True)
-            else:
-                self.gru = nn.GRU(self.in_dim*self.conv.rec_field, self.hidden_units, self.hidden_layers, \
-                                    bidirectional=self.bi, batch_first=True)
-        if self.do_prob > 0:
-            self.gru_drop = nn.Dropout(p=self.do_prob)
-
-        # Output layers
-        if self.n_quantize is not None:
-            self.out = nn.Conv1d(self.hidden_units_out, self.spec_dim_out*self.spec_dim, 1)
-            self.out_logits = nn.Conv1d(self.spec_dim_out, self.n_quantize, 1)
-        else:
-            self.out = nn.Conv1d(self.hidden_units_out, self.out_dim, 1)
-
-        # De-normalization layers
-        if self.cap_dim is not None:
-            self.scale_out_cap = nn.Conv1d(self.cap_dim, self.cap_dim, 1)
-        if self.n_quantize is None and self.n_quantize_reg is None:
-            self.scale_out = nn.Conv1d(self.out_dim-self.uvcap_dim, self.out_dim-self.uvcap_dim, 1)
-
-        # apply weight norm
-        if self.use_weight_norm:
-            self.apply_weight_norm()
-        #    #torch.nn.utils.remove_weight_norm(self.scale_out)
-        else:
-            self.apply(initialize)
-
-    def forward(self, y, z, x_in=None, h=None, x_prev=None, do=False, e=None, outpad_right=0):
-        if len(y.shape) == 2:
-            if self.spkidtr_dim > 0:
-                if e is not None:
-                    z = torch.cat((self.spkidtr_deconv(self.spkidtr_conv(F.one_hot(y, num_classes=self.n_spk).float().transpose(1,2))).transpose(1,2), self.scale_in(e.transpose(1,2)).transpose(1,2), z), 2)
-                else:
-                    z = torch.cat((self.spkidtr_deconv(self.spkidtr_conv(F.one_hot(y, num_classes=self.n_spk).float().transpose(1,2))).transpose(1,2), z), 2) # B x T_frm x C
-            else:
-                if e is not None:
-                    #logging.info(y.shape)
-                    #logging.info(e.shape)
-                    #logging.info(z.shape)
-                    z = torch.cat((F.one_hot(y, num_classes=self.n_spk).float(), self.scale_in(e.transpose(1,2)).transpose(1,2), z), 2) # B x T_frm x C
-                else:
-                    z = torch.cat((F.one_hot(y, num_classes=self.n_spk).float(), z), 2) # B x T_frm x C
-        else:
-            if self.spkidtr_dim > 0:
-                if e is not None:
-                    z = torch.cat((self.spkidtr_deconv(y.transpose(1,2)).transpose(1,2), self.scale_in(e.transpose(1,2)).transpose(1,2), z), 2) # B x T_frm x C
-                else:
-                    z = torch.cat((self.spkidtr_deconv(y.transpose(1,2)).transpose(1,2), z), 2) # B x T_frm x C
-            else:
-                if e is not None:
-                    z = torch.cat((y, self.scale_in(e.transpose(1,2)).transpose(1,2), z), 2) # B x T_frm x C
-                else:
-                    z = torch.cat((y, z), 2) # B x T_frm x C
-        if not self.ar:
-            # Input e layers
-            if self.do_prob > 0 and do:
-                e = self.conv_drop(self.conv(z.transpose(1,2)).transpose(1,2)) # B x C x T --> B x T x C
-            else:
-                e = self.conv(z.transpose(1,2)).transpose(1,2) # B x C x T --> B x T x C
-            if outpad_right > 0:
-                # GRU e layers
-                if h is None:
-                    out, h = self.gru(e[:,:-outpad_right]) # B x T x C
-                else:
-                    out, h = self.gru(e[:,:-outpad_right], h) # B x T x C
-                out_, _ = self.gru(e[:,-outpad_right:], h) # B x T x C
-                e = torch.cat((out, out_), 1)
-            else:
-                # GRU e layers
-                if h is None:
-                    e, h = self.gru(e) # B x T x C
-                else:
-                    e, h = self.gru(e, h) # B x T x C
-            # Output e layers
-            if self.n_quantize is not None:
-                if self.do_prob > 0 and do:
-                    e = self.out(self.gru_drop(e).transpose(1,2))
-                else:
-                    e = self.out(e.transpose(1,2))
-                e = F.tanhshrink(self.out_logits(e.reshape(e.shape[0], self.spec_dim_out, -1)).reshape(e.shape[0], self.n_quantize, -1, e.shape[2]).permute(0,3,2,1))
-            else:
-                if self.do_prob > 0 and do:
-                    e = self.out(self.gru_drop(e).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                else:
-                    e = self.out(e.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                #if self.n_quantize_reg is not None:
-                #    #e = torch.round(torch.clamp(e, min=0, max=self.n_quantize_reg*2))
-                #    e = torch.tanh(e) * self.n_quantize_reg + self.n_quantize_reg
-                #    #e = ((((torch.round(torch.clamp(e, min=0, max=self.n_quantize_reg*2)) - self.n_quantize_reg) / self.n_quantize_reg)+1)*diff_mcep_bound+2*min_mcep_bound)/2
-
-            if self.cap_dim is not None:
-                if not self.diff:
-                    return torch.cat((torch.sigmoid(e[:,:,:1]), self.scale_out_cap(e[:,:,1:self.uvcap_dim].transpose(1,2)).transpose(1,2), \
-                                    self.scale_out(e[:,:,self.uvcap_dim:].transpose(1,2)).transpose(1,2)), 2), h.detach()
-                else:
-                    e = torch.cat((x_prev, e[:,:-1]), 1) + e
-                    return torch.cat((torch.sigmoid(e[:,:,:1]), self.scale_out_cap(e[:,:,1:self.uvcap_dim].transpose(1,2)).transpose(1,2), \
-                                    self.scale_out(e[:,:,self.uvcap_dim:].transpose(1,2)).transpose(1,2)), 2), h.detach(), e[:,-1:].detach()
-            else:
-                if not self.diff:
-                    if self.n_quantize is not None:
-                        return e, h.detach()
-                    else:
-                        return self.scale_out(e.transpose(1,2)).transpose(1,2), h.detach()
-                else:
-                    e = torch.cat((x_prev, e[:,:-1]), 1) + e
-                    return self.scale_out(e.transpose(1,2)).transpose(1,2), h.detach(), e[:,-1:].detach()
-        else:
-            # Input layers
-            if self.do_prob > 0 and do:
-                z_conv = self.conv_drop(self.conv(z.transpose(1,2)).transpose(1,2)) # B x C x T --> B x T x C
-            else:
-                z_conv = self.conv(z.transpose(1,2)).transpose(1,2) # B x C x T --> B x T x C
-    
-            T = z_conv.shape[1]
-            T_last = T-outpad_right
-
-            # GRU layers
-            if h is None:
-                out, h = self.gru(torch.cat((z_conv[:,:1], x_in), 2)) # B x T x C
-            else:
-                out, h = self.gru(torch.cat((z_conv[:,:1], x_in), 2), h) # B x T x C
-            if self.do_prob > 0 and do:
-                if not self.diff:
-                    x_in = self.out(self.gru_drop(out).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                else:
-                    x_in = x_in + self.out(self.gru_drop(out).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-            else:
-                if not self.diff:
-                    x_in = self.out(out.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                else:
-                    x_in = x_in + self.out(out.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-            spec = x_in
-            if self.do_prob > 0 and do:
-                if not self.diff:
-                    for t in range(1,T_last):
-                        out, h = self.gru(torch.cat((z_conv[:,t:t+1], x_in), 2), h) # B x T x C
-                        x_in = self.out(self.gru_drop(out).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                        spec = torch.cat((spec, x_in), 1)
-                    if T_last < T:
-                        h_ = h
-                        x_in_ = x_in
-                        for t in range(T_last,T):
-                            out, h_ = self.gru(torch.cat((z_conv[:,t:t+1], x_in_), 2), h_) # B x T x C
-                            x_in_ = self.out(self.gru_drop(out).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                            spec = torch.cat((spec, x_in_), 1)
-                else:
-                    for t in range(1,T_last):
-                        out, h = self.gru(torch.cat((z_conv[:,t:t+1], x_in), 2), h) # B x T x C
-                        x_in = x_in + self.out(self.gru_drop(out).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                        spec = torch.cat((spec, x_in), 1)
-                    if T_last < T:
-                        h_ = h
-                        x_in_ = x_in
-                        for t in range(T_last,T):
-                            out, h_ = self.gru(torch.cat((z_conv[:,t:t+1], x_in_), 2), h_) # B x T x C
-                            x_in_ = x_in_ + self.out(self.gru_drop(out).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                            spec = torch.cat((spec, x_in_), 1)
-            else:
-                if not self.diff:
-                    for t in range(1,T_last):
-                        out, h = self.gru(torch.cat((z_conv[:,t:t+1], x_in), 2), h) # B x T x C
-                        x_in = self.out(out.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                        spec = torch.cat((spec, x_in), 1)
-                    if T_last < T:
-                        h_ = h
-                        x_in_ = x_in
-                        for t in range(T_last,T):
-                            out, h_ = self.gru(torch.cat((z_conv[:,t:t+1], x_in_), 2), h_) # B x T x C
-                            x_in_ = self.out(out.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                            spec = torch.cat((spec, x_in_), 1)
-                else:
-                    for t in range(1,T_last):
-                        out, h = self.gru(torch.cat((z_conv[:,t:t+1], x_in), 2), h) # B x T x C
-                        x_in = x_in + self.out(out.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                        spec = torch.cat((spec, x_in), 1)
-                    if T_last < T:
-                        h_ = h
-                        x_in_ = x_in
-                        for t in range(T_last,T):
-                            out, h_ = self.gru(torch.cat((z_conv[:,t:t+1], x_in_), 2), h_) # B x T x C
-                            x_in_ = x_in_ + self.out(out.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                            spec = torch.cat((spec, x_in_), 1)
-    
-            if self.cap_dim is not None:
-                return torch.cat((torch.sigmoid(spec[:,:,:1]), self.scale_out_cap(spec[:,:,1:self.uvcap_dim].transpose(1,2)).transpose(1,2), \
-                                self.scale_out(spec[:,:,self.uvcap_dim:].transpose(1,2)).transpose(1,2)), 2), h.detach()
-            else:
-                return self.scale_out(spec.transpose(1,2)).transpose(1,2), h.detach(), x_in.detach()
-
-    def apply_weight_norm(self):
-        """Apply weight normalization module from all of the layers."""
-        def _apply_weight_norm(m):
-            if isinstance(m, torch.nn.Conv1d):
-                torch.nn.utils.weight_norm(m)
-                #logging.debug(f"Weight norm is applied to {m}.")
-                logging.info(f"Weight norm is applied to {m}.")
-
-        self.apply(_apply_weight_norm)
-
-    def remove_weight_norm(self):
-        """Remove weight normalization module from all of the layers."""
-        def _remove_weight_norm(m):
-            try:
-                if isinstance(m, torch.nn.Conv1d):
-                    torch.nn.utils.remove_weight_norm(m)
-                    #logging.debug(f"Weight norm is removed from {m}.")
-                    logging.info(f"Weight norm is removed from {m}.")
-            except ValueError:  # this module didn't have weight norm
+            except ValueError:
                 return
 
         self.apply(_remove_weight_norm)
@@ -2336,13 +1393,11 @@ class GRU_SPEC_DECODER(nn.Module):
 
 class GRU_EXCIT_DECODER(nn.Module):
     def __init__(self, feat_dim=50, hidden_layers=1, hidden_units=1024, causal_conv=False,
-            kernel_size=7, dilation_size=1, do_prob=0, n_spk=14, bi=False, nonlinear_conv=False,
-                use_weight_norm=True, ar=False, cap_dim=None, spkidtr_dim=0, right_size=0,
-                    pad_first=True, diff=False):
+            kernel_size=7, dilation_size=1, do_prob=0, n_spk=14, use_weight_norm=True,
+                cap_dim=None, right_size=0, pad_first=True,):
         super(GRU_EXCIT_DECODER, self).__init__()
         self.n_spk = n_spk
         self.feat_dim = feat_dim
-        self.spkidtr_dim = spkidtr_dim
         self.in_dim = self.n_spk+self.feat_dim
         self.cap_dim = cap_dim
         if self.cap_dim is not None:
@@ -2355,38 +1410,25 @@ class GRU_EXCIT_DECODER(nn.Module):
         self.dilation_size = dilation_size
         self.do_prob = do_prob
         self.causal_conv = causal_conv
-        self.bi = bool(bi)
-        self.nonlinear_conv = nonlinear_conv
-        self.ar = ar
         self.use_weight_norm = use_weight_norm
-        self.diff = diff
         self.pad_first = pad_first
         self.right_size = right_size
-        if self.bi:
-            self.hidden_units_out = 2*self.hidden_units
-        else:
-            self.hidden_units_out = self.hidden_units
 
         # Conv. layers
-        if self.spkidtr_dim > 0:
-            self.spkidtr_conv = nn.Conv1d(self.n_spk, self.spkidtr_dim, 1)
-            spkidtr_deconv = [nn.Conv1d(self.spkidtr_dim, self.n_spk, 1), nn.ReLU()]
-            self.spkidtr_deconv = nn.Sequential(*spkidtr_deconv)
-
         if self.right_size <= 0:
             if not self.causal_conv:
-                self.conv = TwoSidedDilConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size, \
-                                            layers=self.dilation_size, nonlinear=self.nonlinear_conv, pad_first=self.pad_first)
+                self.conv = TwoSidedDilConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size,
+                                            layers=self.dilation_size, pad_first=self.pad_first)
                 self.pad_left = self.conv.padding
                 self.pad_right = self.conv.padding
             else:
-                self.conv = CausalDilConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size, \
-                                            layers=self.dilation_size, nonlinear=self.nonlinear_conv, pad_first=self.pad_first)
+                self.conv = CausalDilConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size,
+                                            layers=self.dilation_size, pad_first=self.pad_first)
                 self.pad_left = self.conv.padding
                 self.pad_right = 0
         else:
-            self.conv = SkewedConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size, \
-                                        right_size=self.right_size, nonlinear=self.nonlinear_conv, pad_first=self.pad_first)
+            self.conv = SkewedConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size,
+                                        right_size=self.right_size, pad_first=self.pad_first)
             self.pad_left = self.conv.left_size
             self.pad_right = self.conv.right_size
         if self.do_prob > 0:
@@ -2394,24 +1436,16 @@ class GRU_EXCIT_DECODER(nn.Module):
 
         # GRU layer(s)
         if self.do_prob > 0 and self.hidden_layers > 1:
-            if self.ar:
-                self.gru = nn.GRU(self.in_dim*self.conv.rec_field+self.out_dim, self.hidden_units, self.hidden_layers, \
-                                    dropout=self.do_prob, bidirectional=self.bi, batch_first=True)
-            else:
-                self.gru = nn.GRU(self.in_dim*self.conv.rec_field, self.hidden_units, self.hidden_layers, \
-                                    dropout=self.do_prob, bidirectional=self.bi, batch_first=True)
+            self.gru = nn.GRU(self.in_dim*self.conv.rec_field, self.hidden_units, self.hidden_layers,
+                                dropout=self.do_prob, batch_first=True)
         else:
-            if self.ar:
-                self.gru = nn.GRU(self.in_dim*self.conv.rec_field+self.out_dim, self.hidden_units, self.hidden_layers, \
-                                    bidirectional=self.bi, batch_first=True)
-            else:
-                self.gru = nn.GRU(self.in_dim*self.conv.rec_field, self.hidden_units, self.hidden_layers, \
-                                    bidirectional=self.bi, batch_first=True)
+            self.gru = nn.GRU(self.in_dim*self.conv.rec_field, self.hidden_units, self.hidden_layers,
+                                batch_first=True)
         if self.do_prob > 0:
             self.gru_drop = nn.Dropout(p=self.do_prob)
 
         # Output layers
-        self.out = nn.Conv1d(self.hidden_units_out, self.out_dim, 1)
+        self.out = nn.Conv1d(self.hidden_units, self.out_dim, 1)
 
         # De-normalization layers
         self.scale_out = nn.Conv1d(1, 1, 1)
@@ -2421,161 +1455,52 @@ class GRU_EXCIT_DECODER(nn.Module):
         # apply weight norm
         if self.use_weight_norm:
             self.apply_weight_norm()
-            #torch.nn.utils.remove_weight_norm(self.scale_in)
-            #torch.nn.utils.remove_weight_norm(self.scale_out)
-        #    #if self.cap_dim is not None:
-        #    #    torch.nn.utils.remove_weight_norm(self.scale_out_cap)
         else:
             self.apply(initialize)
 
     def forward(self, y, z, e_in=None, h=None, do=False, outpad_right=0):
         if len(y.shape) == 2:
-            if self.spkidtr_dim > 0:
-                z = torch.cat((self.spkidtr_deconv(self.spkidtr_conv(F.one_hot(y, num_classes=self.n_spk).float().transpose(1,2))).transpose(1,2), z), 2) # B x T_frm x C
-            else:
-                #logging.info(y.shape)
-                #logging.info(z.shape)
-                z = torch.cat((F.one_hot(y, num_classes=self.n_spk).float(), z), 2) # B x T_frm x C
+            z = torch.cat((F.one_hot(y, num_classes=self.n_spk).float(), z), 2) # B x T_frm x C
         else:
-            if self.spkidtr_dim > 0:
-                z = torch.cat((self.spkidtr_deconv(y.transpose(1,2)).transpose(1,2), z), 2) # B x T_frm x C
-            else:
-                z = torch.cat((y, z), 2) # B x T_frm x C
-        if not self.ar:
-            # Input e layers
-            if self.do_prob > 0 and do:
-                e = self.conv_drop(self.conv(z.transpose(1,2)).transpose(1,2)) # B x C x T --> B x T x C
-            else:
-                e = self.conv(z.transpose(1,2)).transpose(1,2) # B x C x T --> B x T x C
-            if outpad_right > 0:
-                # GRU e layers
-                if h is None:
-                    out, h = self.gru(e[:,:-outpad_right]) # B x T x C
-                else:
-                    out, h = self.gru(e[:,:-outpad_right], h) # B x T x C
-                out_, _ = self.gru(e[:,-outpad_right:], h) # B x T x C
-                e = torch.cat((out, out_), 1)
-            else:
-                # GRU e layers
-                if h is None:
-                    e, h = self.gru(e) # B x T x C
-                else:
-                    e, h = self.gru(e, h) # B x T x C
-            # Output e layers
-            if self.do_prob > 0 and do:
-                e = self.out(self.gru_drop(e).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-            else:
-                e = self.out(e.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-
-            if self.cap_dim is not None:
-                return torch.cat((torch.sigmoid(e[:,:,:1]), self.scale_out(e[:,:,1:2].transpose(1,2)).transpose(1,2), \
-                                torch.sigmoid(e[:,:,2:3]), self.scale_out_cap(e[:,:,3:].transpose(1,2)).transpose(1,2)), 2), h.detach()
-                #return torch.cat((torch.sigmoid(e[:,:,:1]), torch.clamp(self.scale_out(e[:,:,1:2].transpose(1,2)).transpose(1,2), max=8), \
-                #                torch.sigmoid(e[:,:,2:3]), torch.clamp(self.scale_out_cap(e[:,:,3:].transpose(1,2)).transpose(1,2), max=8)), 2), h.detach()
-                #return torch.cat((torch.sigmoid(e[:,:,:1]), torch.clamp(F.relu(e[:,:,1:2]).transpose(1,2),max=6.8).transpose(1,2), \
-                #                torch.sigmoid(e[:,:,2:3]), torch.clamp(F.relu(e[:,:,3:]).transpose(1,2),max=4).transpose(1,2)), 2), h.detach()
-            else:
-                #return torch.cat((torch.sigmoid(e[:,:,:1]), self.scale_out(e[:,:,1:].transpose(1,2)).transpose(1,2)), 2), \
-                #        h.detach()
-                return torch.cat((torch.sigmoid(e[:,:,:1]), torch.clamp(self.scale_out(e[:,:,1:].transpose(1,2)).transpose(1,2), max=8)), 2), \
-                        h.detach()
-                #return torch.cat((torch.sigmoid(torch.clamp(e[:,:,:1], min=-27.631021)), torch.clamp(self.scale_out(e[:,:,1:].transpose(1,2)).transpose(1,2), max=8)), 2), \
-                #        h.detach()
+            z = torch.cat((y, z), 2) # B x T_frm x C
+        # Input e layers
+        if self.do_prob > 0 and do:
+            e = self.conv_drop(self.conv(z.transpose(1,2)).transpose(1,2)) # B x C x T --> B x T x C
         else:
-            # Input layers
-            if self.do_prob > 0 and do:
-                z_conv = self.conv_drop(self.conv(z.transpose(1,2)).transpose(1,2)) # B x C x T --> B x T x C
-            else:
-                z_conv = self.conv(z.transpose(1,2)).transpose(1,2) # B x C x T --> B x T x C
-    
-            T = z_conv.shape[1]
-            T_last = T-outpad_right
-
-            # GRU layers
+            e = self.conv(z.transpose(1,2)).transpose(1,2) # B x C x T --> B x T x C
+        if outpad_right > 0:
+            # GRU e layers
             if h is None:
-                out, h = self.gru(torch.cat((z_conv[:,:1], e_in), 2)) # B x T x C
+                out, h = self.gru(e[:,:-outpad_right]) # B x T x C
             else:
-                out, h = self.gru(torch.cat((z_conv[:,:1], e_in), 2), h) # B x T x C
-            if self.do_prob > 0 and do:
-                if not self.diff:
-                    e_in = self.out(self.gru_drop(out).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                else:
-                    e_in_ = self.out(self.gru_drop(out).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                    e_in = torch.cat((e_in_[:,:,:3], e_in[:,:,3:]+e_in_[:,:,3:]), 2)
+                out, h = self.gru(e[:,:-outpad_right], h) # B x T x C
+            out_, _ = self.gru(e[:,-outpad_right:], h) # B x T x C
+            e = torch.cat((out, out_), 1)
+        else:
+            # GRU e layers
+            if h is None:
+                e, h = self.gru(e) # B x T x C
             else:
-                if not self.diff:
-                    e_in = self.out(out.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                else:
-                    e_in_ = self.out(out.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                    e_in = torch.cat((e_in_[:,:,:3], e_in[:,:,3:]+e_in_[:,:,3:]), 2)
-            excit = e_in
-            if self.do_prob > 0 and do:
-                if not self.diff:
-                    for t in range(1,T_last):
-                        out, h = self.gru(torch.cat((z_conv[:,t:t+1], e_in), 2), h) # B x T x C
-                        e_in = self.out(self.gru_drop(out).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                        excit = torch.cat((excit, e_in), 1)
-                    if T_last < T:
-                        h_ = h
-                        e_in_ = e_in
-                        for t in range(T_last,T):
-                            out, h_ = self.gru(torch.cat((z_conv[:,t:t+1], e_in_), 2), h_) # B x T x C
-                            e_in_ = self.out(self.gru_drop(out).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                            excit = torch.cat((excit, e_in_), 1)
-                else:
-                    for t in range(1,T_last):
-                        out, h = self.gru(torch.cat((z_conv[:,t:t+1], e_in), 2), h) # B x T x C
-                        e_in_ = self.out(self.gru_drop(out).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                        e_in = torch.cat((e_in_[:,:,:3], e_in[:,:,3:]+e_in_[:,:,3:]), 2)
-                        excit = torch.cat((excit, e_in), 1)
-                    if T_last < T:
-                        h_ = h
-                        e_in_ = e_in
-                        for t in range(T_last,T):
-                            out, h_ = self.gru(torch.cat((z_conv[:,t:t+1], e_in_), 2), h_) # B x T x C
-                            e_in__ = self.out(self.gru_drop(out).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                            e_in_ = torch.cat((e_in_[:,:,:3], e_in_[:,:,3:]+e_in__[:,:,3:]), 2)
-                            excit = torch.cat((excit, e_in_), 1)
-            else:
-                if not self.diff:
-                    for t in range(1,T_last):
-                        out, h = self.gru(torch.cat((z_conv[:,t:t+1], e_in), 2), h) # B x T x C
-                        e_in = self.out(out.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                        excit = torch.cat((excit, e_in), 1)
-                    if T_last < T:
-                        h_ = h
-                        e_in_ = e_in
-                        for t in range(T_last,T):
-                            out, h_ = self.gru(torch.cat((z_conv[:,t:t+1], e_in_), 2), h_) # B x T x C
-                            e_in_ = self.out(out.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                            excit = torch.cat((excit, e_in_), 1)
-                else:
-                    for t in range(1,T_last):
-                        out, h = self.gru(torch.cat((z_conv[:,t:t+1], e_in), 2), h) # B x T x C
-                        e_in_ = self.out(self.gru_drop(out).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                        e_in = torch.cat((e_in_[:,:,:3], e_in[:,:,3:]+e_in_[:,:,3:]), 2)
-                        excit = torch.cat((excit, e_in), 1)
-                    if T_last < T:
-                        h_ = h
-                        e_in_ = e_in
-                        for t in range(T_last,T):
-                            out, h_ = self.gru(torch.cat((z_conv[:,t:t+1], e_in_), 2), h_) # B x T x C
-                            e_in__ = self.out(self.gru_drop(out).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
-                            e_in_ = torch.cat((e_in_[:,:,:3], e_in_[:,:,3:]+e_in__[:,:,3:]), 2)
-                            excit = torch.cat((excit, e_in_), 1)
+                e, h = self.gru(e, h) # B x T x C
+        # Output e layers
+        if self.do_prob > 0 and do:
+            e = self.out(self.gru_drop(e).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
+        else:
+            e = self.out(e.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
 
-            if self.cap_dim is not None:
-                return torch.cat((torch.sigmoid(excit[:,:,:1]), torch.clamp(self.scale_out(excit[:,:,1:2].transpose(1,2)).transpose(1,2), max=8), \
-                                torch.sigmoid(excit[:,:,2:3]), torch.clamp(self.scale_out_cap(excit[:,:,3:].transpose(1,2)).transpose(1,2), max=8)), 2), h.detach(), e_in.detach()
-            else:
-                return torch.cat((torch.sigmoid(excit[:,:,:1]), torch.clamp(self.scale_out(excit[:,:,1:].transpose(1,2)).transpose(1,2), max=8)), 2), h.detach(), e_in.detach()
+        if self.cap_dim is not None:
+            return torch.cat((torch.sigmoid(e[:,:,:1]), self.scale_out(F.tanhshrink(e[:,:,1:2]).transpose(1,2)).transpose(1,2), \
+                            torch.sigmoid(e[:,:,2:3]), self.scale_out_cap(F.tanhshrink(e[:,:,3:]).transpose(1,2)).transpose(1,2)), 2), \
+                                h.detach()
+        else:
+            return torch.cat((torch.sigmoid(e[:,:,:1]), self.scale_out(F.tanhshrink(e)[:,:,1:].transpose(1,2)).transpose(1,2)), 2), \
+                    h.detach()
 
     def apply_weight_norm(self):
         """Apply weight normalization module from all of the layers."""
         def _apply_weight_norm(m):
             if isinstance(m, torch.nn.Conv1d):
                 torch.nn.utils.weight_norm(m)
-                #logging.debug(f"Weight norm is applied to {m}.")
                 logging.info(f"Weight norm is applied to {m}.")
 
         self.apply(_apply_weight_norm)
@@ -2586,9 +1511,8 @@ class GRU_EXCIT_DECODER(nn.Module):
             try:
                 if isinstance(m, torch.nn.Conv1d):
                     torch.nn.utils.remove_weight_norm(m)
-                    #logging.debug(f"Weight norm is removed from {m}.")
                     logging.info(f"Weight norm is removed from {m}.")
-            except ValueError:  # this module didn't have weight norm
+            except ValueError:
                 return
 
         self.apply(_remove_weight_norm)
@@ -2814,7 +1738,7 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
         f_pad = (self.n_quantize // 2) % self.cf_dim
 
         B = c.shape[0]
-        c = F.pad(c.transpose(1,2), (-self.pad_left,self.pad_right), "replicate").transpose(1,2)
+        c = F.pad(c.transpose(1,2), (self.pad_left,self.pad_right), "replicate").transpose(1,2)
         if self.quantize_spec is not None:
             if self.excit_dim > 0:
                 x_in = self.conv(torch.cat((self.scale_in(c.transpose(1,2)), in_lat.transpose(1,2)), 1))
@@ -3139,7 +2063,7 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND(nn.Module):
         upsampling_factor = self.upsampling_factor
 
         B = c.shape[0]
-        c = F.pad(c.transpose(1,2), (-self.pad_left,self.pad_right), "replicate").transpose(1,2)
+        c = F.pad(c.transpose(1,2), (self.pad_left,self.pad_right), "replicate").transpose(1,2)
         c = self.conv_s_c(self.conv(self.scale_in(c.transpose(1,2)))).transpose(1,2)
         if self.lpc > 0:
             x_lpc = torch.empty(B,1,self.n_bands,self.lpc).cuda().fill_(self.n_quantize // 2).long() # B x 1 x n_bands x K
@@ -3283,7 +2207,9 @@ class ModulationSpectrumLoss(nn.Module):
     def forward(self, x, y):
         """ x : B x T x C / T x C
             y : B x T x C / T x C
-            return : B, B / 1, 1 [frobenius-norm, L1-loss] """
+            ##return : B, B / 1, 1 [frobenius-norm, L1-loss]
+            ##return : B, B, B or 1, 1, 1 [frobenius-norm, nuclear-norm, L1-norm]
+            return : B, B or 1, 1 [frobenius-norm, L1-norm] """
         if len(x.shape) > 2: # B x T x C
             padded_x = F.pad(x, (0, 0, 0, self.fftsize-x.shape[1]), "constant", 0)
             padded_y = F.pad(y, (0, 0, 0, self.fftsize-y.shape[1]), "constant", 0)
@@ -3304,7 +2230,7 @@ class ModulationSpectrumLoss(nn.Module):
             #logging.info(torch.isinf(csp_y.mean()))
             #magsp_x = (csp_x[:,:,:,0]**2 + csp_x[:,:,:,1]**2).sqrt()
             #magsp_x = torch.clamp(csp_x[:,:,:,0]**2 + csp_x[:,:,:,1]**2, min=1e-7).sqrt()
-            magsp_x = torch.clamp(torch.abs(csp_x)**2, min=1e-7).sqrt()
+            magsp_x = torch.abs(csp_x)
             #logging.info(csp_x.max())
             #logging.info(csp_x.min())
             #logging.info(torch.isinf((csp_x[:,:,:,0]**2).mean()))
@@ -3312,11 +2238,15 @@ class ModulationSpectrumLoss(nn.Module):
             #logging.info(torch.isinf(magsp_x.mean()))
             #magsp_y = (csp_y[:,:,:,0]**2 + csp_y[:,:,:,1]**2).sqrt()
             #magsp_y = torch.clamp(csp_y[:,:,:,0]**2 + csp_y[:,:,:,1]**2, min=1e-7).sqrt()
-            magsp_y = torch.clamp(torch.abs(csp_y)**2, min=1e-7).sqrt()
+            magsp_y = torch.abs(csp_y)
             #logging.info(torch.isinf(magsp_y.mean()))
-            norm = torch.norm(magsp_y - magsp_x, p="fro", dim=(1,2)) / torch.norm(magsp_y, p="fro", dim=(1,2))
+            err = magsp_y - magsp_x
+            fro = LA.norm(err, 'fro', dim=(1,2)) / LA.norm(magsp_y, 'fro', dim=(1,2))
+            #nuc = LA.norm(err, 'nuc', dim=(1,2)) / LA.norm(magsp_y, 'nuc', dim=(1,2))
+            l1 = err.abs().sum(-1).sum(-1) / magsp_y.sum(-1).sum(-1)
+            #norm = LA.norm(magsp_y - magsp_x, 'fro', dim=(1,2)) / LA.norm(magsp_y, 'fro', dim=(1,2))
+            #err = F.l1_loss(torch.log10(magsp_y), torch.log10(magsp_x), reduction='none').mean(-1).mean(-1)
             #err = F.l1_loss(torch.log10(magsp_y), torch.log10(magsp_x), reduction='none').sum(-1).mean(-1)
-            err = F.l1_loss(torch.log10(magsp_y), torch.log10(magsp_x), reduction='none').mean(-1).mean(-1)
             #logging.info(csp_x.shape)
             #logging.info(csp_y.shape)
             #logging.info(magsp_x.shape)
@@ -3332,18 +2262,37 @@ class ModulationSpectrumLoss(nn.Module):
             csp_y = torch.fft.fftn(padded_y)
             #magsp_x = (csp_x[:,:,0]**2 + csp_x[:,:,1]**2).sqrt()
             #magsp_x = torch.clamp(csp_x[:,:,0]**2 + csp_x[:,:,1]**2, min=1e-7).sqrt()
-            magsp_x = torch.clamp(torch.abs(csp_x)**2, min=1e-7).sqrt()
+            magsp_x = torch.abs(csp_x)
             #magsp_y = (csp_y[:,:,0]**2 + csp_y[:,:,1]**2).sqrt()
             #magsp_y = torch.clamp(csp_y[:,:,0]**2 + csp_y[:,:,1]**2, min=1e-7).sqrt()
-            magsp_y = torch.clamp(torch.abs(csp_y)**2, min=1e-7).sqrt()
-            norm = torch.norm(magsp_y - magsp_x, p="fro") / torch.norm(magsp_y, p="fro")
+            magsp_y = torch.abs(csp_y)
+            err = magsp_y - magsp_x
+            fro = LA.norm(err, 'fro') / LA.norm(magsp_y, 'fro')
+            #nuc = LA.norm(err, 'nuc') / LA.norm(magsp_y, 'nuc')
+            l1 = err.abs().sum() / magsp_y.sum()
+            #norm = torch.norm(magsp_y - magsp_x, 'fro') / torch.norm(magsp_y, 'fro')
             #err = F.l1_loss(torch.log10(magsp_y), torch.log10(magsp_x), reduction='none').sum(-1).mean()
-            err = F.l1_loss(torch.log10(magsp_y), torch.log10(magsp_x), reduction='none').mean()
+            #err = F.l1_loss(torch.log10(magsp_y), torch.log10(magsp_x), reduction='none').mean()
+            #err = F.l1_loss(torch.log10(magsp_y), torch.log10(magsp_x), reduction='none').sum(-1).mean()
             #logging.info(csp_x.shape)
             #logging.info(csp_y.shape)
             #logging.info(magsp_x.shape)
             #logging.info(magsp_y.shape)
-        return norm, err
+        #return norm, err
+        #return fro, nuc, l1
+        return fro, l1
+
+
+class LaplaceWavLoss(nn.Module):
+    def __init__(self):
+        super(LaplaceWavLoss, self).__init__()
+        self.c = 0.69314718055994530941723212145818 # ln(2)
+
+    def forward(self, mu, log_b, target):
+        if len(mu.shape) == 2: # B x T
+            return torch.mean(self.c + log_b + torch.abs(target-mu)/log_b.exp(), -1) # B x 1
+        else: # T
+            return torch.mean(self.c + log_b + torch.abs(target-mu)/log_b.exp()) # 1
 
 
 class LaplaceLoss(nn.Module):
@@ -3356,8 +2305,6 @@ class LaplaceLoss(nn.Module):
             return torch.mean(torch.sum(self.c + log_b + torch.abs(target-mu)/log_b.exp(), -1), -1) # B x 1
         else: # T x C
             return torch.mean(torch.sum(self.c + log_b + torch.abs(target-mu)/log_b.exp(), -1)) # 1
-        #else: # T
-        #    return torch.mean(self.c + log_b + torch.abs(target-mu)/b)
 
 
 def laplace_logits(mu, b, disc, log_b):

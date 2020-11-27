@@ -30,13 +30,17 @@ alpha: 0.85
 gv_coeff: 0.9
 
 ## GRU hidden units encoder, decoder spec, decoder excit
-hidden_units_enc: 1024
+hidden_units_enc: 512
+#hidden_units_enc: 1024
 #hidden_units_enc: 768
-hidden_units_dec: 1024
+hidden_units_dec: 640
+#hidden_units_dec: 1024
 #hidden_units_dec: 768
-hidden_units_lf0: 1024
+hidden_units_lf0: 128
+#hidden_units_lf0: 1024
 #hidden_units_lf0: 768
-hidden_units_post: 1024
+hidden_units_post: 128
+#hidden_units_post: 1024
 #hidden_units_post: 768
 ## set to 768 for allowing real-time/low-latency processing
 
@@ -65,11 +69,13 @@ hidden_layers_post: 1
 hidden_layers_wave: 1
 
 ## kernel-size input conv encoder
-kernel_size_enc: 7
+kernel_size_enc: 5
+#kernel_size_enc: 7
 dilation_size_enc: 1
 
 ## kernel-size input conv decoder spec
-kernel_size_dec: 7
+kernel_size_dec: 5
+#kernel_size_dec: 7
 dilation_size_dec: 1
 
 ## kernel-size input conv encoder excit
@@ -210,14 +216,15 @@ batch_size_utt_eval: 14
 #batch_size_wave: 45
 ## 23 for 16 kHz with 10 ms shift --> 3680 samples
 #batch_size_wave: 23
-## 8 for wavernn/compact-wavernn with 5 ms frame shift regardless of sampling rate
+## 8 for wavernn with 5 ms frame shift regardless of sampling rate
 batch_size_wave: 8
-## 4 for wavernn/compact-wavernn with 10 ms frame shift regardless of sampling rate
+## 4 for wavernn with 10 ms frame shift regardless of sampling rate
 #batch_size_wave: 4
+
 ## wavenet, use batch_size (samples) equal to 3600 and batch_size_utt = 2, totaling 7200 samples in each optimization step
 ##          -> best value for wavenet modeling with more stability using 2 sequences per optim. step
 #batch_size_utt_wave: 2
-## wavernn/compact-wavernn --> use batch_size_utt = 8
+## wavernn --> use batch_size_utt = 8
 batch_size_utt_wave: 8
 ## batch_size eval just follow the number of utterances in the corresponding dev. set or any number is ok
 batch_size_utt_eval_wave: 14
@@ -228,14 +235,16 @@ n_workers: 2
 
 mdl_name: cycmelspxlf0capvae-laplace
 
-mdl_name_post: post_cycmelspxlf0capvae-laplace
+mdl_name_post: post-smpl_cycmelspxlf0capvae-laplace
 
 #mdl_name_wave: wavernn_dualgru_compact_lpc_mband_9bit
 mdl_name_wave: wavernn_dualgru_compact_lpc_mband_16bit
 
 ## sparsification scheduling settings for wavernn
+#t_start: 10000
 t_start: 20000
-t_end: 2020000
+#t_end: 510000
+t_end: 1270000
 interval: 20
 densities: 0.09-0.09-0.12
 n_stage: 4

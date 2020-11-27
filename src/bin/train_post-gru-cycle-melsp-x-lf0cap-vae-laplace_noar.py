@@ -518,6 +518,13 @@ def main():
             args.right_size_dec = args.right_size_lf0
     args.fftsize = 2 ** (len(bin(args.batch_size)) - 2 + 1)
     args.string_path = "/log_1pmelmagsp"
+    #args.hidden_units_enc = 512
+    ##args.hidden_units_enc_lf0 = 384
+    #args.hidden_units_enc_lf0 = 512
+    ##args.hidden_units_dec = 512
+    #args.hidden_units_dec = 640
+    ##args.hidden_units_dec = 832
+    #args.hidden_units_lf0 = 192
     torch.save(args, args.expdir + "/model.conf")
 
     # define network
@@ -1585,18 +1592,18 @@ def main():
 
                         batch_loss_px_ms_norm_, batch_loss_px_ms_err_ = criterion_ms(melsp_est_rest, melsp_rest)
                         batch_loss_ms_norm[i] = batch_loss_px_ms_norm_.mean()
-                        if not torch.isinf(batch_loss_ms_norm[i]) and not torch.isnan(batch_loss_ms_norm[i]) and batch_loss_ms_norm[i] <= 3:
+                        if not torch.isinf(batch_loss_ms_norm[i]) and not torch.isnan(batch_loss_ms_norm[i]):
                             batch_loss_px_sum += batch_loss_px_ms_norm_.sum()
                         batch_loss_ms_err[i] = batch_loss_px_ms_err_.mean()
-                        if not torch.isinf(batch_loss_ms_err[i]) and not torch.isnan(batch_loss_ms_err[i]) and batch_loss_ms_err[i] <= 3:
+                        if not torch.isinf(batch_loss_ms_err[i]) and not torch.isnan(batch_loss_ms_err[i]):
                             batch_loss_px_sum += batch_loss_px_ms_err_.sum()
 
                         batch_loss_px_ms_magsp_norm_, batch_loss_px_ms_magsp_err_ = criterion_ms(magsp_est_rest, magsp_rest)
                         batch_loss_ms_magsp_norm[i] = batch_loss_px_ms_magsp_norm_.mean()
-                        if not torch.isinf(batch_loss_ms_magsp_norm[i]) and not torch.isnan(batch_loss_ms_magsp_norm[i]) and batch_loss_ms_magsp_norm[i] <= 3:
+                        if not torch.isinf(batch_loss_ms_magsp_norm[i]) and not torch.isnan(batch_loss_ms_magsp_norm[i]):
                             batch_loss_px_sum += batch_loss_px_ms_magsp_norm_.sum()
                         batch_loss_ms_magsp_err[i] = batch_loss_px_ms_magsp_err_.mean()
-                        if not torch.isinf(batch_loss_ms_magsp_err[i]) and not torch.isnan(batch_loss_ms_magsp_err[i]) and batch_loss_ms_magsp_err[i] <= 3:
+                        if not torch.isinf(batch_loss_ms_magsp_err[i]) and not torch.isnan(batch_loss_ms_magsp_err[i]):
                             batch_loss_px_sum += batch_loss_px_ms_magsp_err_.sum()
 
                         batch_loss_sc_feat_ = torch.mean(criterion_ce(batch_feat_rec_sc[i].reshape(-1, n_spk), batch_sc.reshape(-1)).reshape(batch_sc.shape[0], -1), -1)
@@ -1640,6 +1647,7 @@ def main():
                         ## conversion
                         if i % 2 == 0:
                             total_eval_loss["eval/loss_sc_feat_cv-%d"%(i+1)].append(batch_loss_sc_feat_cv[i//2].item())
+                            total_eval_loss["eval/loss_sc_feat_magsp_cv-%d"%(i+1)].append(batch_loss_sc_feat_magsp_cv[i//2].item())
                             total_eval_loss["eval/loss_melsp_cv-%d"%(i+1)].append(batch_loss_melsp_cv[i//2].item())
                             total_eval_loss["eval/loss_magsp_cv-%d"%(i+1)].append(batch_loss_magsp_cv[i//2].item())
                             loss_melsp_cv[i//2].append(batch_loss_melsp_cv[i//2].item())
@@ -2300,15 +2308,15 @@ def main():
                                                             + torch.mean(torch.mean(criterion_l1(magsp_est, magsp), -1))
 
                         batch_loss_px_ms_norm_, batch_loss_px_ms_err_ = criterion_ms(melsp_est_rest, melsp_rest)
-                        if not torch.isinf(batch_loss_px_ms_norm_) and not torch.isnan(batch_loss_px_ms_norm_) and batch_loss_px_ms_norm_ <= 3:
+                        if iter_idx >= 50 and not torch.isinf(batch_loss_px_ms_norm_) and not torch.isnan(batch_loss_px_ms_norm_):
                             batch_loss_px_ms_norm_select += batch_loss_px_ms_norm_
-                        if not torch.isinf(batch_loss_px_ms_err_) and not torch.isnan(batch_loss_px_ms_err_) and batch_loss_px_ms_err_ <= 3:
+                        if iter_idx >= 50 and not torch.isinf(batch_loss_px_ms_err_) and not torch.isnan(batch_loss_px_ms_err_):
                             batch_loss_px_ms_err_select += batch_loss_px_ms_err_
 
                         batch_loss_px_ms_magsp_norm_, batch_loss_px_ms_magsp_err_ = criterion_ms(magsp_est, magsp)
-                        if not torch.isinf(batch_loss_px_ms_magsp_norm_) and not torch.isnan(batch_loss_px_ms_magsp_norm_) and batch_loss_px_ms_magsp_norm_ <= 3:
+                        if iter_idx >= 50 and not torch.isinf(batch_loss_px_ms_magsp_norm_) and not torch.isnan(batch_loss_px_ms_magsp_norm_):
                             batch_loss_px_ms_norm_select += batch_loss_px_ms_magsp_norm_
-                        if not torch.isinf(batch_loss_px_ms_magsp_err_) and not torch.isnan(batch_loss_px_ms_magsp_err_) and batch_loss_px_ms_magsp_err_ <= 3:
+                        if iter_idx >= 50 and not torch.isinf(batch_loss_px_ms_magsp_err_) and not torch.isnan(batch_loss_px_ms_magsp_err_):
                             batch_loss_px_ms_err_select += batch_loss_px_ms_magsp_err_
 
                         batch_loss_sc_feat_kl_select += torch.mean(criterion_ce(batch_feat_rec_sc[i][k,:flens_utt], batch_sc_)) \
@@ -2401,18 +2409,18 @@ def main():
 
                 batch_loss_px_ms_norm_, batch_loss_px_ms_err_ = criterion_ms(melsp_est_rest, melsp_rest)
                 batch_loss_ms_norm[i] = batch_loss_px_ms_norm_.mean()
-                if not torch.isinf(batch_loss_ms_norm[i]) and not torch.isnan(batch_loss_ms_norm[i]) and batch_loss_ms_norm[i] <= 3:
+                if iter_idx >= 50 and not torch.isinf(batch_loss_ms_norm[i]) and not torch.isnan(batch_loss_ms_norm[i]):
                     batch_loss_px_sum += batch_loss_px_ms_norm_.sum()
                 batch_loss_ms_err[i] = batch_loss_px_ms_err_.mean()
-                if not torch.isinf(batch_loss_ms_err[i]) and not torch.isnan(batch_loss_ms_err[i]) and batch_loss_ms_err[i] <= 3:
+                if iter_idx >= 50 and not torch.isinf(batch_loss_ms_err[i]) and not torch.isnan(batch_loss_ms_err[i]):
                     batch_loss_px_sum += batch_loss_px_ms_err_.sum()
 
                 batch_loss_px_ms_magsp_norm_, batch_loss_px_ms_magsp_err_ = criterion_ms(magsp_est_rest, magsp_rest)
                 batch_loss_ms_magsp_norm[i] = batch_loss_px_ms_magsp_norm_.mean()
-                if not torch.isinf(batch_loss_ms_magsp_norm[i]) and not torch.isnan(batch_loss_ms_magsp_norm[i]) and batch_loss_ms_magsp_norm[i] <= 3:
+                if iter_idx >= 50 and not torch.isinf(batch_loss_ms_magsp_norm[i]) and not torch.isnan(batch_loss_ms_magsp_norm[i]):
                     batch_loss_px_sum += batch_loss_px_ms_magsp_norm_.sum()
                 batch_loss_ms_magsp_err[i] = batch_loss_px_ms_magsp_err_.mean()
-                if not torch.isinf(batch_loss_ms_magsp_err[i]) and not torch.isnan(batch_loss_ms_magsp_err[i]) and batch_loss_ms_magsp_err[i] <= 3:
+                if iter_idx >= 50 and not torch.isinf(batch_loss_ms_magsp_err[i]) and not torch.isnan(batch_loss_ms_magsp_err[i]):
                     batch_loss_px_sum += batch_loss_px_ms_magsp_err_.sum()
 
                 batch_loss_sc_feat_ = torch.mean(criterion_ce(batch_feat_rec_sc[i].reshape(-1, n_spk), batch_sc.reshape(-1)).reshape(batch_sc.shape[0], -1), -1)
@@ -2457,6 +2465,7 @@ def main():
                 ## conversion
                 if i % 2 == 0:
                     total_train_loss["train/loss_sc_feat_cv-%d"%(i+1)].append(batch_loss_sc_feat_cv[i//2].item())
+                    total_train_loss["train/loss_sc_feat_magsp_cv-%d"%(i+1)].append(batch_loss_sc_feat_magsp_cv[i//2].item())
                     total_train_loss["train/loss_melsp_cv-%d"%(i+1)].append(batch_loss_melsp_cv[i//2].item())
                     total_train_loss["train/loss_magsp_cv-%d"%(i+1)].append(batch_loss_magsp_cv[i//2].item())
                     loss_melsp_cv[i//2].append(batch_loss_melsp_cv[i//2].item())
