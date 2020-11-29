@@ -1079,6 +1079,8 @@ if [ `echo ${stage} | grep post` ];then
                     --right_size_enc ${right_size_enc} \
                     --right_size_dec ${right_size_dec} \
                     --right_size_post ${right_size_post} \
+                    --fftl ${fftl} \
+                    --fs ${fs} \
                     --gen_model ${expdir_cycvae}/checkpoint-${min_idx_cycvae}.pkl \
                     --resume ${expdir}/checkpoint-${idx_resume}.pkl \
                     --GPU_device ${GPU_device}
@@ -1120,6 +1122,8 @@ if [ `echo ${stage} | grep post` ];then
                     --right_size_enc ${right_size_enc} \
                     --right_size_dec ${right_size_dec} \
                     --right_size_post ${right_size_post} \
+                    --fftl ${fftl} \
+                    --fs ${fs} \
                     --gen_model ${expdir_cycvae}/checkpoint-${min_idx_cycvae}.pkl \
                     --GPU_device ${GPU_device}
         fi
