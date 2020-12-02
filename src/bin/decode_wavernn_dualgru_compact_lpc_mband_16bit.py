@@ -97,7 +97,11 @@ def decode_generator(feat_list, upsampling_factor=120, string_path='/feat_mceplf
             feat_ids = []
             for featfile in batch_feat_list:
                 ## load waveform
-                if 'mel' in string_path:
+                if 'smpl' in string_path:
+                    feat = read_hdf5(featfile, string_path)
+                    feat_n = read_hdf5(featfile, string_path+"_n")
+                    feat_sum = read_hdf5(featfile, string_path+"_sum")
+                elif 'mel' in string_path:
                     if excit_dim > 0:
                         feat = np.c_[read_hdf5(featfile, '/feat_mceplf0cap')[:,:excit_dim], read_hdf5(featfile, string_path)]
                     else:
@@ -107,8 +111,18 @@ def decode_generator(feat_list, upsampling_factor=120, string_path='/feat_mceplf
 
                 # append to list
                 batch_feat += [feat]
+                if 'smpl' in string_path:
+                    batch_feat += [feat_n]
+                    batch_feat += [feat_sum]
                 n_samples_list += [feat.shape[0]*upsampling_factor]
+                if 'smpl' in string_path:
+                    n_samples_list += [feat_n.shape[0]*upsampling_factor]
+                    n_samples_list += [feat_sum.shape[0]*upsampling_factor]
                 feat_ids += [os.path.basename(featfile).replace(".h5", "")]
+                if 'smpl' in string_path:
+                    feat_ids += [os.path.basename(featfile).replace(".h5", "_n")]
+                    feat_ids += [os.path.basename(featfile).replace(".h5", "_sum")]
+                logging.info(feat_ids)
 
             # convert list to ndarray
             batch_feat = pad_list(batch_feat)

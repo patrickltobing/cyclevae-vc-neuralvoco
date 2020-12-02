@@ -22,7 +22,7 @@ from torch import linalg as LA
 
 import numpy as np
 
-CLIP_1E16 = -14.162084148244246758816564788835
+CLIP_1E12 = -14.162084148244246758816564788835
 
 
 def initialize(m):
@@ -859,7 +859,7 @@ class GRU_VAE_ENCODER(nn.Module):
                 log_scales = F.logsigmoid(s[:,:,-self.lat_dim:])
                 if sampling:
                     if do:
-                        return spk_logits, torch.cat((mus, torch.clamp(log_scales, min=CLIP_1E16)), 2), \
+                        return spk_logits, torch.cat((mus, torch.clamp(log_scales, min=CLIP_1E12)), 2), \
                                 sampling_laplace(mus, log_scales), h.detach()
                     else:
                         return spk_logits, torch.cat((mus, log_scales), 2), \
@@ -882,7 +882,7 @@ class GRU_VAE_ENCODER(nn.Module):
                 log_scales = F.logsigmoid(s[:,:,self.lat_dim:])
                 if sampling:
                     if do:
-                        return torch.cat((mus, torch.clamp(log_scales, min=CLIP_1E16)), 2), \
+                        return torch.cat((mus, torch.clamp(log_scales, min=CLIP_1E12)), 2), \
                                 sampling_laplace(mus, log_scales), h.detach()
                     else:
                         return torch.cat((mus, log_scales), 2), \
@@ -919,15 +919,19 @@ class GRU_VAE_ENCODER(nn.Module):
 
 class GRU_SPEC_DECODER(nn.Module):
     def __init__(self, feat_dim=50, out_dim=50, hidden_layers=1, hidden_units=1024, causal_conv=False,
-            kernel_size=7, dilation_size=1, do_prob=0, n_spk=14, use_weight_norm=True,
-                excit_dim=None, pad_first=True, right_size=None, pdf=False, scale_in_flag=False):
+            kernel_size=7, dilation_size=1, do_prob=0, n_spk=14, use_weight_norm=True, scale_out_flag=True,
+                excit_dim=None, pad_first=True, right_size=None, pdf=False, scale_in_flag=False,
+                    aux_dim=None):
         super(GRU_SPEC_DECODER, self).__init__()
         self.n_spk = n_spk
         self.feat_dim = feat_dim
+        self.aux_dim = aux_dim
         if self.n_spk is not None:
             self.in_dim = self.n_spk+self.feat_dim
         else:
             self.in_dim = self.feat_dim
+        if self.aux_dim is not None:
+            self.in_dim += self.aux_dim
         self.spec_dim = out_dim
         self.excit_dim = excit_dim
         self.hidden_layers = hidden_layers
@@ -945,6 +949,7 @@ class GRU_SPEC_DECODER(nn.Module):
         else:
             self.out_dim = self.spec_dim
         self.scale_in_flag = scale_in_flag
+        self.scale_out_flag = scale_out_flag
 
         if self.excit_dim is not None:
             if self.scale_in_flag:
@@ -990,7 +995,8 @@ class GRU_SPEC_DECODER(nn.Module):
         self.out = nn.Conv1d(self.hidden_units, self.out_dim, 1)
 
         # De-normalization layers
-        self.scale_out = nn.Conv1d(self.spec_dim, self.spec_dim, 1)
+        if self.scale_out_flag:
+            self.scale_out = nn.Conv1d(self.spec_dim, self.spec_dim, 1)
 
         # apply weight norm
         if self.use_weight_norm:
@@ -998,28 +1004,53 @@ class GRU_SPEC_DECODER(nn.Module):
         else:
             self.apply(initialize)
 
-    def forward(self, z, y=None, h=None, do=False, e=None, outpad_right=0, sampling=True):
-        if y is not None:
-            if len(y.shape) == 2:
-                y = F.one_hot(y, num_classes=self.n_spk).float()
-            if e is not None:
-                if self.scale_in_flag:
-                    z = torch.cat((y, self.scale_in((torch.cat(e, z), 2).transpose(1,2)).transpose(1,2)), 2) # B x T_frm x C
+    def forward(self, z, y=None, aux=None, h=None, do=False, e=None, outpad_right=0, sampling=True):
+        if aux is not None:
+            if y is not None:
+                if len(y.shape) == 2:
+                    y = F.one_hot(y, num_classes=self.n_spk).float()
+                if e is not None:
+                    if self.scale_in_flag:
+                        z = torch.cat((y, aux, self.scale_in((torch.cat(e, z), 2).transpose(1,2)).transpose(1,2)), 2) # B x T_frm x C
+                    else:
+                        z = torch.cat((y, aux, self.scale_in(e.transpose(1,2)).transpose(1,2), z), 2) # B x T_frm x C
                 else:
-                    z = torch.cat((y, self.scale_in(e.transpose(1,2)).transpose(1,2), z), 2) # B x T_frm x C
+                    if self.scale_in_flag:
+                        z = torch.cat((y, aux, self.scale_in(z.transpose(1,2)).transpose(1,2)), 2) # B x T_frm x C
+                    else:
+                        z = torch.cat((y, aux, z), 2) # B x T_frm x C
             else:
-                if self.scale_in_flag:
-                    z = torch.cat((y, self.scale_in(z.transpose(1,2)).transpose(1,2)), 2) # B x T_frm x C
+                if e is not None:
+                    if self.scale_in_flag:
+                        z = torch.cat((aux, self.scale_in((torch.cat(e, z), 2).transpose(1,2)).transpose(1,2)), 2) # B x T_frm x C
+                    else:
+                        z = torch.cat((aux, self.scale_in(e.transpose(1,2)).transpose(1,2), z), 2) # B x T_frm x C
+                elif self.scale_in_flag:
+                        z = torch.cat((aux, self.scale_in(z.transpose(1,2)).transpose(1,2)), 2) # B x T_frm x C
                 else:
-                    z = torch.cat((y, z), 2) # B x T_frm x C
+                        z = torch.cat((aux, z), 2) # B x T_frm x C
         else:
-            if e is not None:
-                if self.scale_in_flag:
-                    z = self.scale_in((torch.cat(e, z), 2).transpose(1,2)).transpose(1,2) # B x T_frm x C
+            if y is not None:
+                if len(y.shape) == 2:
+                    y = F.one_hot(y, num_classes=self.n_spk).float()
+                if e is not None:
+                    if self.scale_in_flag:
+                        z = torch.cat((y, self.scale_in((torch.cat(e, z), 2).transpose(1,2)).transpose(1,2)), 2) # B x T_frm x C
+                    else:
+                        z = torch.cat((y, self.scale_in(e.transpose(1,2)).transpose(1,2), z), 2) # B x T_frm x C
                 else:
-                    z = torch.cat((self.scale_in(e.transpose(1,2)).transpose(1,2), z), 2) # B x T_frm x C
-            elif self.scale_in_flag:
-                    z = self.scale_in(z.transpose(1,2)).transpose(1,2) # B x T_frm x C
+                    if self.scale_in_flag:
+                        z = torch.cat((y, self.scale_in(z.transpose(1,2)).transpose(1,2)), 2) # B x T_frm x C
+                    else:
+                        z = torch.cat((y, z), 2) # B x T_frm x C
+            else:
+                if e is not None:
+                    if self.scale_in_flag:
+                        z = self.scale_in((torch.cat(e, z), 2).transpose(1,2)).transpose(1,2) # B x T_frm x C
+                    else:
+                        z = torch.cat((self.scale_in(e.transpose(1,2)).transpose(1,2), z), 2) # B x T_frm x C
+                elif self.scale_in_flag:
+                        z = self.scale_in(z.transpose(1,2)).transpose(1,2) # B x T_frm x C
         # Input e layers
         if self.do_prob > 0 and do:
             e = self.conv_drop(self.conv(z.transpose(1,2)).transpose(1,2)) # B x C x T --> B x T x C
@@ -1046,11 +1077,14 @@ class GRU_SPEC_DECODER(nn.Module):
             e = self.out(e.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
 
         if self.pdf:
-            mus = self.scale_out(F.tanhshrink(e[:,:,:self.spec_dim]).transpose(1,2)).transpose(1,2)
+            if self.scale_out_flag:
+                mus = self.scale_out(F.tanhshrink(e[:,:,:self.spec_dim]).transpose(1,2)).transpose(1,2)
+            else:
+                mus = F.tanhshrink(e[:,:,:self.spec_dim])
             log_scales = F.logsigmoid(e[:,:,self.spec_dim:])
             if sampling:
                 if do:
-                    return torch.cat((mus, torch.clamp(log_scales, min=CLIP_1E16)), 2), \
+                    return torch.cat((mus, torch.clamp(log_scales, min=CLIP_1E12)), 2), \
                             sampling_laplace(mus, log_scales), h.detach()
                 else:
                     return torch.cat((mus, log_scales), 2), sampling_laplace(mus, log_scales), \
@@ -1058,7 +1092,10 @@ class GRU_SPEC_DECODER(nn.Module):
             else:
                 return torch.cat((mus, log_scales), 2), mus, h.detach()
         else:
-            return self.scale_out(F.tanhshrink(e).transpose(1,2)).transpose(1,2), h.detach()
+            if self.scale_out_flag:
+                return self.scale_out(F.tanhshrink(e).transpose(1,2)).transpose(1,2), h.detach()
+            else:
+                return F.tanhshrink(e), h.detach()
 
     def apply_weight_norm(self):
         """Apply weight normalization module from all of the layers."""
@@ -1084,12 +1121,13 @@ class GRU_SPEC_DECODER(nn.Module):
 
 class GRU_POST_NET(nn.Module):
     def __init__(self, spec_dim=80, excit_dim=6, hidden_layers=1, hidden_units=1024, causal_conv=True,
-            kernel_size=7, dilation_size=1, do_prob=0, n_spk=14, use_weight_norm=True, 
+            kernel_size=7, dilation_size=1, do_prob=0, n_spk=14, use_weight_norm=True, aux_dim=None,
                 pad_first=True, right_size=None, res=False, laplace=False):
         super(GRU_POST_NET, self).__init__()
         self.n_spk = n_spk
         self.spec_dim = spec_dim
         self.excit_dim = excit_dim
+        self.aux_dim = aux_dim
         if self.excit_dim is not None:
             self.feat_dim = self.spec_dim+self.excit_dim
         else:
@@ -1098,6 +1136,8 @@ class GRU_POST_NET(nn.Module):
             self.in_dim = self.feat_dim+self.n_spk
         else:
             self.in_dim = self.feat_dim
+        if self.aux_dim is not None:
+            self.in_dim += self.aux_dim
         self.laplace = laplace
         if not self.laplace:
             self.out_dim = self.spec_dim
@@ -1161,23 +1201,41 @@ class GRU_POST_NET(nn.Module):
         else:
             self.apply(initialize)
 
-    def forward(self, x, y=None, e=None, h=None, do=False, outpad_right=0, scale_fact=None):
-        if y is not None:
-            if len(y.shape) == 2:
-                if e is not None:
-                    z = torch.cat((F.one_hot(y, num_classes=self.n_spk).float(), self.scale_in(torch.cat((e, x), 2).transpose(1,2)).transpose(1,2)), 2) # B x T_frm x C
+    def forward(self, x, y=None, aux=None, e=None, h=None, do=False, outpad_right=0, scale_fact=None):
+        if aux is not None:
+            if y is not None:
+                if len(y.shape) == 2:
+                    if e is not None:
+                        z = torch.cat((F.one_hot(y, num_classes=self.n_spk).float(), aux, self.scale_in(torch.cat((e, x), 2).transpose(1,2)).transpose(1,2)), 2) # B x T_frm x C
+                    else:
+                        z = torch.cat((F.one_hot(y, num_classes=self.n_spk).float(), aux, self.scale_in(x.transpose(1,2)).transpose(1,2)), 2) # B x T_frm x C
                 else:
-                    z = torch.cat((F.one_hot(y, num_classes=self.n_spk).float(), self.scale_in(x.transpose(1,2)).transpose(1,2)), 2) # B x T_frm x C
+                    if e is not None:
+                        z = torch.cat((y, aux, self.scale_in(torch.cat((e, x), 2).transpose(1,2)).transpose(1,2)), 2) # B x T_frm x C
+                    else:
+                        z = torch.cat((y, aux, self.scale_in(x.transpose(1,2)).transpose(1,2)), 2) # B x T_frm x C
             else:
                 if e is not None:
-                    z = torch.cat((y, self.scale_in(torch.cat((e, x), 2).transpose(1,2)).transpose(1,2)), 2) # B x T_frm x C
+                    z = torch.cat((aux, self.scale_in(torch.cat((e, x), 2).transpose(1,2)).transpose(1,2)), 2) # B x T_frm x C
                 else:
-                    z = torch.cat((y, self.scale_in(x.transpose(1,2)).transpose(1,2)), 2) # B x T_frm x C
+                    z = torch.cat((aux, self.scale_in(x.transpose(1,2)).transpose(1,2)), 2) # B x T_frm x C
         else:
-            if e is not None:
-                z = self.scale_in(torch.cat((e, x), 2).transpose(1,2)).transpose(1,2) # B x T_frm x C
+            if y is not None:
+                if len(y.shape) == 2:
+                    if e is not None:
+                        z = torch.cat((F.one_hot(y, num_classes=self.n_spk).float(), self.scale_in(torch.cat((e, x), 2).transpose(1,2)).transpose(1,2)), 2) # B x T_frm x C
+                    else:
+                        z = torch.cat((F.one_hot(y, num_classes=self.n_spk).float(), self.scale_in(x.transpose(1,2)).transpose(1,2)), 2) # B x T_frm x C
+                else:
+                    if e is not None:
+                        z = torch.cat((y, self.scale_in(torch.cat((e, x), 2).transpose(1,2)).transpose(1,2)), 2) # B x T_frm x C
+                    else:
+                        z = torch.cat((y, self.scale_in(x.transpose(1,2)).transpose(1,2)), 2) # B x T_frm x C
             else:
-                z = self.scale_in(x.transpose(1,2)).transpose(1,2) # B x T_frm x C
+                if e is not None:
+                    z = self.scale_in(torch.cat((e, x), 2).transpose(1,2)).transpose(1,2) # B x T_frm x C
+                else:
+                    z = self.scale_in(x.transpose(1,2)).transpose(1,2) # B x T_frm x C
         # Input e layers
         if self.do_prob > 0 and do:
             e = self.conv_drop(self.conv(z.transpose(1,2)).transpose(1,2)) # B x C x T --> B x T x C
@@ -1216,7 +1274,7 @@ class GRU_POST_NET(nn.Module):
             else:
                 e = sampling_laplace(mus_e, log_scales+scale_fact)
             if do:
-                return torch.cat((mus, torch.clamp(log_scales, min=CLIP_1E16)), 2), x_+e, h.detach()
+                return torch.cat((mus, torch.clamp(log_scales, min=CLIP_1E12)), 2), x_+e, h.detach()
             else:
                 return torch.cat((mus, log_scales), 2), x_+e, h.detach()
         else:
@@ -1349,6 +1407,96 @@ class GRU_LAT_FEAT_CLASSIFIER(nn.Module):
         self.apply(_remove_weight_norm)
 
 
+class GRU_SPK(nn.Module):
+    def __init__(self, n_spk=14, feat_dim=64, hidden_layers=1, hidden_units=32, do_prob=0,
+            use_weight_norm=True, scale_in_flag=False):
+        super(GRU_SPK, self).__init__()
+        self.n_spk = n_spk
+        self.feat_dim = feat_dim
+        if self.n_spk is not None:
+            self.in_dim = self.n_spk+self.feat_dim
+        else:
+            self.in_dim = self.feat_dim
+        self.hidden_layers = hidden_layers
+        self.hidden_units = hidden_units
+        self.do_prob = do_prob
+        self.use_weight_norm = use_weight_norm
+        self.scale_in_flag = scale_in_flag
+
+        if self.scale_in_flag:
+            self.scale_in = nn.Conv1d(self.feat_dim, self.feat_dim, 1)
+
+        # GRU layer(s)
+        if self.do_prob > 0 and self.hidden_layers > 1:
+            self.gru = nn.GRU(self.in_dim, self.hidden_units, self.hidden_layers,
+                                dropout=self.do_prob, batch_first=True)
+        else:
+            self.gru = nn.GRU(self.in_dim, self.hidden_units, self.hidden_layers,
+                                batch_first=True)
+        if self.do_prob > 0:
+            self.gru_drop = nn.Dropout(p=self.do_prob)
+
+        # Output layers
+        self.out = nn.Conv1d(self.hidden_units, self.n_spk, 1)
+
+        # apply weight norm
+        if self.use_weight_norm:
+            self.apply_weight_norm()
+        else:
+            self.apply(initialize)
+
+    def forward(self, y, z=None, h=None, do=False, outpad_right=0):
+        if len(y.shape) == 2:
+            y = F.one_hot(y, num_classes=self.n_spk).float()
+        if self.scale_in_flag:
+            z = torch.cat((y, self.scale_in(z.transpose(1,2)).transpose(1,2)), 2) # B x T_frm x C
+        else:
+            z = torch.cat((y, z), 2) # B x T_frm x C
+        # Input e layers
+        if outpad_right > 0:
+            # GRU e layers
+            if h is None:
+                out, h = self.gru(z[:,:-outpad_right]) # B x T x C
+            else:
+                out, h = self.gru(z[:,:-outpad_right], h) # B x T x C
+            out_, _ = self.gru(z[:,-outpad_right:], h) # B x T x C
+            e = torch.cat((out, out_), 1)
+        else:
+            # GRU e layers
+            if h is None:
+                e, h = self.gru(z) # B x T x C
+            else:
+                e, h = self.gru(z, h) # B x T x C
+        # Output e layers
+        if self.do_prob > 0 and do:
+            e = self.out(self.gru_drop(e).transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
+        else:
+            e = self.out(e.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
+
+        return F.tanhshrink(e), h.detach()
+
+    def apply_weight_norm(self):
+        """Apply weight normalization module from all of the layers."""
+        def _apply_weight_norm(m):
+            if isinstance(m, torch.nn.Conv1d):
+                torch.nn.utils.weight_norm(m)
+                logging.info(f"Weight norm is applied to {m}.")
+
+        self.apply(_apply_weight_norm)
+
+    def remove_weight_norm(self):
+        """Remove weight normalization module from all of the layers."""
+        def _remove_weight_norm(m):
+            try:
+                if isinstance(m, torch.nn.Conv1d):
+                    torch.nn.utils.remove_weight_norm(m)
+                    logging.info(f"Weight norm is removed from {m}.")
+            except ValueError:
+                return
+
+        self.apply(_remove_weight_norm)
+
+
 class SPKID_TRANSFORM_LAYER(nn.Module):
     def __init__(self, n_spk=14, spkidtr_dim=2, use_weight_norm=True):
         super(SPKID_TRANSFORM_LAYER, self).__init__()
@@ -1396,17 +1544,20 @@ class SPKID_TRANSFORM_LAYER(nn.Module):
 
 class GRU_EXCIT_DECODER(nn.Module):
     def __init__(self, feat_dim=50, hidden_layers=1, hidden_units=1024, causal_conv=False,
-            kernel_size=7, dilation_size=1, do_prob=0, n_spk=14, use_weight_norm=True,
+            kernel_size=7, dilation_size=1, do_prob=0, n_spk=14, use_weight_norm=True, aux_dim=None,
                 cap_dim=None, right_size=0, pad_first=True,):
         super(GRU_EXCIT_DECODER, self).__init__()
         self.n_spk = n_spk
         self.feat_dim = feat_dim
         self.in_dim = self.n_spk+self.feat_dim
         self.cap_dim = cap_dim
+        self.aux_dim = aux_dim
         if self.cap_dim is not None:
             self.out_dim = 2+1+self.cap_dim
         else:
             self.out_dim = 2
+        if self.aux_dim is not None:
+            self.in_dim += self.aux_dim
         self.hidden_layers = hidden_layers
         self.hidden_units = hidden_units
         self.kernel_size = kernel_size
@@ -1461,11 +1612,17 @@ class GRU_EXCIT_DECODER(nn.Module):
         else:
             self.apply(initialize)
 
-    def forward(self, y, z, e_in=None, h=None, do=False, outpad_right=0):
-        if len(y.shape) == 2:
-            z = torch.cat((F.one_hot(y, num_classes=self.n_spk).float(), z), 2) # B x T_frm x C
+    def forward(self, y, z, e_in=None, aux=None, h=None, do=False, outpad_right=0):
+        if aux is not None:
+            if len(y.shape) == 2:
+                z = torch.cat((F.one_hot(y, num_classes=self.n_spk).float(), aux, z), 2) # B x T_frm x C
+            else:
+                z = torch.cat((y, aux, z), 2) # B x T_frm x C
         else:
-            z = torch.cat((y, z), 2) # B x T_frm x C
+            if len(y.shape) == 2:
+                z = torch.cat((F.one_hot(y, num_classes=self.n_spk).float(), z), 2) # B x T_frm x C
+            else:
+                z = torch.cat((y, z), 2) # B x T_frm x C
         # Input e layers
         if self.do_prob > 0 and do:
             e = self.conv_drop(self.conv(z.transpose(1,2)).transpose(1,2)) # B x C x T --> B x T x C

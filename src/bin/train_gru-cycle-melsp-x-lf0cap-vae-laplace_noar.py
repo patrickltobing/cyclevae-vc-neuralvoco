@@ -462,17 +462,8 @@ def main():
     args.cap_dim = mean_cap.shape[0]
 
     # save args as conf
-    #args.fftsize = 2 ** (len(bin(args.batch_size)) - 2 + 1)
     args.fftsize = 2 ** (len(bin(200)) - 2 + 1)
     args.string_path = "/log_1pmelmagsp"
-    #args.hidden_units_enc = 512
-    ##args.hidden_units_dec = 512
-    #args.hidden_units_dec = 640
-    ##args.hidden_units_dec = 832
-    #args.hidden_units_lf0 = 128
-    ##args.hidden_units_lf0 = 192
-    #args.kernel_size_enc = 5
-    #args.kernel_size_dec = 5
     torch.save(args, args.expdir + "/model.conf")
 
     # define network
