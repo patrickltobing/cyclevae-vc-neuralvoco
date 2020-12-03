@@ -156,30 +156,20 @@ def main():
         with torch.cuda.device(gpu):
             # define model and load parameters
             with torch.no_grad():
-                model_encoder_clean = GRU_VAE_ENCODER(
-                    in_dim=config.mel_dim,
-                    lat_dim=config.lat_dim,
-                    hidden_layers=config.hidden_layers_enc,
-                    hidden_units=config.hidden_units_enc,
-                    kernel_size=config.kernel_size_enc,
-                    dilation_size=config.dilation_size_enc,
-                    causal_conv=config.causal_conv_enc,
-                    pad_first=True,
-                    right_size=config.right_size_enc,
-                    n_spk=None)
-                logging.info(model_encoder_clean)
-                model_encoder_noise = GRU_VAE_ENCODER(
-                    in_dim=config.mel_dim,
-                    lat_dim=config.lat_dim,
-                    hidden_layers=config.hidden_layers_enc,
-                    hidden_units=config.hidden_units_enc,
-                    kernel_size=config.kernel_size_enc,
-                    dilation_size=config.dilation_size_enc,
-                    causal_conv=config.causal_conv_enc,
-                    pad_first=True,
-                    right_size=config.right_size_enc,
-                    n_spk=None)
-                logging.info(model_encoder_noise)
+                model_encoders = [None]*config.n_enc
+                for i in range(config.n_enc):
+                    model_encoders[i] = GRU_VAE_ENCODER(
+                        in_dim=config.mel_dim,
+                        lat_dim=config.lat_dim,
+                        hidden_layers=config.hidden_layers_enc,
+                        hidden_units=config.hidden_units_enc,
+                        kernel_size=config.kernel_size_enc,
+                        dilation_size=config.dilation_size_enc,
+                        causal_conv=config.causal_conv_enc,
+                        pad_first=True,
+                        right_size=config.right_size_enc,
+                        n_spk=None)
+                    logging.info(model_encoders[i])
                 model_decoder = GRU_SPEC_DECODER(
                     feat_dim=config.lat_dim,
                     out_dim=config.mel_dim,
@@ -206,32 +196,39 @@ def main():
                     res=True,
                     laplace=True)
                 logging.info(model_post)
-                model_encoder_clean.load_state_dict(torch.load(args.model)["model_encoder_noise"])
-                model_encoder_noise.load_state_dict(torch.load(args.model)["model_encoder_clean"])
+                for i in range(config.n_enc):
+                    model_encoders[i].load_state_dict(torch.load(args.model)["model_encoder-%d"%(i+1)])
                 model_decoder.load_state_dict(torch.load(args.model)["model_decoder"])
                 model_post.load_state_dict(torch.load(args.model)["model_post"])
-                model_encoder_clean.cuda()
-                model_encoder_noise.cuda()
+                for i in range(config.n_enc):
+                    model_encoders[i].cuda()
                 model_decoder.cuda()
                 model_post.cuda()
-                model_encoder_clean.eval()
-                model_encoder_noise.eval()
+                for i in range(config.n_enc):
+                    model_encoders[i].eval()
                 model_decoder.eval()
                 model_post.eval()
-                for param in model_encoder_clean.parameters():
-                    param.requires_grad = False
-                for param in model_encoder_noise.parameters():
-                    param.requires_grad = False
+                for i in range(config.n_enc):
+                    for param in model_encoders[i].parameters():
+                        param.requires_grad = False
                 for param in model_decoder.parameters():
                     param.requires_grad = False
                 for param in model_post.parameters():
                     param.requires_grad = False
             count = 0
-            pad_left = model_encoder_clean.pad_left + model_decoder.pad_left + model_post.pad_left
-            pad_right = model_encoder_clean.pad_right + model_decoder.pad_right + model_post.pad_right
+            pad_left = model_encoders[0].pad_left + model_decoder.pad_left + model_post.pad_left
+            pad_right = model_encoders[0].pad_right + model_decoder.pad_right + model_post.pad_right
             melfb_t = np.linalg.pinv(librosa.filters.mel(args.fs, args.fftl, n_mels=config.mel_dim))
             hop_length = int((args.fs/1000)*args.shiftms)
             win_length = int((args.fs/1000)*args.winms)
+            lat_rec = [None]*config.n_enc
+            melsp_rec = [None]*config.n_enc
+            melsp_rec_rest = [None]*config.n_enc
+            melsp_pdf = [None]*config.n_enc
+            melsp_smpl = [None]*config.n_enc
+            melsp_smpl_rest = [None]*config.n_enc
+            melsp_res = [None]*config.n_enc
+            melsp_res_rest = [None]*config.n_enc
             for feat_file in feat_list:
                 # reconst. melsp
                 logging.info("recmelsp " + feat_file)
@@ -242,41 +239,35 @@ def main():
                 with torch.no_grad():
                     feat = F.pad(torch.FloatTensor(feat_org).cuda().unsqueeze(0).transpose(1,2), (pad_left,pad_right), "replicate").transpose(1,2)
 
-                    _, lat_rec, _ = model_encoder_clean(feat, sampling=False)
-                    _, lat_rec_n, _ = model_encoder_noise(feat, sampling=False)
-                    melsp_rec, _ = model_decoder(lat_rec)
-                    melsp_rec_n, _ = model_decoder(lat_rec_n)
-                    melsp_pdf, melsp_smpl, _ = model_post(melsp_rec)
-                    melsp_res = melsp_pdf[:,:,:config.mel_dim]
-                    melsp_pdf_n, melsp_smpl_n, _ = model_post(melsp_rec_n)
-                    melsp_res_n = melsp_pdf_n[:,:,:config.mel_dim]
-                    melsp_rec_sum = torch.log(torch.clamp((((melsp_rec.exp()-1)/10000)+((melsp_rec_n.exp()-1)/10000)), min=1e-13)*10000+1)
+                    for i in range(config.n_enc):
+                        _, lat_rec[i], _ = model_encoders[i](feat, sampling=False)
+                        melsp_rec[i], _ = model_decoder(lat_rec[i])
+                        melsp_pdf[i], melsp_smpl[i], _ = model_post(melsp_rec[i])
+                        melsp_res[i] = melsp_pdf[i][:,:,:config.mel_dim]
+                        if i > 0:
+                            melsp_rec_sum += (melsp_rec[i].exp()-1)/10000
+                        else:
+                            melsp_rec_sum = (melsp_rec[i].exp()-1)/10000
+                    melsp_rec_sum = torch.log(torch.clamp(melsp_rec_sum, min=1e-13)*10000+1)
                     melsp_pdf_sum, melsp_smpl_sum, _ = model_post(melsp_rec_sum)
                     melsp_res_sum = melsp_pdf_sum[:,:,:config.mel_dim]
 
+                    for i in range(config.n_enc):
+                        melsp_res[i] = melsp_res[i][0].cpu().data.numpy()
+                        melsp_smpl[i] = melsp_smpl[i][0].cpu().data.numpy()
                     if model_post.pad_right > 0:
-                        melsp_rec = melsp_rec[0,model_post.pad_left:-model_post.pad_right].cpu().data.numpy()
-                        melsp_rec_n = melsp_rec_n[0,model_post.pad_left:-model_post.pad_right].cpu().data.numpy()
                         melsp_rec_sum = melsp_rec_sum[0,model_post.pad_left:-model_post.pad_right].cpu().data.numpy()
+                        for i in range(config.n_enc):
+                            melsp_rec[i] = melsp_rec[i][0,model_post.pad_left:-model_post.pad_right].cpu().data.numpy()
                     else:
-                        melsp_rec = melsp_rec[0,model_post.pad_left:].cpu().data.numpy()
-                        melsp_rec_n = melsp_rec_n[0,model_post.pad_left:].cpu().data.numpy()
                         melsp_rec_sum = melsp_rec_sum[0,model_post.pad_left:].cpu().data.numpy()
-                    melsp_res = melsp_res[0].cpu().data.numpy()
-                    melsp_res_n = melsp_res_n[0].cpu().data.numpy()
+                        for i in range(config.n_enc):
+                            melsp_rec[i] = melsp_rec[i][0,model_post.pad_left:].cpu().data.numpy()
                     melsp_res_sum = melsp_res_sum[0].cpu().data.numpy()
-                    melsp_smpl = melsp_smpl[0].cpu().data.numpy()
-                    melsp_smpl_n = melsp_smpl_n[0].cpu().data.numpy()
                     melsp_smpl_sum = melsp_smpl_sum[0].cpu().data.numpy()
 
-                logging.info(melsp_rec.shape)
-                logging.info(melsp_rec_n.shape)
                 logging.info(melsp_rec_sum.shape)
-                logging.info(melsp_res.shape)
-                logging.info(melsp_res_n.shape)
                 logging.info(melsp_res_sum.shape)
-                logging.info(melsp_smpl.shape)
-                logging.info(melsp_smpl_n.shape)
                 logging.info(melsp_smpl_sum.shape)
 
                 melsp = np.array(feat_org)
@@ -284,27 +275,13 @@ def main():
                 spcidx = np.array(read_hdf5(feat_file, "/spcidx_range")[0])
 
                 melsp_rest = (np.exp(melsp)-1)/10000
-                melsp_rec_rest = (np.exp(melsp_rec)-1)/10000
-                melsp_rec_n_rest = (np.exp(melsp_rec_n)-1)/10000
                 melsp_rec_sum_rest = (np.exp(melsp_rec_sum)-1)/10000
-                melsp_res_rest = (np.exp(melsp_res)-1)/10000
-                melsp_res_n_rest = (np.exp(melsp_res_n)-1)/10000
                 melsp_res_sum_rest = (np.exp(melsp_res_sum)-1)/10000
-                melsp_smpl_rest = (np.exp(melsp_smpl)-1)/10000
-                melsp_smpl_n_rest = (np.exp(melsp_smpl_n)-1)/10000
                 melsp_smpl_sum_rest = (np.exp(melsp_smpl_sum)-1)/10000
-
-                lsd_arr = np.sqrt(np.mean((20*(np.log10(np.clip(melsp_rec_rest[spcidx], a_min=1e-16, a_max=None))
-                                                         -np.log10(np.clip(melsp_rest[spcidx], a_min=1e-16, a_max=None))))**2, axis=-1))
-                lsd_rec_mean = np.mean(lsd_arr)
-                lsd_rec_std = np.std(lsd_arr)
-                logging.info("lsd_rec: %.6f dB +- %.6f" % (lsd_rec_mean, lsd_rec_std))
-
-                lsd_arr = np.sqrt(np.mean((20*(np.log10(np.clip(melsp_rec_n_rest[spcidx], a_min=1e-16, a_max=None))
-                                                         -np.log10(np.clip(melsp_rest[spcidx], a_min=1e-16, a_max=None))))**2, axis=-1))
-                lsd_rec_n_mean = np.mean(lsd_arr)
-                lsd_rec_n_std = np.std(lsd_arr)
-                logging.info("lsd_rec_n: %.6f dB +- %.6f" % (lsd_rec_n_mean, lsd_rec_n_std))
+                for i in range(config.n_enc):
+                    melsp_rec_rest[i] = (np.exp(melsp_rec[i])-1)/10000
+                    melsp_res_rest[i] = (np.exp(melsp_res[i])-1)/10000
+                    melsp_smpl_rest[i] = (np.exp(melsp_smpl[i])-1)/10000
 
                 lsd_arr = np.sqrt(np.mean((20*(np.log10(np.clip(melsp_rec_sum_rest[spcidx], a_min=1e-16, a_max=None))
                                                          -np.log10(np.clip(melsp_rest[spcidx], a_min=1e-16, a_max=None))))**2, axis=-1))
@@ -312,35 +289,11 @@ def main():
                 lsd_rec_sum_std = np.std(lsd_arr)
                 logging.info("lsd_rec_sum: %.6f dB +- %.6f" % (lsd_rec_sum_mean, lsd_rec_sum_std))
 
-                lsd_arr = np.sqrt(np.mean((20*(np.log10(np.clip(melsp_res_rest[spcidx], a_min=1e-16, a_max=None))
-                                                         -np.log10(np.clip(melsp_rest[spcidx], a_min=1e-16, a_max=None))))**2, axis=-1))
-                lsd_res_mean = np.mean(lsd_arr)
-                lsd_res_std = np.std(lsd_arr)
-                logging.info("lsd_res: %.6f dB +- %.6f" % (lsd_res_mean, lsd_res_std))
-
-                lsd_arr = np.sqrt(np.mean((20*(np.log10(np.clip(melsp_res_n_rest[spcidx], a_min=1e-16, a_max=None))
-                                                         -np.log10(np.clip(melsp_rest[spcidx], a_min=1e-16, a_max=None))))**2, axis=-1))
-                lsd_res_n_mean = np.mean(lsd_arr)
-                lsd_res_n_std = np.std(lsd_arr)
-                logging.info("lsd_res_n: %.6f dB +- %.6f" % (lsd_res_n_mean, lsd_res_n_std))
-
                 lsd_arr = np.sqrt(np.mean((20*(np.log10(np.clip(melsp_res_sum_rest[spcidx], a_min=1e-16, a_max=None))
                                                          -np.log10(np.clip(melsp_rest[spcidx], a_min=1e-16, a_max=None))))**2, axis=-1))
                 lsd_res_sum_mean = np.mean(lsd_arr)
                 lsd_res_sum_std = np.std(lsd_arr)
                 logging.info("lsd_res_sum: %.6f dB +- %.6f" % (lsd_res_sum_mean, lsd_res_sum_std))
-
-                lsd_arr = np.sqrt(np.mean((20*(np.log10(np.clip(melsp_smpl_rest[spcidx], a_min=1e-16, a_max=None))
-                                                         -np.log10(np.clip(melsp_rest[spcidx], a_min=1e-16, a_max=None))))**2, axis=-1))
-                lsd_smpl_mean = np.mean(lsd_arr)
-                lsd_smpl_std = np.std(lsd_arr)
-                logging.info("lsd_smpl: %.6f dB +- %.6f" % (lsd_smpl_mean, lsd_smpl_std))
-
-                lsd_arr = np.sqrt(np.mean((20*(np.log10(np.clip(melsp_smpl_n_rest[spcidx], a_min=1e-16, a_max=None))
-                                                         -np.log10(np.clip(melsp_rest[spcidx], a_min=1e-16, a_max=None))))**2, axis=-1))
-                lsd_smpl_n_mean = np.mean(lsd_arr)
-                lsd_smpl_n_std = np.std(lsd_arr)
-                logging.info("lsd_smpl_n: %.6f dB +- %.6f" % (lsd_smpl_n_mean, lsd_smpl_n_std))
 
                 lsd_arr = np.sqrt(np.mean((20*(np.log10(np.clip(melsp_smpl_sum_rest[spcidx], a_min=1e-16, a_max=None))
                                                          -np.log10(np.clip(melsp_rest[spcidx], a_min=1e-16, a_max=None))))**2, axis=-1))
@@ -351,31 +304,31 @@ def main():
                 dataset = feat_file.split('/')[1].split('_')[0]
                 if 'tr' in dataset or 'ts' in dataset:
                     logging.info('trn')
-                    lsd_cvlist.append(lsd_rec_mean)
-                    lsdstd_cvlist.append(lsd_rec_std)
-                    cvlist.append(np.var(melsp_rec_rest, axis=0))
+                    lsd_cvlist.append(lsd_rec_sum_mean)
+                    lsdstd_cvlist.append(lsd_rec_sum_std)
+                    cvlist.append(np.var(melsp_rec_sum_rest, axis=0))
                     logging.info(len(cvlist))
-                    lsd_res_cvlist.append(lsd_res_mean)
-                    lsdstd_res_cvlist.append(lsd_res_std)
-                    cvlist_res.append(np.var(melsp_res_rest, axis=0))
+                    lsd_res_cvlist.append(lsd_res_sum_mean)
+                    lsdstd_res_cvlist.append(lsd_res_sum_std)
+                    cvlist_res.append(np.var(melsp_res_sum_rest, axis=0))
                     logging.info(len(cvlist_res))
-                    lsd_smpl_cvlist.append(lsd_smpl_mean)
-                    lsdstd_smpl_cvlist.append(lsd_smpl_std)
-                    cvlist_smpl.append(np.var(melsp_smpl_rest, axis=0))
+                    lsd_smpl_cvlist.append(lsd_smpl_sum_mean)
+                    lsdstd_smpl_cvlist.append(lsd_smpl_sum_std)
+                    cvlist_smpl.append(np.var(melsp_smpl_sum_rest, axis=0))
                     logging.info(len(cvlist_smpl))
                 elif 'dv' in dataset:
                     logging.info('dev')
-                    lsd_cvlist_dv.append(lsd_rec_mean)
-                    lsdstd_cvlist_dv.append(lsd_rec_std)
-                    cvlist_dv.append(np.var(melsp_rec_rest, axis=0))
+                    lsd_cvlist_dv.append(lsd_rec_sum_mean)
+                    lsdstd_cvlist_dv.append(lsd_rec_sum_std)
+                    cvlist_dv.append(np.var(melsp_rec_sum_rest, axis=0))
                     logging.info(len(cvlist_dv))
-                    lsd_res_cvlist_dv.append(lsd_res_mean)
-                    lsdstd_res_cvlist_dv.append(lsd_res_std)
-                    cvlist_res_dv.append(np.var(melsp_res_rest, axis=0))
+                    lsd_res_cvlist_dv.append(lsd_res_sum_mean)
+                    lsdstd_res_cvlist_dv.append(lsd_res_sum_std)
+                    cvlist_res_dv.append(np.var(melsp_res_sum_rest, axis=0))
                     logging.info(len(cvlist_res_dv))
-                    lsd_smpl_cvlist_dv.append(lsd_smpl_mean)
-                    lsdstd_smpl_cvlist_dv.append(lsd_smpl_std)
-                    cvlist_smpl_dv.append(np.var(melsp_smpl_rest, axis=0))
+                    lsd_smpl_cvlist_dv.append(lsd_smpl_sum_mean)
+                    lsdstd_smpl_cvlist_dv.append(lsd_smpl_sum_std)
+                    cvlist_smpl_dv.append(np.var(melsp_smpl_sum_rest, axis=0))
                     logging.info(len(cvlist_smpl_dv))
 
                 logging.info("synth gf anasyn")
@@ -387,23 +340,33 @@ def main():
                 logging.info(wavpath)
                 sf.write(wavpath, wav, args.fs, 'PCM_16')
 
-                logging.info("synth gf rec")
-                recmagsp = np.matmul(melfb_t, melsp_rec_rest.T)
-                logging.info(recmagsp.shape)
-                wav = np.clip(librosa.core.griffinlim(recmagsp, hop_length=hop_length,
-                            win_length=win_length, window='hann'), -1, 0.999969482421875)
-                wavpath = os.path.join(args.outdir, os.path.basename(feat_file).replace(".h5", "_rec.wav"))
-                logging.info(wavpath)
-                sf.write(wavpath, wav, args.fs, 'PCM_16')
+                for i in range(config.n_enc):
+                    logging.info("synth gf rec")
+                    recmagsp = np.matmul(melfb_t, melsp_rec_rest[i].T)
+                    logging.info(recmagsp.shape)
+                    wav = np.clip(librosa.core.griffinlim(recmagsp, hop_length=hop_length,
+                                win_length=win_length, window='hann'), -1, 0.999969482421875)
+                    wavpath = os.path.join(args.outdir, os.path.basename(feat_file).replace(".h5", "_rec-%d.wav"%(i+1)))
+                    logging.info(wavpath)
+                    sf.write(wavpath, wav, args.fs, 'PCM_16')
 
-                logging.info("synth gf rec_n")
-                recmagsp = np.matmul(melfb_t, melsp_rec_n_rest.T)
-                logging.info(recmagsp.shape)
-                wav = np.clip(librosa.core.griffinlim(recmagsp, hop_length=hop_length,
-                            win_length=win_length, window='hann'), -1, 0.999969482421875)
-                wavpath = os.path.join(args.outdir, os.path.basename(feat_file).replace(".h5", "_rec_n.wav"))
-                logging.info(wavpath)
-                sf.write(wavpath, wav, args.fs, 'PCM_16')
+                    logging.info("synth gf res")
+                    recmagsp = np.matmul(melfb_t, melsp_res_rest[i].T)
+                    logging.info(recmagsp.shape)
+                    wav = np.clip(librosa.core.griffinlim(recmagsp, hop_length=hop_length,
+                                win_length=win_length, window='hann'), -1, 0.999969482421875)
+                    wavpath = os.path.join(args.outdir, os.path.basename(feat_file).replace(".h5", "_res-%d.wav"%(i+1)))
+                    logging.info(wavpath)
+                    sf.write(wavpath, wav, args.fs, 'PCM_16')
+
+                    logging.info("synth gf smpl")
+                    recmagsp = np.matmul(melfb_t, melsp_smpl_rest[i].T)
+                    logging.info(recmagsp.shape)
+                    wav = np.clip(librosa.core.griffinlim(recmagsp, hop_length=hop_length,
+                                win_length=win_length, window='hann'), -1, 0.999969482421875)
+                    wavpath = os.path.join(args.outdir, os.path.basename(feat_file).replace(".h5", "_smpl-%d.wav"%(i+1)))
+                    logging.info(wavpath)
+                    sf.write(wavpath, wav, args.fs, 'PCM_16')
 
                 logging.info("synth gf rec_sum")
                 recmagsp = np.matmul(melfb_t, melsp_rec_sum_rest.T)
@@ -411,24 +374,6 @@ def main():
                 wav = np.clip(librosa.core.griffinlim(recmagsp, hop_length=hop_length,
                             win_length=win_length, window='hann'), -1, 0.999969482421875)
                 wavpath = os.path.join(args.outdir, os.path.basename(feat_file).replace(".h5", "_rec_sum.wav"))
-                logging.info(wavpath)
-                sf.write(wavpath, wav, args.fs, 'PCM_16')
-
-                logging.info("synth gf res")
-                recmagsp = np.matmul(melfb_t, melsp_res_rest.T)
-                logging.info(recmagsp.shape)
-                wav = np.clip(librosa.core.griffinlim(recmagsp, hop_length=hop_length,
-                            win_length=win_length, window='hann'), -1, 0.999969482421875)
-                wavpath = os.path.join(args.outdir, os.path.basename(feat_file).replace(".h5", "_res.wav"))
-                logging.info(wavpath)
-                sf.write(wavpath, wav, args.fs, 'PCM_16')
-
-                logging.info("synth gf res_n")
-                recmagsp = np.matmul(melfb_t, melsp_res_n_rest.T)
-                logging.info(recmagsp.shape)
-                wav = np.clip(librosa.core.griffinlim(recmagsp, hop_length=hop_length,
-                            win_length=win_length, window='hann'), -1, 0.999969482421875)
-                wavpath = os.path.join(args.outdir, os.path.basename(feat_file).replace(".h5", "_res_n.wav"))
                 logging.info(wavpath)
                 sf.write(wavpath, wav, args.fs, 'PCM_16')
 
@@ -441,24 +386,6 @@ def main():
                 logging.info(wavpath)
                 sf.write(wavpath, wav, args.fs, 'PCM_16')
 
-                logging.info("synth gf smpl")
-                recmagsp = np.matmul(melfb_t, melsp_smpl_rest.T)
-                logging.info(recmagsp.shape)
-                wav = np.clip(librosa.core.griffinlim(recmagsp, hop_length=hop_length,
-                            win_length=win_length, window='hann'), -1, 0.999969482421875)
-                wavpath = os.path.join(args.outdir, os.path.basename(feat_file).replace(".h5", "_smpl.wav"))
-                logging.info(wavpath)
-                sf.write(wavpath, wav, args.fs, 'PCM_16')
-
-                logging.info("synth gf smpl_n")
-                recmagsp = np.matmul(melfb_t, melsp_smpl_n_rest.T)
-                logging.info(recmagsp.shape)
-                wav = np.clip(librosa.core.griffinlim(recmagsp, hop_length=hop_length,
-                            win_length=win_length, window='hann'), -1, 0.999969482421875)
-                wavpath = os.path.join(args.outdir, os.path.basename(feat_file).replace(".h5", "_smpl_n.wav"))
-                logging.info(wavpath)
-                sf.write(wavpath, wav, args.fs, 'PCM_16')
-
                 logging.info("synth gf smpl_sum")
                 recmagsp = np.matmul(melfb_t, melsp_smpl_sum_rest.T)
                 logging.info(recmagsp.shape)
@@ -468,19 +395,16 @@ def main():
                 logging.info(wavpath)
                 sf.write(wavpath, wav, args.fs, 'PCM_16')
 
-                logging.info('write rec smpl to h5')
                 outh5dir = os.path.join(os.path.dirname(os.path.dirname(feat_file)), args.spk+"-"+args.spk)
                 if not os.path.exists(outh5dir):
                     os.makedirs(outh5dir)
                 feat_file = os.path.join(outh5dir, os.path.basename(feat_file))
-                logging.info(feat_file + ' ' + args.string_path)
-                logging.info(melsp_smpl.shape)
-                write_hdf5(feat_file, args.string_path, melsp_smpl)
 
-                logging.info('write rec smpl_n to h5')
-                logging.info(feat_file + ' ' + args.string_path+"_n")
-                logging.info(melsp_smpl_n.shape)
-                write_hdf5(feat_file, args.string_path+"_n", melsp_smpl_n)
+                for i in range(config.n_enc):
+                    logging.info('write rec smpl %d to h5' % (i+1))
+                    logging.info(feat_file + ' ' + args.string_path+"-%d"%(i+1))
+                    logging.info(melsp_smpl[i].shape)
+                    write_hdf5(feat_file, args.string_path+"-%d"%(i+1), melsp_smpl[i])
 
                 logging.info('write rec smpl_sum to h5')
                 logging.info(feat_file + ' ' + args.string_path+"_sum")
@@ -557,15 +481,6 @@ def main():
             cvgv_var = np.var(np.array(cvlist_smpl), axis=0)
             logging.info("%lf +- %lf" % (np.mean(np.sqrt(np.square(np.log(cvgv_mean)-np.log(gv_mean)))),
                                         np.std(np.sqrt(np.square(np.log(cvgv_mean)-np.log(gv_mean))))))
-
-            #string_path = model_name+"-"+str(config.n_half_cyc)+"-"+str(config.lat_dim)+"-"+str(config.lat_dim_e)\
-            #                +"-"+str(config.spkidtr_dim)+"-"+model_epoch
-            #logging.info(string_path)
-
-            #string_mean = "/recgv_mean_"+string_path
-            #string_var = "/recgv_var_"+string_path
-            #write_hdf5(spk_stat, string_mean, cvgv_mean)
-            #write_hdf5(spk_stat, string_var, cvgv_var)
 
         if len(lsd_cvlist_dv) > 0:
             logging.info("lsd_rec_dv: %.6f dB (+- %.6f) +- %.6f (+- %.6f)" % (np.mean(np.array(lsd_cvlist_dv)),

@@ -566,6 +566,7 @@ def main():
     dataset = FeatureDatasetVAE(feat_list, pad_feat_transform, args.string_path, magsp=True, spk_list=spk_list)
     dataloader = DataLoader(dataset, batch_size=args.batch_size_utt, shuffle=True, num_workers=args.n_workers)
     #generator = train_generator(dataloader, device, args.batch_size, limit_count=1)
+    #generator = train_generator(dataloader, device, args.batch_size, limit_count=20)
     generator = train_generator(dataloader, device, args.batch_size, limit_count=None)
 
     # define generator evaluation
@@ -902,9 +903,10 @@ def main():
                     for i in range(args.n_enc):
                         batch_x[i], _ = model_decoder(batch_z[i])
                         if i > 0:
-                            batch_x_sum += torch.log(torch.clamp((batch_x[i].exp()-1)/10000, min=1e-13))
+                            batch_x_sum += (batch_x[i].exp()-1)/10000
                         else:
-                            batch_x_sum = torch.log(torch.clamp((batch_x[i].exp()-1)/10000, min=1e-13))
+                            batch_x_sum = (batch_x[i].exp()-1)/10000
+                    batch_x_sum = torch.log(torch.clamp(batch_x_sum, min=1e-13)*10000+1)
                     idx_in_1 = idx_in-1
                     for i in range(args.n_enc):
                         batch_z[i] = batch_z[i][:,outpad_lefts[idx_in_1]:batch_z[i].shape[1]-outpad_rights[idx_in_1]]
@@ -1658,9 +1660,10 @@ def main():
                 for i in range(args.n_enc):
                     batch_x[i], h_x[i] = model_decoder(batch_z[i], outpad_right=outpad_rights[idx_in], h=h_x[i], do=True)
                     if i > 0:
-                        batch_x_sum += torch.log(torch.clamp((batch_x[i].exp()-1)/10000, min=1e-13))
+                        batch_x_sum += (batch_x[i].exp()-1)/10000
                     else:
-                        batch_x_sum = torch.log(torch.clamp((batch_x[i].exp()-1)/10000, min=1e-13))
+                        batch_x_sum = (batch_x[i].exp()-1)/10000
+                batch_x_sum = torch.log(torch.clamp(batch_x_sum, min=1e-13)*10000+1)
                 idx_in_1 = idx_in-1
                 for i in range(args.n_enc):
                     batch_z[i] = batch_z[i][:,outpad_lefts[idx_in_1]:batch_z[i].shape[1]-outpad_rights[idx_in_1]]
@@ -1696,9 +1699,10 @@ def main():
                 for i in range(args.n_enc):
                     batch_x[i], h_x[i] = model_decoder(batch_z[i], outpad_right=outpad_rights[idx_in], do=True)
                     if i > 0:
-                        batch_x_sum += torch.log(torch.clamp((batch_x[i].exp()-1)/10000, min=1e-13))
+                        batch_x_sum += (batch_x[i].exp()-1)/10000
                     else:
-                        batch_x_sum = torch.log(torch.clamp((batch_x[i].exp()-1)/10000, min=1e-13))
+                        batch_x_sum = (batch_x[i].exp()-1)/10000
+                batch_x_sum = torch.log(torch.clamp(batch_x_sum, min=1e-13)*10000+1)
                 idx_in_1 = idx_in-1
                 for i in range(args.n_enc):
                     batch_z[i] = batch_z[i][:,outpad_lefts[idx_in_1]:batch_z[i].shape[1]-outpad_rights[idx_in_1]]
@@ -1799,29 +1803,29 @@ def main():
                                                     + torch.mean(torch.mean(criterion_l1(magsp_x_sum_post, magsp), -1))
 
                     if iter_idx >= 50:
-                        batch_loss_ms_norm_x_, batch_loss_ms_err_x_ = criterion_ms(melsp_x_sum_rest, melsp_rest)
-                        if not torch.isinf(batch_loss_ms_norm_x_) and not torch.isnan(batch_loss_ms_norm_x_):
-                            batch_loss_p_select += batch_loss_ms_norm_x_
-                        if not torch.isinf(batch_loss_ms_err_x_) and not torch.isnan(batch_loss_ms_err_x_):
-                            batch_loss_p_select += batch_loss_ms_err_x_
+                        batch_loss_ms_norm_x__, batch_loss_ms_err_x__ = criterion_ms(melsp_x_sum_rest, melsp_rest)
+                        if not torch.isinf(batch_loss_ms_norm_x__) and not torch.isnan(batch_loss_ms_norm_x__):
+                            batch_loss_p_select += batch_loss_ms_norm_x__
+                        if not torch.isinf(batch_loss_ms_err_x__) and not torch.isnan(batch_loss_ms_err_x__):
+                            batch_loss_p_select += batch_loss_ms_err_x__
 
-                        batch_loss_ms_norm_x_, batch_loss_ms_err_x_ = criterion_ms(melsp_x_sum_post_rest, melsp_rest)
-                        if not torch.isinf(batch_loss_ms_norm_x_) and not torch.isnan(batch_loss_ms_norm_x_):
-                            batch_loss_p_select += batch_loss_ms_norm_x_
-                        if not torch.isinf(batch_loss_ms_err_x_) and not torch.isnan(batch_loss_ms_err_x_):
-                            batch_loss_p_select += batch_loss_ms_err_x_
+                        batch_loss_ms_norm_x__, batch_loss_ms_err_x__ = criterion_ms(melsp_x_sum_post_rest, melsp_rest)
+                        if not torch.isinf(batch_loss_ms_norm_x__) and not torch.isnan(batch_loss_ms_norm_x__):
+                            batch_loss_p_select += batch_loss_ms_norm_x__
+                        if not torch.isinf(batch_loss_ms_err_x__) and not torch.isnan(batch_loss_ms_err_x__):
+                            batch_loss_p_select += batch_loss_ms_err_x__
 
-                        batch_loss_ms_norm_x_, batch_loss_ms_err_x_ = criterion_ms(magsp_x_sum, magsp)
-                        if not torch.isinf(batch_loss_ms_norm_x_) and not torch.isnan(batch_loss_ms_norm_x_):
-                            batch_loss_p_select += batch_loss_ms_norm_x_
-                        if not torch.isinf(batch_loss_ms_err_x_) and not torch.isnan(batch_loss_ms_err_x_):
-                            batch_loss_p_select += batch_loss_ms_err_x_
+                        batch_loss_ms_norm_x__, batch_loss_ms_err_x__ = criterion_ms(magsp_x_sum, magsp)
+                        if not torch.isinf(batch_loss_ms_norm_x__) and not torch.isnan(batch_loss_ms_norm_x__):
+                            batch_loss_p_select += batch_loss_ms_norm_x__
+                        if not torch.isinf(batch_loss_ms_err_x__) and not torch.isnan(batch_loss_ms_err_x__):
+                            batch_loss_p_select += batch_loss_ms_err_x__
 
-                        batch_loss_ms_norm_x_, batch_loss_ms_err_x_ = criterion_ms(magsp_x_sum_post, magsp)
-                        if not torch.isinf(batch_loss_ms_norm_x_) and not torch.isnan(batch_loss_ms_norm_x_):
-                            batch_loss_p_select += batch_loss_ms_norm_x_
-                        if not torch.isinf(batch_loss_ms_err_x_) and not torch.isnan(batch_loss_ms_err_x_):
-                            batch_loss_p_select += batch_loss_ms_err_x_
+                        batch_loss_ms_norm_x__, batch_loss_ms_err_x__ = criterion_ms(magsp_x_sum_post, magsp)
+                        if not torch.isinf(batch_loss_ms_norm_x__) and not torch.isnan(batch_loss_ms_norm_x__):
+                            batch_loss_p_select += batch_loss_ms_norm_x__
+                        if not torch.isinf(batch_loss_ms_err_x__) and not torch.isnan(batch_loss_ms_err_x__):
+                            batch_loss_p_select += batch_loss_ms_err_x__
 
                     for i in range(args.n_enc):
                         batch_loss_q_select += torch.mean(torch.sum(kl_laplace(batch_qzx[i][k,:flens_utt]), -1))
@@ -1941,12 +1945,12 @@ def main():
 
             ## melsp ms
             for i in range(args.n_enc):
-                batch_loss_ms_norm_x_, batch_loss_ms_err_x_ = criterion_ms(melsp_x_rest[i], melsp_rest)
-                batch_loss_ms_norm_x[i] = batch_loss_ms_norm_x_.mean()
-                batch_loss_ms_err_x[i] = batch_loss_ms_err_x_.mean()
-                batch_loss_ms_norm_x_post_, batch_loss_ms_err_x_post_ = criterion_ms(melsp_x_post_rest[i], melsp_rest)
-                batch_loss_ms_norm_x_post[i] = batch_loss_ms_norm_x_post_.mean()
-                batch_loss_ms_err_x_post[i] = batch_loss_ms_err_x_post_.mean()
+                batch_loss_ms_norm_x__, batch_loss_ms_err_x__ = criterion_ms(melsp_x_rest[i], melsp_rest)
+                batch_loss_ms_norm_x[i] = batch_loss_ms_norm_x__.mean()
+                batch_loss_ms_err_x[i] = batch_loss_ms_err_x__.mean()
+                batch_loss_ms_norm_x_post__, batch_loss_ms_err_x_post__ = criterion_ms(melsp_x_post_rest[i], melsp_rest)
+                batch_loss_ms_norm_x_post[i] = batch_loss_ms_norm_x_post__.mean()
+                batch_loss_ms_err_x_post[i] = batch_loss_ms_err_x_post__.mean()
 
             batch_loss_ms_norm_x_sum_, batch_loss_ms_err_x_sum_ = criterion_ms(melsp_x_sum_rest, melsp_rest)
             batch_loss_ms_norm_x_sum = batch_loss_ms_norm_x_sum_.mean()
@@ -1987,12 +1991,12 @@ def main():
 
             # KL-div. lat.
             for i in range(args.n_enc):
-                batch_loss_qzx_pz_ = torch.mean(torch.sum(kl_laplace(batch_qzx[i]), -1), -1)
-                batch_loss_qzx_pz[i] = batch_loss_qzx_pz_.mean()
+                batch_loss_qzx_pz__ = torch.mean(torch.sum(kl_laplace(batch_qzx[i]), -1), -1)
+                batch_loss_qzx_pz[i] = batch_loss_qzx_pz__.mean()
                 if i > 0:
-                    batch_loss_q += batch_loss_qzx_pz_.sum()
+                    batch_loss_q += batch_loss_qzx_pz__.sum()
                 else:
-                    batch_loss_q = batch_loss_qzx_pz_.sum()
+                    batch_loss_q = batch_loss_qzx_pz__.sum()
 
             # lat/melsp/magsp cls
             batch_sc_ = batch_sc.reshape(-1)

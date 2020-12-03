@@ -1479,8 +1479,6 @@ def main():
                         if dec_post_pad_right > 0:
                             trj_lat_src = trj_lat_src[:,dec_post_pad_left:-dec_post_pad_right]
                             trj_lat_src_e = trj_lat_src_e[:,dec_post_pad_left:-dec_post_pad_right]
-                            trj_lat_src = trj_lat_src[:,dec_post_pad_left:-dec_post_pad_right]
-                            trj_lat_src_e = trj_lat_src_e[:,dec_post_pad_left:-dec_post_pad_right]
                         else:
                             trj_lat_src = trj_lat_src[:,dec_post_pad_left:]
                             trj_lat_src_e = trj_lat_src_e[:,dec_post_pad_left:]

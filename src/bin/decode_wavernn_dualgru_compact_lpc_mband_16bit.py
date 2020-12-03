@@ -70,7 +70,7 @@ def pad_list(batch_list, pad_value=0.0):
     return batch_pad
 
 
-def decode_generator(feat_list, upsampling_factor=120, string_path='/feat_mceplf0cap', batch_size=1, excit_dim=0):
+def decode_generator(feat_list, upsampling_factor=120, string_path='/feat_mceplf0cap', batch_size=1, excit_dim=0, n_enc=None):
     """DECODE BATCH GENERATOR
 
     Args:
@@ -91,15 +91,17 @@ def decode_generator(feat_list, upsampling_factor=120, string_path='/feat_mceplf
         batch_feat_lists = np.array_split(feat_list, n_batch)
         batch_feat_lists = [f.tolist() for f in batch_feat_lists]
 
+        if n_enc is not None:
+            feats = [None]*n_enc
         for batch_feat_list in batch_feat_lists:
             batch_feat = []
             n_samples_list = []
             feat_ids = []
             for featfile in batch_feat_list:
                 ## load waveform
-                if 'smpl' in string_path:
-                    feat = read_hdf5(featfile, string_path)
-                    feat_n = read_hdf5(featfile, string_path+"_n")
+                if n_enc is not None:
+                    for i in range(n_enc):
+                        feats[i] = read_hdf5(featfile, string_path+"-%d"%(i+1))
                     feat_sum = read_hdf5(featfile, string_path+"_sum")
                 elif 'mel' in string_path:
                     if excit_dim > 0:
@@ -110,18 +112,24 @@ def decode_generator(feat_list, upsampling_factor=120, string_path='/feat_mceplf
                     feat = read_hdf5(featfile, string_path)
 
                 # append to list
-                batch_feat += [feat]
-                if 'smpl' in string_path:
-                    batch_feat += [feat_n]
+                if n_enc is not None:
+                    for i in range(n_enc):
+                        batch_feat += [feats[i]]
                     batch_feat += [feat_sum]
-                n_samples_list += [feat.shape[0]*upsampling_factor]
-                if 'smpl' in string_path:
-                    n_samples_list += [feat_n.shape[0]*upsampling_factor]
+                else:
+                    batch_feat += [feat]
+                if n_enc is not None:
+                    for i in range(n_enc):
+                        n_samples_list += [feats[i].shape[0]*upsampling_factor]
                     n_samples_list += [feat_sum.shape[0]*upsampling_factor]
-                feat_ids += [os.path.basename(featfile).replace(".h5", "")]
-                if 'smpl' in string_path:
-                    feat_ids += [os.path.basename(featfile).replace(".h5", "_n")]
+                else:
+                    n_samples_list += [feat.shape[0]*upsampling_factor]
+                if n_enc is not None:
+                    for i in range(n_enc):
+                        feat_ids += [os.path.basename(featfile).replace(".h5", "_%d"%(i+1))]
                     feat_ids += [os.path.basename(featfile).replace(".h5", "_sum")]
+                else:
+                    feat_ids += [os.path.basename(featfile).replace(".h5", "")]
                 logging.info(feat_ids)
 
             # convert list to ndarray
@@ -165,6 +173,8 @@ def main():
                         type=str, help="selection of GPU device")
     parser.add_argument("--verbose", default=1,
                         type=int, help="log level")
+    parser.add_argument("--n_enc", default=None,
+                        type=int, help="number of encoder in case of source-sep. net")
     args = parser.parse_args()
 
     if args.GPU_device is not None or args.GPU_device_str is not None:
@@ -258,6 +268,7 @@ def main():
                     batch_size=args.batch_size,
                     upsampling_factor=config.upsampling_factor,
                     excit_dim=config.excit_dim,
+                    n_enc=args.n_enc,
                     string_path=string_path)
 
                 # decode
