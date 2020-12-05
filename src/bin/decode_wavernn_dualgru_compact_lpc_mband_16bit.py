@@ -82,7 +82,10 @@ def decode_generator(feat_list, upsampling_factor=120, string_path='/feat_mceplf
         (object): generator instance
     """
     with torch.no_grad():
-        shape_list = [shape_hdf5(f, string_path)[0] for f in feat_list]
+        if n_enc is not None:
+            shape_list = [shape_hdf5(f, string_path+"_sum")[0] for f in feat_list]
+        else:
+            shape_list = [shape_hdf5(f, string_path)[0] for f in feat_list]
         idx = np.argsort(shape_list)
         feat_list = [feat_list[i] for i in idx]
 

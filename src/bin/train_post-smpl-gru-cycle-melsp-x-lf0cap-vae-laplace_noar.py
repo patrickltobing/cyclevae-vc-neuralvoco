@@ -2833,30 +2833,7 @@ def main():
             total += time.time() - start
 
 
-    # save final model
-    model_encoder_melsp.cpu()
-    model_decoder_melsp.cpu()
-    model_encoder_excit.cpu()
-    model_decoder_excit.cpu()
-    model_classifier.cpu()
-    model_post.cpu()
-    if (args.spkidtr_dim > 0):
-        model_spkidtr.cpu()
-        torch.save({"model_encoder_melsp": model_encoder_melsp.state_dict(),
-                    "model_decoder_melsp": model_decoder_melsp.state_dict(),
-                    "model_encoder_excit": model_encoder_excit.state_dict(),
-                    "model_decoder_excit": model_decoder_excit.state_dict(),
-                    "model_classifier": model_classifier.state_dict(),
-                    "model_spkidtr": model_spkidtr.state_dict(),
-                    "model_post": model_post.state_dict()}, args.expdir + "/checkpoint-final.pkl")
-    else:
-        torch.save({"model_encoder_melsp": model_encoder_melsp.state_dict(),
-                    "model_decoder_melsp": model_decoder_melsp.state_dict(),
-                    "model_encoder_excit": model_encoder_excit.state_dict(),
-                    "model_decoder_excit": model_decoder_excit.state_dict(),
-                    "model_classifier": model_classifier.state_dict(),
-                    "model_post": model_post.state_dict()}, args.expdir + "/checkpoint-final.pkl")
-    logging.info("final checkpoint created.")
+    logging.info("Maximum epoch is reached, please check the development optimum index, or continue training by increasing maximum epoch.")
 
 
 if __name__ == "__main__":

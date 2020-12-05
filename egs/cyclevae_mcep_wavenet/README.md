@@ -14,7 +14,7 @@ With respect to the parent-root folder,
 
 ```
 $ cd tools
-$ cd make
+$ make
 $ cd ../egs/cyclevae_mcep_wavenet
 ```
 

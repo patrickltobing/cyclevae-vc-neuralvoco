@@ -34,10 +34,7 @@ from vcneuvoco import GRU_EXCIT_DECODER, SPKID_TRANSFORM_LAYER, GRU_POST_NET
 from feature_extract import convert_f0
 from dtw_c import dtw_c as dtw
 
-#import pysptk as ps
-#import pyworld as pw
 import librosa
-#from pysptk.synthesis import MLSADF
 
 #np.set_printoptions(threshold=np.inf)
 
@@ -163,9 +160,6 @@ def main():
     model_name = str_split[1]+"_"+str_split[2]
     logging.info('mdl_name: '+model_name)
 
-    #string_path = model_name+"-"+str(config.n_half_cyc)+"-"+str(config.lat_dim)+"-"+str(config.lat_dim_e)\
-    #                +"-"+str(config.spkidtr_dim)+"-"+model_epoch
-    #cvgv_mean = read_hdf5(stats_list[trg_idx], "/recgv_mean_"+string_path)
     gv_mean_trg = read_hdf5(stats_list[trg_idx], "/gv_melsp_mean")
     if args.n_interp > 0:
         gv_mean_trgs = []
@@ -381,9 +375,9 @@ def main():
                         logging.info(torch.mean(F.softmax(spk_logits_e[:,outpad_lefts[0]:], dim=-1), 1))
 
                     if trg_exist:
-                        spk_trg_logits, _, lat_trg, _ = model_encoder_melsp(F.pad(torch.FloatTensor(feat_trg).cuda().unsqueeze(0).transpose(1,2), \
+                        spk_trg_logits, _, lat_trg, _ = model_encoder_melsp(F.pad(torch.FloatTensor(feat_trg).cuda().unsqueeze(0).transpose(1,2),
                                                                         (model_encoder_melsp.pad_left,model_encoder_melsp.pad_right), "replicate").transpose(1,2), sampling=False)
-                        spk_trg_logits_e, _, lat_trg_e, _ = model_encoder_excit(F.pad(torch.FloatTensor(feat_trg).cuda().unsqueeze(0).transpose(1,2), \
+                        spk_trg_logits_e, _, lat_trg_e, _ = model_encoder_excit(F.pad(torch.FloatTensor(feat_trg).cuda().unsqueeze(0).transpose(1,2),
                                                                         (model_encoder_excit.pad_left,model_encoder_excit.pad_right), "replicate").transpose(1,2), sampling=False)
                         logging.info('target spkpost')
                         logging.info(torch.mean(F.softmax(spk_trg_logits, dim=-1), 1))

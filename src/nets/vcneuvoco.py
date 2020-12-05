@@ -1612,17 +1612,20 @@ class GRU_EXCIT_DECODER(nn.Module):
         else:
             self.apply(initialize)
 
-    def forward(self, y, z, e_in=None, aux=None, h=None, do=False, outpad_right=0):
-        if aux is not None:
-            if len(y.shape) == 2:
-                z = torch.cat((F.one_hot(y, num_classes=self.n_spk).float(), aux, z), 2) # B x T_frm x C
+    def forward(self, z, y=None, aux=None, h=None, do=False, outpad_right=0):
+        if y is not None:
+            if aux is not None:
+                if len(y.shape) == 2:
+                    z = torch.cat((F.one_hot(y, num_classes=self.n_spk).float(), aux, z), 2) # B x T_frm x C
+                else:
+                    z = torch.cat((y, aux, z), 2) # B x T_frm x C
             else:
-                z = torch.cat((y, aux, z), 2) # B x T_frm x C
-        else:
-            if len(y.shape) == 2:
-                z = torch.cat((F.one_hot(y, num_classes=self.n_spk).float(), z), 2) # B x T_frm x C
-            else:
-                z = torch.cat((y, z), 2) # B x T_frm x C
+                if len(y.shape) == 2:
+                    z = torch.cat((F.one_hot(y, num_classes=self.n_spk).float(), z), 2) # B x T_frm x C
+                else:
+                    z = torch.cat((y, z), 2) # B x T_frm x C
+        elif aux is not None:
+            z = torch.cat((aux, z), 2) # B x T_frm x C
         # Input e layers
         if self.do_prob > 0 and do:
             e = self.conv_drop(self.conv(z.transpose(1,2)).transpose(1,2)) # B x C x T --> B x T x C
