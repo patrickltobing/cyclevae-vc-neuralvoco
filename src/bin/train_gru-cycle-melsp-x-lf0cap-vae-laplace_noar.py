@@ -37,7 +37,6 @@ import torch_optimizer as optim
 
 from dataset import FeatureDatasetCycMceplf0WavVAE, FeatureDatasetEvalCycMceplf0WavVAE, padding
 
-import librosa
 from dtw_c import dtw_c as dtw
 
 #np.set_printoptions(threshold=np.inf)
@@ -64,7 +63,6 @@ def train_generator(dataloader, device, batch_size, n_cv, limit_count=None):
             flens = batch['flen'].data.numpy()
             max_flen = np.max(flens) ## get max samples length
             feat = batch['feat'][:,:max_flen].to(device)
-            feat_magsp = batch['feat_magsp'][:,:max_flen].to(device)
             sc = batch['src_codes'][:,:max_flen].to(device)
             sc_cv = [None]*n_cv
             feat_cv = [None]*n_cv
@@ -90,7 +88,6 @@ def train_generator(dataloader, device, batch_size, n_cv, limit_count=None):
                 if len(del_index_utt) > 0:
                     flens = np.delete(flens, del_index_utt, axis=0)
                     feat = torch.FloatTensor(np.delete(feat.cpu().data.numpy(), del_index_utt, axis=0)).to(device)
-                    feat_magsp = torch.FloatTensor(np.delete(feat_magsp.cpu().data.numpy(), del_index_utt, axis=0)).to(device)
                     sc = torch.LongTensor(np.delete(sc.cpu().data.numpy(), del_index_utt, axis=0)).to(device)
                     for j in range(n_cv):
                         sc_cv[j] = torch.LongTensor(np.delete(sc_cv[j].cpu().data.numpy(), del_index_utt, axis=0)).to(device)
@@ -105,7 +102,7 @@ def train_generator(dataloader, device, batch_size, n_cv, limit_count=None):
                 if len(idx_select) > 0:
                     idx_select_full = torch.LongTensor(np.delete(np.arange(n_batch_utt), idx_select, axis=0)).to(device)
                     idx_select = torch.LongTensor(idx_select).to(device)
-                yield feat, feat_magsp, sc, sc_cv, feat_cv, c_idx, idx, featfiles, f_bs, f_ss, flens, \
+                yield feat, sc, sc_cv, feat_cv, c_idx, idx, featfiles, f_bs, f_ss, flens, \
                     n_batch_utt, del_index_utt, max_flen, spk_cv, idx_select, idx_select_full, flens_acc
                 for i in range(n_batch_utt):
                     flens_acc[i] -= delta_frm
@@ -127,7 +124,7 @@ def train_generator(dataloader, device, batch_size, n_cv, limit_count=None):
             #if c_idx > 2:
             #    break
 
-        yield [], [], [], [], [], -1, -1, [], [], [], [], [], [], [], [], [], [], []
+        yield [], [], [], [], -1, -1, [], [], [], [], [], [], [], [], [], [], []
 
 
 def eval_generator(dataloader, device, batch_size, limit_count=None, spcidx=True):
@@ -156,7 +153,6 @@ def eval_generator(dataloader, device, batch_size, limit_count=None, spcidx=True
             max_flen_spc_src = np.max(flens_spc_src) ## get max samples length
             max_flen_spc_src_trg = np.max(flens_spc_src_trg) ## get max samples length
             feat = batch['h_src'][:,:max_flen].to(device)
-            feat_magsp = batch['h_src_magsp'][:,:max_flen].to(device)
             feat_trg = batch['h_src_trg'][:,:max_flen_trg].to(device)
             sc = batch['src_code'][:,:max_flen].to(device)
             sc_cv = batch['src_trg_code'][:,:max_flen].to(device)
@@ -194,7 +190,6 @@ def eval_generator(dataloader, device, batch_size, limit_count=None, spcidx=True
                     flens_spc_src = np.delete(flens_spc_src, del_index_utt, axis=0)
                     flens_spc_src_trg = np.delete(flens_spc_src_trg, del_index_utt, axis=0)
                     feat = torch.FloatTensor(np.delete(feat.cpu().data.numpy(), del_index_utt, axis=0)).to(device)
-                    feat_magsp = torch.FloatTensor(np.delete(feat_magsp.cpu().data.numpy(), del_index_utt, axis=0)).to(device)
                     feat_trg = torch.FloatTensor(np.delete(feat_trg.cpu().data.numpy(), del_index_utt, axis=0)).to(device)
                     sc = torch.LongTensor(np.delete(sc.cpu().data.numpy(), del_index_utt, axis=0)).to(device)
                     sc_cv = torch.LongTensor(np.delete(sc_cv.cpu().data.numpy(), del_index_utt, axis=0)).to(device)
@@ -213,12 +208,12 @@ def eval_generator(dataloader, device, batch_size, limit_count=None, spcidx=True
                     idx_select_full = torch.LongTensor(np.delete(np.arange(n_batch_utt), idx_select, axis=0)).to(device)
                     idx_select = torch.LongTensor(idx_select).to(device)
                 if spcidx:
-                    yield feat, feat_magsp, feat_trg, sc, sc_cv, feat_cv, c_idx, idx, featfiles, f_bs, f_ss, flens, \
+                    yield feat, feat_trg, sc, sc_cv, feat_cv, c_idx, idx, featfiles, f_bs, f_ss, flens, \
                         n_batch_utt, del_index_utt, max_flen, spk_cv, file_src_trg_flag, spcidx_src, \
                             spcidx_src_trg, flens_spc_src, flens_spc_src_trg, feat_full, sc_full, sc_cv_full, \
                                 idx_select, idx_select_full
                 else:
-                    yield feat, feat_magsp, feat_trg, sc, sc_cv, feat_cv, c_idx, idx, featfiles, f_bs, f_ss, flens, \
+                    yield feat, feat_trg, sc, sc_cv, feat_cv, c_idx, idx, featfiles, f_bs, f_ss, flens, \
                         n_batch_utt, del_index_utt, max_flen, spk_cv, file_src_trg_flag, spcidx_src, \
                             spcidx_src_trg, flens_spc_src, flens_spc_src_trg, idx_select, idx_select_full
                 len_frm -= delta_frm
@@ -237,9 +232,9 @@ def eval_generator(dataloader, device, batch_size, limit_count=None, spcidx=True
             #    break
 
         if spcidx:
-            yield [], [], [], [], [], [], -1, -1, [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], []
+            yield [], [], [], [], [], -1, -1, [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], []
         else:
-            yield [], [], [], [], [], [], -1, -1, [], [], [], [], [], [], [], [], [], [], [], [], [], [], []
+            yield [], [], [], [], [], -1, -1, [], [], [], [], [], [], [], [], [], [], [], [], [], [], []
 
 
 def save_checkpoint(checkpoint_dir, model_encoder_melsp, model_decoder_melsp, model_encoder_excit, model_decoder_excit,
@@ -384,10 +379,6 @@ def main():
                         type=int, help="batch size (if set 0, utterance batch will be used)")
     parser.add_argument("--right_size_lf0", default=0,
                         type=int, help="batch size (if set 0, utterance batch will be used)")
-    parser.add_argument("--fftl", default=2048,
-                        type=int, help="kernel size of dilated causal convolution")
-    parser.add_argument("--fs", default=24000,
-                        type=int, help="kernel size of dilated causal convolution")
     # other setting
     parser.add_argument("--pad_len", default=3000,
                         type=int, help="seed number")
@@ -535,11 +526,9 @@ def main():
     model_classifier = GRU_LAT_FEAT_CLASSIFIER(
         lat_dim=args.lat_dim+args.lat_dim_e,
         feat_dim=args.mel_dim,
-        feat_aux_dim=args.fftl//2+1,
         n_spk=n_spk,
         hidden_units=32,
-        hidden_layers=1,
-        do_prob=args.do_prob)
+        hidden_layers=1)
     logging.info(model_classifier) 
     model_spk = GRU_SPK(
         n_spk=n_spk,
@@ -547,11 +536,11 @@ def main():
         hidden_units=32,
         do_prob=args.do_prob)
     logging.info(model_spk)
-    criterion_ms = ModulationSpectrumLoss(args.fftsize)
+    #criterion_ms = ModulationSpectrumLoss(args.fftsize)
+    criterion_ms = ModulationSpectrumLoss(args.fftsize, post=True)
     criterion_ce = torch.nn.CrossEntropyLoss(reduction='none')
     criterion_l1 = torch.nn.L1Loss(reduction='none')
     criterion_l2 = torch.nn.MSELoss(reduction='none')
-    melfb_t = torch.FloatTensor(np.linalg.pinv(librosa.filters.mel(args.fs, args.fftl, n_mels=args.mel_dim)).T)
 
     p_spk = torch.ones(n_spk)/n_spk
 
@@ -576,7 +565,6 @@ def main():
         mean_full = mean_full.cuda()
         scale_full = scale_full.cuda()
         p_spk = p_spk.cuda()
-        melfb_t = melfb_t.cuda()
     else:
         logging.error("gpu is not available. please check the setting.")
         sys.exit(1)
@@ -753,7 +741,7 @@ def main():
         sys.exit(1)
     logging.info("number of training data = %d." % len(feat_list))
     dataset = FeatureDatasetCycMceplf0WavVAE(feat_list, pad_feat_transform, spk_list, stats_list,
-                    args.n_half_cyc, args.string_path, excit_dim=args.full_excit_dim, magsp=True)
+                    args.n_half_cyc, args.string_path, excit_dim=args.full_excit_dim)
     dataloader = DataLoader(dataset, batch_size=args.batch_size_utt, shuffle=True, num_workers=args.n_workers)
     #generator = train_generator(dataloader, device, args.batch_size, n_cv, limit_count=1)
     generator = train_generator(dataloader, device, args.batch_size, n_cv, limit_count=None)
@@ -769,7 +757,7 @@ def main():
             logging.error("%s should be directory or list." % (feat_eval_src_list[i]))
             sys.exit(1)
     dataset_eval = FeatureDatasetEvalCycMceplf0WavVAE(feat_list_eval_src_list, pad_feat_transform, spk_list, \
-                    stats_list, args.string_path, excit_dim=args.full_excit_dim, magsp=True)
+                    stats_list, args.string_path, excit_dim=args.full_excit_dim)
     n_eval_data = len(dataset_eval.file_list_src)
     logging.info("number of evaluation data = %d." % n_eval_data)
     dataloader_eval = DataLoader(dataset_eval, batch_size=args.batch_size_utt_eval, shuffle=False, num_workers=args.n_workers)
@@ -849,13 +837,9 @@ def main():
     batch_z_sc = [None]*n_rec
     z_e = [None]*n_rec
     batch_melsp_rec = [None]*n_rec
-    batch_magsp_rec = [None]*n_rec
     batch_feat_rec_sc = [None]*n_rec
-    batch_feat_magsp_rec_sc = [None]*n_rec
     batch_melsp_cv = [None]*n_cv
-    batch_magsp_cv = [None]*n_cv
     batch_feat_cv_sc = [None]*n_cv
-    batch_feat_magsp_cv_sc = [None]*n_cv
     batch_lf0_rec = [None]*n_rec
     batch_lf0_cv = [None]*n_cv
     h_z = [None]*n_rec
@@ -866,11 +850,9 @@ def main():
     h_melsp = [None]*n_rec
     h_lf0 = [None]*n_rec
     h_feat_sc = [None]*n_rec
-    h_feat_magsp_sc = [None]*n_rec
     h_melsp_cv = [None]*n_cv
     h_lf0_cv = [None]*n_cv
     h_feat_cv_sc = [None]*n_rec
-    h_feat_magsp_cv_sc = [None]*n_rec
     loss_elbo = [None]*n_rec
     loss_px = [None]*n_rec
     loss_qy_py = [None]*n_rec
@@ -938,19 +920,12 @@ def main():
     batch_loss_uvcap = [None]*n_rec
     batch_loss_cap = [None]*n_rec
     batch_loss_melsp = [None]*n_rec
-    batch_loss_magsp = [None]*n_rec
     batch_loss_sc_feat = [None]*n_rec
-    batch_loss_sc_feat_magsp = [None]*n_rec
     batch_loss_melsp_dB = [None]*n_rec
-    batch_loss_magsp_dB = [None]*n_rec
     batch_loss_ms_norm = [None]*n_rec
     batch_loss_ms_err = [None]*n_rec
-    batch_loss_ms_norm_magsp = [None]*n_rec
-    batch_loss_ms_err_magsp = [None]*n_rec
     batch_loss_melsp_cv = [None]*n_cv
-    batch_loss_magsp_cv = [None]*n_cv
     batch_loss_sc_feat_cv = [None]*n_cv
-    batch_loss_sc_feat_magsp_cv = [None]*n_cv
     batch_loss_uv_cv = [None]*n_cv
     batch_loss_f0_cv = [None]*n_cv
     batch_loss_uvcap_cv = [None]*n_cv
@@ -1129,7 +1104,7 @@ def main():
     logging.info("Training data")
     while epoch_idx < args.epoch_count:
         start = time.time()
-        batch_feat, batch_feat_magsp, batch_sc, batch_sc_cv_data, batch_feat_cv_data, c_idx, utt_idx, featfile, \
+        batch_feat, batch_sc, batch_sc_cv_data, batch_feat_cv_data, c_idx, utt_idx, featfile, \
             f_bs, f_ss, flens, n_batch_utt, del_index_utt, max_flen, spk_cv, idx_select, idx_select_full, flens_acc = next(generator)
         if c_idx < 0: # summarize epoch
             # save current epoch model
@@ -1228,7 +1203,6 @@ def main():
             model_decoder_melsp.eval()
             model_encoder_excit.eval()
             model_decoder_excit.eval()
-            model_spk.eval()
             model_classifier.eval()
             if args.spkidtr_dim > 0:
                 model_spkidtr.eval()
@@ -1240,8 +1214,6 @@ def main():
                 param.requires_grad = False
             for param in model_decoder_excit.parameters():
                 param.requires_grad = False
-            for param in model_spk.parameters():
-                param.requires_grad = False
             for param in model_classifier.parameters():
                 param.requires_grad = False
             if args.spkidtr_dim > 0 and args.pretrained is None:
@@ -1252,7 +1224,7 @@ def main():
             while True:
                 with torch.no_grad():
                     start = time.time()
-                    batch_feat_data, batch_feat_magsp_data, batch_feat_trg_data, batch_sc_data, \
+                    batch_feat_data, batch_feat_trg_data, batch_sc_data, \
                         batch_sc_cv_data, batch_feat_cv_data, c_idx, utt_idx, featfile, \
                         f_bs, f_ss, flens, n_batch_utt, del_index_utt, max_flen, spk_cv, src_trg_flag, \
                             spcidx_src, spcidx_src_trg, flens_spc_src, flens_spc_src_trg, \
@@ -1338,7 +1310,6 @@ def main():
                                 f_ss_first_pad_left += dec_pad_left
                                 f_es_first_pad_right -= dec_pad_right
                     batch_melsp = batch_feat_data[:,f_ss:f_es,args.full_excit_dim:]
-                    batch_magsp = batch_feat_magsp_data[:,f_ss:f_es]
                     batch_excit = batch_feat_data[:,f_ss:f_es,:args.full_excit_dim]
                     batch_melsp_data_full = batch_feat_data_full[:,:,args.full_excit_dim:]
                     batch_melsp_trg_data = batch_feat_trg_data[:,:,args.full_excit_dim:]
@@ -1357,8 +1328,6 @@ def main():
                             if len(del_index_utt) > 0:
                                 if i == 0:
                                     h_feat_in_sc = torch.FloatTensor(np.delete(h_feat_in_sc.cpu().data.numpy(),
-                                                                    del_index_utt, axis=1)).to(device)
-                                    h_feat_magsp_in_sc = torch.FloatTensor(np.delete(h_feat_magsp_in_sc.cpu().data.numpy(),
                                                                     del_index_utt, axis=1)).to(device)
                                 h_z[i] = torch.FloatTensor(np.delete(h_z[i].cpu().data.numpy(),
                                                                 del_index_utt, axis=1)).to(device)
@@ -1380,11 +1349,7 @@ def main():
                                                                 del_index_utt, axis=1)).to(device)
                                 h_feat_sc[i] = torch.FloatTensor(np.delete(h_feat_sc[i].cpu().data.numpy(),
                                                                 del_index_utt, axis=1)).to(device)
-                                h_feat_magsp_sc[i] = torch.FloatTensor(np.delete(h_feat_magsp_sc[i].cpu().data.numpy(),
-                                                                del_index_utt, axis=1)).to(device)
                                 h_feat_cv_sc[i_cv] = torch.FloatTensor(np.delete(h_feat_cv_sc[i_cv].cpu().data.numpy(),
-                                                                del_index_utt, axis=1)).to(device)
-                                h_feat_magsp_cv_sc[i_cv] = torch.FloatTensor(np.delete(h_feat_magsp_cv_sc[i_cv].cpu().data.numpy(),
                                                                 del_index_utt, axis=1)).to(device)
                                 h_z[j] = torch.FloatTensor(np.delete(h_z[j].cpu().data.numpy(),
                                                                 del_index_utt, axis=1)).to(device)
@@ -1401,8 +1366,6 @@ def main():
                                                                     del_index_utt, axis=1)).to(device)
                                     h_feat_sc[j] = torch.FloatTensor(np.delete(h_feat_sc[j].cpu().data.numpy(),
                                                                     del_index_utt, axis=1)).to(device)
-                                    h_feat_magsp_sc[j] = torch.FloatTensor(np.delete(h_feat_magsp_sc[j].cpu().data.numpy(),
-                                                                    del_index_utt, axis=1)).to(device)
                             if i > 0:
                                 idx_in += 1
                                 i_cv_in += 1
@@ -1418,7 +1381,6 @@ def main():
                                 qy_logits[i], qz_alpha[i], z[i], h_z[i] = model_encoder_melsp(batch_feat_in[idx_in], outpad_right=outpad_rights[idx_in], h=h_z[i], sampling=False)
                                 qy_logits_e[i], qz_alpha_e[i], z_e[i], h_z_e[i] = model_encoder_excit(batch_feat_in[idx_in], outpad_right=outpad_rights[idx_in], h=h_z_e[i], sampling=False)
                                 batch_feat_in_sc, h_feat_in_sc = model_classifier(feat=batch_melsp, h=h_feat_in_sc)
-                                batch_feat_magsp_in_sc, h_feat_magsp_in_sc = model_classifier(feat_aux=batch_magsp, h=h_feat_magsp_in_sc)
                             ## reconstruction and conversion
                             idx_in += 1
                             z_cat = torch.cat((z_e[i], z[i]), 2)
@@ -1485,13 +1447,9 @@ def main():
                             feat_len = batch_melsp_rec[i].shape[1]
                             idx_in_1 = idx_in-1
                             batch_melsp_rec[i] = batch_melsp_rec[i][:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
-                            batch_magsp_rec[i] = torch.matmul((torch.exp(batch_melsp_rec[i])-1)/10000, melfb_t)
                             batch_melsp_cv[i_cv] = batch_melsp_cv[i_cv][:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
-                            batch_magsp_cv[i_cv] = torch.matmul((torch.exp(batch_melsp_cv[i_cv])-1)/10000, melfb_t)
                             batch_feat_rec_sc[i], h_feat_sc[i] = model_classifier(feat=batch_melsp_rec[i], h=h_feat_sc[i])
-                            batch_feat_magsp_rec_sc[i], h_feat_magsp_sc[i] = model_classifier(feat_aux=batch_magsp_rec[i], h=h_feat_magsp_sc[i])
                             batch_feat_cv_sc[i_cv], h_feat_cv_sc[i_cv] = model_classifier(feat=batch_melsp_cv[i_cv], h=h_feat_cv_sc[i_cv])
-                            batch_feat_magsp_cv_sc[i_cv], h_feat_magsp_cv_sc[i_cv] = model_classifier(feat_aux=batch_magsp_cv[i_cv], h=h_feat_magsp_cv_sc[i_cv])
                             if n_half_cyc_eval > 1:
                                 idx_in += 1
                                 z_cat = torch.cat((z_e[j], z[j]), 2)
@@ -1536,9 +1494,7 @@ def main():
                                 if j+1 == n_half_cyc_eval:
                                     feat_len = batch_melsp_rec[j].shape[1]
                                     batch_melsp_rec[j] = batch_melsp_rec[j][:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
-                                    batch_magsp_rec[j] = torch.matmul((torch.exp(batch_melsp_rec[j])-1)/10000, melfb_t)
                                     batch_feat_rec_sc[j], h_feat_sc[j] = model_classifier(feat=batch_melsp_rec[j], h=h_feat_sc[j])
-                                    batch_feat_magsp_rec_sc[j], h_feat_magsp_sc[j] = model_classifier(feat_aux=batch_magsp_rec[j], h=h_feat_magsp_sc[j])
                             else:
                                 feat_len = qy_logits[j].shape[1]
                                 qy_logits[j] = qy_logits[j][:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
@@ -1603,11 +1559,11 @@ def main():
                             gv_src_trg[spk_list.index(spk_src_trg)].append(torch.var(\
                                 (torch.exp(trj_src_trg[k,:flens[k]])-1)/10000, 0).cpu().data.numpy())
                         if pair_flag:
-                            trj_lat_src = torch.cat((trj_lat_src_e, trj_lat_src), 2)
+                            trj_lat_src = torch.cat((trj_lat_src, trj_lat_src_e), 2)
                             batch_melsp_trg_data_in = F.pad(batch_melsp_trg_data.transpose(1,2), (enc_pad_left,enc_pad_right), "replicate").transpose(1,2)
                             _, _, trj_lat_trg, _ = model_encoder_melsp(batch_melsp_trg_data_in,sampling=False)
                             _, _, trj_lat_trg_e, _ = model_encoder_excit(batch_melsp_trg_data_in, sampling=False)
-                            trj_lat_trg = torch.cat((trj_lat_trg_e, trj_lat_trg), 2)
+                            trj_lat_trg = torch.cat((trj_lat_trg, trj_lat_trg_e), 2)
 
                             for k in range(n_batch_utt):
                                 if src_trg_flag[k]:
@@ -1703,7 +1659,6 @@ def main():
                                 qy_logits[i], qz_alpha[i], z[i], h_z[i] = model_encoder_melsp(batch_feat_in[idx_in], outpad_right=outpad_rights[idx_in], sampling=False)
                                 qy_logits_e[i], qz_alpha_e[i], z_e[i], h_z_e[i] = model_encoder_excit(batch_feat_in[idx_in], outpad_right=outpad_rights[idx_in], sampling=False)
                                 batch_feat_in_sc, h_feat_in_sc = model_classifier(feat=batch_melsp)
-                                batch_feat_magsp_in_sc, h_feat_magsp_in_sc = model_classifier(feat_aux=batch_magsp)
                             ## reconstruction and conversion
                             idx_in += 1
                             z_cat = torch.cat((z_e[i], z[i]), 2)
@@ -1766,13 +1721,9 @@ def main():
                             feat_len = batch_melsp_rec[i].shape[1]
                             idx_in_1 = idx_in-1
                             batch_melsp_rec[i] = batch_melsp_rec[i][:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
-                            batch_magsp_rec[i] = torch.matmul((torch.exp(batch_melsp_rec[i])-1)/10000, melfb_t)
                             batch_melsp_cv[i_cv] = batch_melsp_cv[i_cv][:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
-                            batch_magsp_cv[i_cv] = torch.matmul((torch.exp(batch_melsp_cv[i_cv])-1)/10000, melfb_t)
                             batch_feat_rec_sc[i], h_feat_sc[i] = model_classifier(feat=batch_melsp_rec[i])
-                            batch_feat_magsp_rec_sc[i], h_feat_magsp_sc[i] = model_classifier(feat_aux=batch_magsp_rec[i])
                             batch_feat_cv_sc[i_cv], h_feat_cv_sc[i_cv] = model_classifier(feat=batch_melsp_cv[i_cv])
-                            batch_feat_magsp_cv_sc[i_cv], h_feat_magsp_cv_sc[i_cv] = model_classifier(feat_aux=batch_magsp_cv[i_cv])
                             if n_half_cyc_eval > 1:
                                 idx_in += 1
                                 z_cat = torch.cat((z_e[j], z[j]), 2)
@@ -1817,9 +1768,7 @@ def main():
                                 if j+1 == n_half_cyc_eval:
                                     feat_len = batch_melsp_rec[j].shape[1]
                                     batch_melsp_rec[j] = batch_melsp_rec[j][:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
-                                    batch_magsp_rec[j] = torch.matmul((torch.exp(batch_melsp_rec[j])-1)/10000, melfb_t)
                                     batch_feat_rec_sc[j], h_feat_sc[j] = model_classifier(feat=batch_melsp_rec[j])
-                                    batch_feat_magsp_rec_sc[j], h_feat_magsp_sc[j] = model_classifier(feat_aux=batch_magsp_rec[j])
                             else:
                                 feat_len = qy_logits[j].shape[1]
                                 qy_logits[j] = qy_logits[j][:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
@@ -1871,19 +1820,15 @@ def main():
                         if len(idx_select_full) > 0:
                             logging.info('len_idx_select_full: '+str(len(idx_select_full)))
                             batch_melsp = torch.index_select(batch_melsp,0,idx_select_full)
-                            batch_magsp = torch.index_select(batch_magsp,0,idx_select_full)
                             batch_excit = torch.index_select(batch_excit,0,idx_select_full)
                             batch_sc = torch.index_select(batch_sc,0,idx_select_full)
                             batch_feat_in_sc = torch.index_select(batch_feat_in_sc,0,idx_select_full)
-                            batch_feat_magsp_in_sc = torch.index_select(batch_feat_magsp_in_sc,0,idx_select_full)
                             n_batch_utt = batch_melsp.shape[0]
                             for i in range(n_half_cyc_eval):
                                 batch_melsp_rec[i] = torch.index_select(batch_melsp_rec[i],0,idx_select_full)
-                                batch_magsp_rec[i] = torch.index_select(batch_magsp_rec[i],0,idx_select_full)
                                 batch_lf0_rec[i] = torch.index_select(batch_lf0_rec[i],0,idx_select_full)
                                 batch_z_sc[i] = torch.index_select(batch_z_sc[i],0,idx_select_full)
                                 batch_feat_rec_sc[i] = torch.index_select(batch_feat_rec_sc[i],0,idx_select_full)
-                                batch_feat_magsp_rec_sc[i] = torch.index_select(batch_feat_magsp_rec_sc[i],0,idx_select_full)
                                 z[i] = torch.index_select(z[i],0,idx_select_full)
                                 z_e[i] = torch.index_select(z_e[i],0,idx_select_full)
                                 qz_alpha[i] = torch.index_select(qz_alpha[i],0,idx_select_full)
@@ -1892,11 +1837,9 @@ def main():
                                 qy_logits_e[i] = torch.index_select(qy_logits_e[i],0,idx_select_full)
                                 if i % 2 == 0:
                                     batch_melsp_cv[i//2] = torch.index_select(batch_melsp_cv[i//2],0,idx_select_full)
-                                    batch_magsp_cv[i//2] = torch.index_select(batch_magsp_cv[i//2],0,idx_select_full)
                                     batch_excit_cv[i//2] = torch.index_select(batch_excit_cv[i//2],0,idx_select_full)
                                     batch_lf0_cv[i//2] = torch.index_select(batch_lf0_cv[i//2],0,idx_select_full)
                                     batch_feat_cv_sc[i//2] = torch.index_select(batch_feat_cv_sc[i//2],0,idx_select_full)
-                                    batch_feat_magsp_cv_sc[i//2] = torch.index_select(batch_feat_magsp_cv_sc[i//2],0,idx_select_full)
                                     batch_sc_cv[i//2] = torch.index_select(batch_sc_cv[i//2],0,idx_select_full)
                                     if n_half_cyc_eval == 1:
                                         qz_alpha[i+1] = torch.index_select(qz_alpha[i+1],0,idx_select_full)
@@ -1914,20 +1857,16 @@ def main():
                     melsp = batch_melsp
                     melsp_rest = (torch.exp(melsp)-1)/10000
                     melsp_rest_log = torch.log10(torch.clamp(melsp_rest, min=1e-16))
-                    magsp = magsp_rest = batch_magsp
                     uvcap = batch_excit[:,:,2]
                     cap = -torch.exp(batch_excit[:,:,3:])
                     sc_onehot = F.one_hot(batch_sc, num_classes=n_spk).float()
                     batch_sc_ = batch_sc.reshape(-1)
                     batch_loss_sc_feat_in_ = torch.mean(criterion_ce(batch_feat_in_sc.reshape(-1, n_spk), batch_sc_).reshape(n_batch_utt, -1), -1)
                     batch_loss_sc_feat_in = batch_loss_sc_feat_in_.mean()
-                    batch_loss_sc_feat_magsp_in_ = torch.mean(criterion_ce(batch_feat_magsp_in_sc.reshape(-1, n_spk), batch_sc_).reshape(n_batch_utt, -1), -1)
-                    batch_loss_sc_feat_magsp_in = batch_loss_sc_feat_magsp_in_.mean()
                     for i in range(n_half_cyc_eval):
                         ## reconst. [i % 2 == 0] / cyclic reconst. [i % 2 == 1]
                         melsp_est = batch_melsp_rec[i]
                         melsp_est_rest = (torch.exp(melsp_est)-1)/10000
-                        magsp_est = magsp_est_rest = batch_magsp_rec[i]
                         uv_est = batch_lf0_rec[i][:,:,0]
                         f0_est = torch.exp(batch_lf0_rec[i][:,:,1])
                         uvcap_est = batch_lf0_rec[i][:,:,2]
@@ -1936,7 +1875,6 @@ def main():
                         if i % 2 == 0:
                             f0cv = torch.exp(batch_excit_cv[i//2][:,:,1])
                             melsp_cv = batch_melsp_cv[i//2]
-                            magsp_cv = batch_magsp_cv[i//2]
                             uv_cv = batch_lf0_cv[i//2][:,:,0]
                             f0_cv = torch.exp(batch_lf0_cv[i//2][:,:,1])
                             uvcap_cv = batch_lf0_cv[i//2][:,:,2]
@@ -1968,31 +1906,13 @@ def main():
                         batch_loss_px[i] += batch_loss_melsp[i]
                         batch_loss_melsp_dB[i] = torch.mean(torch.sqrt(torch.mean((20*(torch.log10(torch.clamp(melsp_est_rest, min=1e-16))-melsp_rest_log))**2, -1)))
 
-                        batch_loss_magsp_ = torch.mean(torch.sum(criterion_l1(magsp_est, magsp), -1), -1) \
-                                                + torch.mean(torch.mean(criterion_l1(magsp_est, magsp), -1), -1) \
-                                            + torch.sqrt(torch.mean(torch.sum(criterion_l2(magsp_est, magsp), -1), -1)) \
-                                                + torch.sqrt(torch.mean(torch.mean(criterion_l2(magsp_est, magsp), -1), -1))
-                        batch_loss_px_sum += batch_loss_magsp_.sum()
-                        batch_loss_magsp[i] = batch_loss_magsp_.mean()
-                        batch_loss_px[i] += batch_loss_magsp[i]
-                        batch_loss_magsp_dB[i] = torch.mean(torch.mean(torch.sqrt(torch.mean((20*(torch.log10(torch.clamp(magsp_est_rest, min=1e-16))
-                                                                -torch.log10(torch.clamp(magsp_rest, min=1e-16))))**2, -1)), -1))
-
                         batch_loss_px_ms_norm_, batch_loss_px_ms_err_ = criterion_ms(melsp_est_rest, melsp_rest)
                         batch_loss_ms_norm[i] = batch_loss_px_ms_norm_.mean()
-                        batch_loss_ms_err[i] = batch_loss_px_ms_err_.mean()
                         if not torch.isinf(batch_loss_ms_norm[i]) and not torch.isnan(batch_loss_ms_norm[i]):
                             batch_loss_px_sum += batch_loss_px_ms_norm_.sum()
+                        batch_loss_ms_err[i] = batch_loss_px_ms_err_.mean()
                         if not torch.isinf(batch_loss_ms_err[i]) and not torch.isnan(batch_loss_ms_err[i]):
                             batch_loss_px_sum += batch_loss_px_ms_err_.sum()
-
-                        batch_loss_px_ms_magsp_norm_, batch_loss_px_ms_magsp_err_ = criterion_ms(magsp_est_rest, magsp_rest)
-                        batch_loss_ms_norm_magsp[i] = batch_loss_px_ms_magsp_norm_.mean()
-                        batch_loss_ms_err_magsp[i] = batch_loss_px_ms_magsp_err_.mean()
-                        if not torch.isinf(batch_loss_ms_norm_magsp[i]) and not torch.isnan(batch_loss_ms_norm_magsp[i]):
-                            batch_loss_px_sum += batch_loss_px_ms_magsp_norm_.sum()
-                        if not torch.isinf(batch_loss_ms_err_magsp[i]) and not torch.isnan(batch_loss_ms_err_magsp[i]):
-                            batch_loss_px_sum += batch_loss_px_ms_magsp_err_.sum()
 
                         ## conversion
                         if i % 2 == 0:
@@ -2007,18 +1927,12 @@ def main():
                                                             + torch.sqrt(torch.mean(torch.sum(criterion_l2(melsp_cv, melsp), -1))) \
                                                         + torch.mean(criterion_l1(melsp_cv, melsp)) \
                                                             + torch.sqrt(torch.mean(criterion_l2(melsp_cv, melsp)))
-                            batch_loss_magsp_cv[i//2] = torch.mean(torch.sum(criterion_l1(magsp_cv, magsp), -1)) \
-                                                            + torch.sqrt(torch.mean(torch.sum(criterion_l2(magsp_cv, magsp), -1))) \
-                                                        + torch.mean(torch.mean(criterion_l1(magsp_cv, magsp), -1)) \
-                                                            + torch.sqrt(torch.mean(torch.mean(criterion_l2(magsp_cv, magsp), -1)))
 
                         # KL-div lat., CE and error-percentage spk.
                         batch_sc_cv_ = batch_sc_cv[i//2].reshape(-1)
                         batch_loss_sc_feat_ = torch.mean(criterion_ce(batch_feat_rec_sc[i].reshape(-1, n_spk), batch_sc_).reshape(n_batch_utt, -1), -1)
                         batch_loss_sc_feat[i] = batch_loss_sc_feat_.mean()
-                        batch_loss_sc_feat_magsp_ = torch.mean(criterion_ce(batch_feat_magsp_rec_sc[i].reshape(-1, n_spk), batch_sc_).reshape(n_batch_utt, -1), -1)
-                        batch_loss_sc_feat_magsp[i] = batch_loss_sc_feat_magsp_.mean()
-                        batch_loss_sc_feat_kl = batch_loss_sc_feat_.sum() + batch_loss_sc_feat_magsp_.sum()
+                        batch_loss_sc_feat_kl = batch_loss_sc_feat_.sum()
                         if i % 2 == 0:
                             batch_loss_qy_py_ = torch.mean(criterion_ce(qy_logits[i].reshape(-1, n_spk), batch_sc_).reshape(n_batch_utt, -1), -1)
                             batch_loss_qy_py[i] = batch_loss_qy_py_.mean()
@@ -2026,13 +1940,11 @@ def main():
                             batch_loss_qy_py_err[i] = batch_loss_qy_py_err_.mean()
                             batch_loss_sc_feat_cv_ = torch.mean(criterion_ce(batch_feat_cv_sc[i//2].reshape(-1, n_spk), batch_sc_cv_).reshape(n_batch_utt, -1), -1)
                             batch_loss_sc_feat_cv[i//2] = batch_loss_sc_feat_cv_.mean()
-                            batch_loss_sc_feat_magsp_cv_ = torch.mean(criterion_ce(batch_feat_magsp_cv_sc[i//2].reshape(-1, n_spk), batch_sc_cv_).reshape(n_batch_utt, -1), -1)
-                            batch_loss_sc_feat_magsp_cv[i//2] = batch_loss_sc_feat_magsp_cv_.mean()
                             if n_half_cyc_eval == 1:
                                 batch_loss_qy_py[i+1] = torch.mean(criterion_ce(qy_logits[i+1].reshape(-1, n_spk), batch_sc_cv_).reshape(n_batch_utt, -1), -1).mean()
                                 batch_loss_qy_py_err[i+1] = torch.mean(100*torch.sum(criterion_l1(F.softmax(qy_logits[i+1], dim=-1), F.one_hot(batch_sc_cv[i//2], num_classes=n_spk).float()), -1), -1).mean()
                                 batch_loss_qz_pz[i+1] = torch.mean(torch.sum(kl_laplace(qz_alpha[i+1]), -1), -1).mean()
-                            batch_loss_sc_feat_kl += batch_loss_sc_feat_cv_.sum() + batch_loss_sc_feat_magsp_cv_.sum()
+                            batch_loss_sc_feat_kl += batch_loss_sc_feat_cv_.sum()
                         else:
                             batch_loss_qy_py_ = torch.mean(criterion_ce(qy_logits[i].reshape(-1, n_spk), batch_sc_cv_).reshape(n_batch_utt, -1), -1)
                             batch_loss_qy_py[i] = batch_loss_qy_py_.mean()
@@ -2091,20 +2003,13 @@ def main():
                             total_eval_loss["eval/loss_rmse-%d"%(i+1)].append(batch_loss_lat_rmse[i].item())
                         total_eval_loss["eval/loss_sc_z-%d"%(i+1)].append(batch_loss_sc_z[i].item())
                         total_eval_loss["eval/loss_sc_feat-%d"%(i+1)].append(batch_loss_sc_feat[i].item())
-                        total_eval_loss["eval/loss_sc_feat_magsp-%d"%(i+1)].append(batch_loss_sc_feat_magsp[i].item())
                         if i == 0:
                             total_eval_loss["eval/loss_sc_feat_in"].append(batch_loss_sc_feat_in.item())
-                            total_eval_loss["eval/loss_sc_feat_magsp_in"].append(batch_loss_sc_feat_magsp_in.item())
                             loss_sc_feat_in.append(batch_loss_sc_feat_in.item())
-                        #    loss_sc_feat_magsp_in.append(batch_loss_sc_feat_magsp_in.item())
                         total_eval_loss["eval/loss_ms_norm-%d"%(i+1)].append(batch_loss_ms_norm[i].item())
                         total_eval_loss["eval/loss_ms_err-%d"%(i+1)].append(batch_loss_ms_err[i].item())
-                        total_eval_loss["eval/loss_ms_norm_magsp-%d"%(i+1)].append(batch_loss_ms_norm_magsp[i].item())
-                        total_eval_loss["eval/loss_ms_err_magsp-%d"%(i+1)].append(batch_loss_ms_err_magsp[i].item())
                         loss_elbo[i].append(batch_loss_elbo[i].item())
                         loss_px[i].append(batch_loss_px[i].item())
-                        #loss_sc_feat[i].append(batch_loss_sc_feat[i].item())
-                        #loss_sc_feat_magsp[i].append(batch_loss_sc_feat_magsp[i].item())
                         loss_qy_py[i].append(batch_loss_qy_py[i].item())
                         loss_qy_py_err[i].append(batch_loss_qy_py_err[i].item())
                         loss_qz_pz[i].append(batch_loss_qz_pz[i].item())
@@ -2113,11 +2018,8 @@ def main():
                         loss_qz_pz_e[i].append(batch_loss_qz_pz_e[i].item())
                         loss_sc_z[i].append(batch_loss_sc_z[i].item())
                         loss_sc_feat[i].append(batch_loss_sc_feat[i].item())
-                        #loss_sc_feat_magsp[i].append(batch_loss_sc_feat_magsp[i].item())
                         loss_ms_norm[i].append(batch_loss_ms_norm[i].item())
                         loss_ms_err[i].append(batch_loss_ms_err[i].item())
-                        #loss_ms_norm_magsp[i].append(batch_loss_ms_norm_magsp[i].item())
-                        #loss_ms_err_magsp[i].append(batch_loss_ms_err_magsp[i].item())
                         ## in-domain reconst.
                         total_eval_loss["eval/loss_uv-%d"%(i+1)].append(batch_loss_uv[i].item())
                         total_eval_loss["eval/loss_f0-%d"%(i+1)].append(batch_loss_f0[i].item())
@@ -2125,30 +2027,22 @@ def main():
                         total_eval_loss["eval/loss_cap-%d"%(i+1)].append(batch_loss_cap[i].item())
                         total_eval_loss["eval/loss_melsp-%d"%(i+1)].append(batch_loss_melsp[i].item())
                         total_eval_loss["eval/loss_melsp_dB-%d"%(i+1)].append(batch_loss_melsp_dB[i].item())
-                        total_eval_loss["eval/loss_magsp-%d"%(i+1)].append(batch_loss_magsp[i].item())
-                        total_eval_loss["eval/loss_magsp_dB-%d"%(i+1)].append(batch_loss_magsp_dB[i].item())
                         loss_uv[i].append(batch_loss_uv[i].item())
                         loss_f0[i].append(batch_loss_f0[i].item())
                         loss_uvcap[i].append(batch_loss_uvcap[i].item())
                         loss_cap[i].append(batch_loss_cap[i].item())
                         loss_melsp[i].append(batch_loss_melsp[i].item())
                         loss_melsp_dB[i].append(batch_loss_melsp_dB[i].item())
-                        #loss_magsp[i].append(batch_loss_magsp[i].item())
-                        #loss_magsp_dB[i].append(batch_loss_magsp_dB[i].item())
                         ## conversion
                         if i % 2 == 0:
                             total_eval_loss["eval/loss_sc_feat_cv-%d"%(i+1)].append(batch_loss_sc_feat_cv[i//2].item())
-                            total_eval_loss["eval/loss_sc_feat_magsp_cv-%d"%(i+1)].append(batch_loss_sc_feat_magsp_cv[i//2].item())
                             total_eval_loss["eval/loss_melsp_cv-%d"%(i+1)].append(batch_loss_melsp_cv[i//2].item())
-                            total_eval_loss["eval/loss_magsp_cv-%d"%(i+1)].append(batch_loss_magsp_cv[i//2].item())
                             total_eval_loss["eval/loss_uv_cv-%d"%(i+1)].append(batch_loss_uv_cv[i//2].item())
                             total_eval_loss["eval/loss_f0_cv-%d"%(i+1)].append(batch_loss_f0_cv[i//2].item())
                             total_eval_loss["eval/loss_uvcap_cv-%d"%(i+1)].append(batch_loss_uvcap_cv[i//2].item())
                             total_eval_loss["eval/loss_cap_cv-%d"%(i+1)].append(batch_loss_cap_cv[i//2].item())
                             loss_sc_feat_cv[i//2].append(batch_loss_sc_feat_cv[i//2].item())
-                            #loss_sc_feat_magsp_cv[i//2].append(batch_loss_sc_feat_magsp_cv[i//2].item())
                             loss_melsp_cv[i//2].append(batch_loss_melsp_cv[i//2].item())
-                            #loss_magsp_cv[i//2].append(batch_loss_magsp_cv[i//2].item())
                             loss_uv_cv[i//2].append(batch_loss_uv_cv[i//2].item())
                             loss_f0_cv[i//2].append(batch_loss_f0_cv[i//2].item())
                             loss_uvcap_cv[i//2].append(batch_loss_uvcap_cv[i//2].item())
@@ -2180,36 +2074,31 @@ def main():
                                     batch_loss_elbo[i].item(), batch_loss_lat_cossim[i].item(), batch_loss_lat_rmse[i].item(), batch_loss_px[i].item(),
                                         batch_loss_qy_py[i].item(), batch_loss_qy_py_err[i].item(), batch_loss_qz_pz[i].item(),
                                         batch_loss_qy_py_e[i].item(), batch_loss_qy_py_err_e[i].item(), batch_loss_qz_pz_e[i].item())
-                            if args.n_half_cyc == 1:
+                            if n_half_cyc_eval == 1:
                                 text_log += "%.3f %.3f %% %.3f , %.3f %.3f %% %.3f ; " % (
                                         batch_loss_qy_py[i+1].item(), batch_loss_qy_py_err[i+1].item(), batch_loss_qz_pz[i+1].item(),
                                         batch_loss_qy_py_e[i].item(), batch_loss_qy_py_err_e[i].item(), batch_loss_qz_pz_e[i].item(),
                                         batch_loss_qy_py_e[i+1].item(), batch_loss_qy_py_err_e[i+1].item(), batch_loss_qz_pz_e[i+1].item())
-                            text_log += "%.3f %.3f , %.3f %.3f ; %.3f , %.3f %.3f , %.3f %.3f ; " \
-                                "%.3f %.3f %.3f dB , %.3f %.3f %.3f dB ; " \
+                            text_log += "%.3f %.3f ; %.3f , %.3f %.3f ; " \
+                                "%.3f %.3f %.3f dB ; " \
                                 "%.3f %% %.3f %% , %.3f Hz %.3f Hz , %.3f %% %.3f %% , %.3f dB %.3f dB ;; " % (
                                     batch_loss_ms_norm[i].item(), batch_loss_ms_err[i].item(),
-                                    batch_loss_ms_norm_magsp[i].item(), batch_loss_ms_err_magsp[i].item(),
                                         batch_loss_sc_z[i].item(),
                                         batch_loss_sc_feat[i].item(), batch_loss_sc_feat_cv[i//2].item(),
-                                        batch_loss_sc_feat_magsp[i].item(), batch_loss_sc_feat_magsp_cv[i//2].item(),
                                             batch_loss_melsp[i].item(), batch_loss_melsp_cv[i//2].item(), batch_loss_melsp_dB[i].item(),
-                                            batch_loss_magsp[i].item(), batch_loss_magsp_cv[i//2].item(), batch_loss_magsp_dB[i].item(),
                                                 batch_loss_uv[i].item(), batch_loss_uv_cv[i//2].item(),
                                                 batch_loss_f0[i].item(), batch_loss_f0_cv[i//2].item(),
                                                 batch_loss_uvcap[i].item(), batch_loss_uvcap_cv[i//2].item(),
                                                 batch_loss_cap[i].item(), batch_loss_cap_cv[i//2].item())
                         else:
-                            text_log += "[%ld] %.3f ; %.3f %.3f , %.3f %.3f %.3f %% %.3f , %.3f %.3f %% %.3f ; %.3f %.3f , %.3f %.3f ; "\
-                                "%.3f , %.3f , %.3f ; %.3f %.3f dB , %.3f %.3f dB ; %.3f %% %.3f Hz , %.3f %% %.3f dB ;; " % (
+                            text_log += "[%ld] %.3f ; %.3f %.3f , %.3f %.3f %.3f %% %.3f , %.3f %.3f %% %.3f ; %.3f %.3f ; "\
+                                "%.3f , %.3f ; %.3f %.3f dB ; %.3f %% %.3f Hz , %.3f %% %.3f dB ;; " % (
                                 i+1, batch_loss_elbo[i].item(), batch_loss_lat_cossim[i].item(), batch_loss_lat_rmse[i].item(), batch_loss_px[i].item(),
                                     batch_loss_qy_py[i].item(), batch_loss_qy_py_err[i].item(), batch_loss_qz_pz[i].item(),
                                     batch_loss_qy_py_e[i].item(), batch_loss_qy_py_err_e[i].item(), batch_loss_qz_pz_e[i].item(),
                                         batch_loss_ms_norm[i].item(), batch_loss_ms_err[i].item(),
-                                        batch_loss_ms_norm_magsp[i].item(), batch_loss_ms_err_magsp[i].item(),
-                                            batch_loss_sc_z[i].item(), batch_loss_sc_feat[i].item(), batch_loss_sc_feat_magsp[i].item(),
+                                            batch_loss_sc_z[i].item(), batch_loss_sc_feat[i].item(),
                                                 batch_loss_melsp[i].item(), batch_loss_melsp_dB[i].item(),
-                                                batch_loss_magsp[i].item(), batch_loss_magsp_dB[i].item(),
                                                     batch_loss_uv[i].item(), batch_loss_f0[i].item(),
                                                     batch_loss_uvcap[i].item(), batch_loss_cap[i].item())
                     logging.info("%s (%.3f sec)" % (text_log, time.time() - start))
@@ -2552,7 +2441,6 @@ def main():
             model_decoder_melsp.train()
             model_encoder_excit.train()
             model_decoder_excit.train()
-            model_spk.train()
             model_classifier.train()
             if args.spkidtr_dim > 0:
                 model_spkidtr.train()
@@ -2576,8 +2464,6 @@ def main():
                 param.requires_grad = False
             for param in model_decoder_excit.scale_out_cap.parameters():
                 param.requires_grad = False
-            for param in model_spk.parameters():
-                param.requires_grad = True
             for param in model_classifier.parameters():
                 param.requires_grad = True
             if args.spkidtr_dim > 0 and args.pretrained is None:
@@ -2588,7 +2474,7 @@ def main():
                 start = time.time()
                 logging.info("==%d EPOCH==" % (epoch_idx+1))
                 logging.info("Training data")
-                batch_feat, batch_feat_magsp, batch_sc, batch_sc_cv_data, batch_feat_cv_data, c_idx, utt_idx, featfile, \
+                batch_feat, batch_sc, batch_sc_cv_data, batch_feat_cv_data, c_idx, utt_idx, featfile, \
                     f_bs, f_ss, flens, n_batch_utt, del_index_utt, max_flen, spk_cv, idx_select, idx_select_full, flens_acc = next(generator)
         # feedforward and backpropagate current batch
         if epoch_idx < args.epoch_count:
@@ -2671,7 +2557,6 @@ def main():
                         f_ss_first_pad_left += dec_pad_left
                         f_es_first_pad_right -= dec_pad_right
             batch_melsp = batch_feat[:,f_ss:f_es,args.full_excit_dim:]
-            batch_magsp = batch_feat_magsp[:,f_ss:f_es]
             batch_excit = batch_feat[:,f_ss:f_es,:args.full_excit_dim]
             batch_sc = batch_sc[:,f_ss:f_es]
             for i in range(n_cv):
@@ -2687,8 +2572,6 @@ def main():
                     if len(del_index_utt) > 0:
                         if i == 0:
                             h_feat_in_sc = torch.FloatTensor(np.delete(h_feat_in_sc.cpu().data.numpy(),
-                                                            del_index_utt, axis=1)).to(device)
-                            h_feat_magsp_in_sc = torch.FloatTensor(np.delete(h_feat_magsp_in_sc.cpu().data.numpy(), \
                                                             del_index_utt, axis=1)).to(device)
                         h_z[i] = torch.FloatTensor(np.delete(h_z[i].cpu().data.numpy(),
                                                         del_index_utt, axis=1)).to(device)
@@ -2710,11 +2593,7 @@ def main():
                                                         del_index_utt, axis=1)).to(device)
                         h_feat_sc[i] = torch.FloatTensor(np.delete(h_feat_sc[i].cpu().data.numpy(),
                                                         del_index_utt, axis=1)).to(device)
-                        h_feat_magsp_sc[i] = torch.FloatTensor(np.delete(h_feat_magsp_sc[i].cpu().data.numpy(),
-                                                        del_index_utt, axis=1)).to(device)
                         h_feat_cv_sc[i_cv] = torch.FloatTensor(np.delete(h_feat_cv_sc[i_cv].cpu().data.numpy(),
-                                                        del_index_utt, axis=1)).to(device)
-                        h_feat_magsp_cv_sc[i_cv] = torch.FloatTensor(np.delete(h_feat_magsp_cv_sc[i_cv].cpu().data.numpy(),
                                                         del_index_utt, axis=1)).to(device)
                         h_z[j] = torch.FloatTensor(np.delete(h_z[j].cpu().data.numpy(),
                                                         del_index_utt, axis=1)).to(device)
@@ -2731,8 +2610,6 @@ def main():
                                                             del_index_utt, axis=1)).to(device)
                             h_feat_sc[j] = torch.FloatTensor(np.delete(h_feat_sc[j].cpu().data.numpy(),
                                                             del_index_utt, axis=1)).to(device)
-                            h_feat_magsp_sc[j] = torch.FloatTensor(np.delete(h_feat_magsp_sc[j].cpu().data.numpy(),
-                                                            del_index_utt, axis=1)).to(device)
                     if i > 0:
                         idx_in += 1
                         i_cv_in += 1
@@ -2748,7 +2625,6 @@ def main():
                         qy_logits[i], qz_alpha[i], z[i], h_z[i] = model_encoder_melsp(batch_feat_in[idx_in], outpad_right=outpad_rights[idx_in], h=h_z[i], do=True)
                         qy_logits_e[i], qz_alpha_e[i], z_e[i], h_z_e[i] = model_encoder_excit(batch_feat_in[idx_in], outpad_right=outpad_rights[idx_in], h=h_z_e[i], do=True)
                         batch_feat_in_sc, h_feat_in_sc = model_classifier(feat=batch_melsp, h=h_feat_in_sc, do=True)
-                        batch_feat_magsp_in_sc, h_feat_magsp_in_sc = model_classifier(feat_aux=batch_magsp, h=h_feat_magsp_in_sc, do=True)
                     ## reconstruction and conversion
                     idx_in += 1
                     z_cat = torch.cat((z_e[i], z[i]), 2)
@@ -2815,13 +2691,9 @@ def main():
                     feat_len = batch_melsp_rec[i].shape[1]
                     idx_in_1 = idx_in-1
                     batch_melsp_rec[i] = batch_melsp_rec[i][:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
-                    batch_magsp_rec[i] = torch.matmul((torch.exp(batch_melsp_rec[i])-1)/10000, melfb_t)
                     batch_melsp_cv[i_cv] = batch_melsp_cv[i_cv][:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
-                    batch_magsp_cv[i_cv] = torch.matmul((torch.exp(batch_melsp_cv[i_cv])-1)/10000, melfb_t)
                     batch_feat_rec_sc[i], h_feat_sc[i] = model_classifier(feat=batch_melsp_rec[i], h=h_feat_sc[i], do=True)
-                    batch_feat_magsp_rec_sc[i], h_feat_magsp_sc[i] = model_classifier(feat_aux=batch_magsp_rec[i], h=h_feat_magsp_sc[i], do=True)
                     batch_feat_cv_sc[i_cv], h_feat_cv_sc[i_cv] = model_classifier(feat=batch_melsp_cv[i_cv], h=h_feat_cv_sc[i_cv], do=True)
-                    batch_feat_magsp_cv_sc[i_cv], h_feat_magsp_cv_sc[i_cv] = model_classifier(feat_aux=batch_magsp_cv[i_cv], h=h_feat_magsp_cv_sc[i_cv], do=True)
                     if args.n_half_cyc > 1:
                         idx_in += 1
                         z_cat = torch.cat((z_e[j], z[j]), 2)
@@ -2866,9 +2738,7 @@ def main():
                         if j+1 == args.n_half_cyc:
                             feat_len = batch_melsp_rec[j].shape[1]
                             batch_melsp_rec[j] = batch_melsp_rec[j][:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
-                            batch_magsp_rec[j] = torch.matmul((torch.exp(batch_melsp_rec[j])-1)/10000, melfb_t)
                             batch_feat_rec_sc[j], h_feat_sc[j] = model_classifier(feat=batch_melsp_rec[j], h=h_feat_sc[j], do=True)
-                            batch_feat_magsp_rec_sc[j], h_feat_magsp_sc[j] = model_classifier(feat_aux=batch_magsp_rec[j], h=h_feat_magsp_sc[j], do=True)
                     else:
                         feat_len = qy_logits[j].shape[1]
                         qy_logits[j] = qy_logits[j][:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
@@ -2896,7 +2766,6 @@ def main():
                         qy_logits[i], qz_alpha[i], z[i], h_z[i] = model_encoder_melsp(batch_feat_in[idx_in], outpad_right=outpad_rights[idx_in], do=True)
                         qy_logits_e[i], qz_alpha_e[i], z_e[i], h_z_e[i] = model_encoder_excit(batch_feat_in[idx_in], outpad_right=outpad_rights[idx_in], do=True)
                         batch_feat_in_sc, h_feat_in_sc = model_classifier(feat=batch_melsp, do=True)
-                        batch_feat_magsp_in_sc, h_feat_magsp_in_sc = model_classifier(feat_aux=batch_magsp, do=True)
                     ## reconstruction and conversion
                     idx_in += 1
                     z_cat = torch.cat((z_e[i], z[i]), 2)
@@ -2959,13 +2828,9 @@ def main():
                     feat_len = batch_melsp_rec[i].shape[1]
                     idx_in_1 = idx_in-1
                     batch_melsp_rec[i] = batch_melsp_rec[i][:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
-                    batch_magsp_rec[i] = torch.matmul((torch.exp(batch_melsp_rec[i])-1)/10000, melfb_t)
                     batch_melsp_cv[i_cv] = batch_melsp_cv[i_cv][:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
-                    batch_magsp_cv[i_cv] = torch.matmul((torch.exp(batch_melsp_cv[i_cv])-1)/10000, melfb_t)
                     batch_feat_rec_sc[i], h_feat_sc[i] = model_classifier(feat=batch_melsp_rec[i], do=True)
-                    batch_feat_magsp_rec_sc[i], h_feat_magsp_sc[i] = model_classifier(feat_aux=batch_magsp_rec[i], do=True)
                     batch_feat_cv_sc[i_cv], h_feat_cv_sc[i_cv] = model_classifier(feat=batch_melsp_cv[i_cv], do=True)
-                    batch_feat_magsp_cv_sc[i_cv], h_feat_magsp_cv_sc[i_cv] = model_classifier(feat_aux=batch_magsp_cv[i_cv], do=True)
                     if args.n_half_cyc > 1:
                         idx_in += 1
                         z_cat = torch.cat((z_e[j], z[j]), 2)
@@ -3010,9 +2875,7 @@ def main():
                         if j+1 == args.n_half_cyc:
                             feat_len = batch_melsp_rec[j].shape[1]
                             batch_melsp_rec[j] = batch_melsp_rec[j][:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
-                            batch_magsp_rec[j] = torch.matmul((torch.exp(batch_melsp_rec[j])-1)/10000, melfb_t)
                             batch_feat_rec_sc[j], h_feat_sc[j] = model_classifier(feat=batch_melsp_rec[j], do=True)
-                            batch_feat_magsp_rec_sc[j], h_feat_magsp_sc[j] = model_classifier(feat_aux=batch_magsp_rec[j], do=True)
                     else:
                         feat_len = qy_logits[j].shape[1]
                         qy_logits[j] = qy_logits[j][:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
@@ -3080,7 +2943,6 @@ def main():
                     logging.info('%s %d' % (featfile[k], flens_utt))
                     melsp = batch_melsp[k,:flens_utt]
                     melsp_rest = (torch.exp(melsp)-1)/10000
-                    magsp = batch_magsp[k,:flens_utt]
                     batch_excit_select = batch_excit[k,:flens_utt]
                     uv = batch_excit_select[:,0]
                     f0 = torch.exp(batch_excit_select[:,1])
@@ -3089,8 +2951,7 @@ def main():
 
                     batch_sc_ = batch_sc[k,:flens_utt]
                     sc_onehot_ = F.one_hot(batch_sc_, num_classes=n_spk).float()
-                    batch_loss_sc_feat_in_kl_select += torch.mean(criterion_ce(batch_feat_in_sc[k,:flens_utt], batch_sc_)) \
-                                                    + torch.mean(criterion_ce(batch_feat_magsp_in_sc[k,:flens_utt], batch_sc_))
+                    batch_loss_sc_feat_in_kl_select += torch.mean(criterion_ce(batch_feat_in_sc[k,:flens_utt], batch_sc_))
                     for i in range(args.n_half_cyc):
                         qy_logits_select_ = qy_logits[i][k,:flens_utt]
                         qy_logits_e_select_ = qy_logits_e[i][k,:flens_utt]
@@ -3103,7 +2964,6 @@ def main():
                         cap_est = -torch.exp(batch_lf0_rec_select[:,3:])
                         melsp_est = batch_melsp_rec[i][k,:flens_utt]
                         melsp_est_rest = (torch.exp(melsp_est)-1)/10000
-                        magsp_est = batch_magsp_rec[i][k,:flens_utt]
 
                         ## U/V, lf0, codeap, melsp acc.
                         if flens_utt > 1:
@@ -3115,11 +2975,6 @@ def main():
                                                             + torch.sqrt(torch.mean(criterion_l2(f0_est, f0))) \
                                                         + torch.mean(100*criterion_l1(uvcap_est, uvcap_select)) \
                                                             + torch.mean(torch.sum(criterion_l1(cap_est, cap), -1))
-                            if iter_idx >= 50: #prevent early large losses
-                                batch_loss_px_select += torch.mean(torch.sum(criterion_l1(magsp_est, magsp), -1)) \
-                                                            + torch.mean(torch.mean(criterion_l1(magsp_est, magsp), -1)) \
-                                                        + torch.sqrt(torch.mean(torch.sum(criterion_l2(magsp_est, magsp), -1))) \
-                                                            + torch.sqrt(torch.mean(torch.mean(criterion_l2(magsp_est, magsp), -1)))
                         else:
                             batch_loss_px_select += torch.mean(torch.sum(criterion_l1(melsp_est, melsp), -1)) \
                                                         + torch.mean(criterion_l1(melsp_est, melsp)) \
@@ -3127,9 +2982,6 @@ def main():
                                                             + torch.mean(criterion_l1(f0_est, f0)) \
                                                         + torch.mean(100*criterion_l1(uvcap_est, uvcap_select)) \
                                                             + torch.mean(torch.sum(criterion_l1(cap_est, cap), -1))
-                            if iter_idx >= 50: #prevent early large losses
-                                batch_loss_px_select += torch.mean(torch.sum(criterion_l1(magsp_est, magsp), -1)) \
-                                                            + torch.mean(torch.mean(criterion_l1(magsp_est, magsp), -1))
 
                         if iter_idx >= 50:
                             batch_loss_px_ms_norm_, batch_loss_px_ms_err_ = criterion_ms(melsp_est_rest, melsp_rest)
@@ -3138,17 +2990,9 @@ def main():
                             if not torch.isinf(batch_loss_px_ms_err_) and not torch.isnan(batch_loss_px_ms_err_):
                                 batch_loss_px_ms_err_select += batch_loss_px_ms_err_
 
-                            batch_loss_px_ms_magsp_norm_, batch_loss_px_ms_magsp_err_ = criterion_ms(magsp_est, magsp)
-                            if not torch.isinf(batch_loss_px_ms_magsp_norm_) and not torch.isnan(batch_loss_px_ms_magsp_norm_):
-                                batch_loss_px_ms_norm_select += batch_loss_px_ms_magsp_norm_
-                            if not torch.isinf(batch_loss_px_ms_magsp_err_) and not torch.isnan(batch_loss_px_ms_magsp_err_):
-                                batch_loss_px_ms_err_select += batch_loss_px_ms_magsp_err_
-
                         batch_loss_sc_z_kl_select += torch.mean(kl_categorical_categorical_logits(p_spk, logits_p_spk, batch_z_sc[i][k,:flens_utt]))
                         batch_sc_cv_ = batch_sc_cv[i//2][k,:flens_utt]
                         sc_cv_onehot_ = F.one_hot(batch_sc_cv_, num_classes=n_spk).float()
-                        batch_loss_sc_feat_kl_select += torch.mean(criterion_ce(batch_feat_rec_sc[i][k,:flens_utt], batch_sc_)) \
-                                                        + torch.mean(criterion_ce(batch_feat_magsp_rec_sc[i][k,:flens_utt], batch_sc_))
                         if i % 2 == 0:
                             ## conversion
                             if flens_utt > 1:
@@ -3162,13 +3006,14 @@ def main():
                                                                 + torch.mean(criterion_ce(qy_logits_e_select_, batch_sc_)) \
                                                         + torch.mean(100*torch.sum(criterion_l1(F.softmax(qy_logits_select_, dim=-1), sc_onehot_), -1)) \
                                                             + torch.mean(100*torch.sum(criterion_l1(F.softmax(qy_logits_e_select_, dim=-1), sc_onehot_), -1))
-                            batch_loss_sc_feat_kl_select += torch.mean(criterion_ce(batch_feat_cv_sc[i//2][k,:flens_utt], batch_sc_cv_)) \
-                                                            + torch.mean(criterion_ce(batch_feat_magsp_cv_sc[i//2][k,:flens_utt], batch_sc_cv_))
+                            batch_loss_sc_feat_kl_select += torch.mean(criterion_ce(batch_feat_rec_sc[i][k,:flens_utt], batch_sc_)) \
+                                                                + torch.mean(criterion_ce(batch_feat_cv_sc[i//2][k,:flens_utt], batch_sc_cv_))
                         else:
                             batch_loss_qy_py_ce_select += torch.mean(criterion_ce(qy_logits_select_, batch_sc_cv_)) \
                                                                 + torch.mean(criterion_ce(qy_logits_e_select_, batch_sc_cv_)) \
                                                         + torch.mean(100*torch.sum(criterion_l1(F.softmax(qy_logits_select_, dim=-1), sc_cv_onehot_), -1)) \
                                                             + torch.mean(100*torch.sum(criterion_l1(F.softmax(qy_logits_e_select_, dim=-1), sc_cv_onehot_), -1))
+                            batch_loss_sc_feat_kl_select += torch.mean(criterion_ce(batch_feat_rec_sc[i][k,:flens_utt], batch_sc_))
 
                         batch_loss_qz_pz_kl_select += torch.mean(torch.sum(kl_laplace(qz_alpha[i][k,:flens_utt]), -1)) \
                                                         + torch.mean(torch.sum(kl_laplace(qz_alpha_e[i][k,:flens_utt]), -1))
@@ -3187,19 +3032,15 @@ def main():
                 if len(idx_select_full) > 0:
                     logging.info('len_idx_select_full: '+str(len(idx_select_full)))
                     batch_melsp = torch.index_select(batch_melsp,0,idx_select_full)
-                    batch_magsp = torch.index_select(batch_magsp,0,idx_select_full)
                     batch_excit = torch.index_select(batch_excit,0,idx_select_full)
                     batch_sc = torch.index_select(batch_sc,0,idx_select_full)
                     batch_feat_in_sc = torch.index_select(batch_feat_in_sc,0,idx_select_full)
-                    batch_feat_magsp_in_sc = torch.index_select(batch_feat_magsp_in_sc,0,idx_select_full)
                     n_batch_utt = batch_melsp.shape[0]
                     for i in range(args.n_half_cyc):
                         batch_melsp_rec[i] = torch.index_select(batch_melsp_rec[i],0,idx_select_full)
-                        batch_magsp_rec[i] = torch.index_select(batch_magsp_rec[i],0,idx_select_full)
                         batch_lf0_rec[i] = torch.index_select(batch_lf0_rec[i],0,idx_select_full)
                         batch_z_sc[i] = torch.index_select(batch_z_sc[i],0,idx_select_full)
                         batch_feat_rec_sc[i] = torch.index_select(batch_feat_rec_sc[i],0,idx_select_full)
-                        batch_feat_magsp_rec_sc[i] = torch.index_select(batch_feat_magsp_rec_sc[i],0,idx_select_full)
                         z[i] = torch.index_select(z[i],0,idx_select_full)
                         z_e[i] = torch.index_select(z_e[i],0,idx_select_full)
                         qz_alpha[i] = torch.index_select(qz_alpha[i],0,idx_select_full)
@@ -3208,11 +3049,9 @@ def main():
                         qy_logits_e[i] = torch.index_select(qy_logits_e[i],0,idx_select_full)
                         if i % 2 == 0:
                             batch_melsp_cv[i//2] = torch.index_select(batch_melsp_cv[i//2],0,idx_select_full)
-                            batch_magsp_cv[i//2] = torch.index_select(batch_magsp_cv[i//2],0,idx_select_full)
                             batch_excit_cv[i//2] = torch.index_select(batch_excit_cv[i//2],0,idx_select_full)
                             batch_lf0_cv[i//2] = torch.index_select(batch_lf0_cv[i//2],0,idx_select_full)
                             batch_feat_cv_sc[i//2] = torch.index_select(batch_feat_cv_sc[i//2],0,idx_select_full)
-                            batch_feat_magsp_cv_sc[i//2] = torch.index_select(batch_feat_magsp_cv_sc[i//2],0,idx_select_full)
                             batch_sc_cv[i//2] = torch.index_select(batch_sc_cv[i//2],0,idx_select_full)
                             if args.n_half_cyc == 1:
                                 qz_alpha[i+1] = torch.index_select(qz_alpha[i+1],0,idx_select_full)
@@ -3248,21 +3087,17 @@ def main():
             melsp = batch_melsp
             melsp_rest = (torch.exp(melsp)-1)/10000
             melsp_rest_log = torch.log10(torch.clamp(melsp_rest, min=1e-16))
-            magsp = magsp_rest = batch_magsp
             uvcap = batch_excit[:,:,2]
             cap = -torch.exp(batch_excit[:,:,3:])
             sc_onehot = F.one_hot(batch_sc, num_classes=n_spk).float()
             batch_sc_ = batch_sc.reshape(-1)
             batch_loss_sc_feat_in_ = torch.mean(criterion_ce(batch_feat_in_sc.reshape(-1, n_spk), batch_sc_).reshape(n_batch_utt, -1), -1)
             batch_loss_sc_feat_in = batch_loss_sc_feat_in_.mean()
-            batch_loss_sc_feat_magsp_in_ = torch.mean(criterion_ce(batch_feat_magsp_in_sc.reshape(-1, n_spk), batch_sc_).reshape(n_batch_utt, -1), -1)
-            batch_loss_sc_feat_magsp_in = batch_loss_sc_feat_magsp_in_.mean()
-            batch_loss += batch_loss_sc_feat_in_.sum() + batch_loss_sc_feat_magsp_in_.sum()
+            batch_loss += batch_loss_sc_feat_in_.sum()
             for i in range(args.n_half_cyc):
                 ## reconst. [i % 2 == 0] / cyclic reconst. [i % 2 == 1]
                 melsp_est = batch_melsp_rec[i]
                 melsp_est_rest = (torch.exp(melsp_est)-1)/10000
-                magsp_est = magsp_est_rest = batch_magsp_rec[i]
                 uv_est = batch_lf0_rec[i][:,:,0]
                 f0_est = torch.exp(batch_lf0_rec[i][:,:,1])
                 uvcap_est = batch_lf0_rec[i][:,:,2]
@@ -3271,7 +3106,6 @@ def main():
                 if i % 2 == 0:
                     f0cv = torch.exp(batch_excit_cv[i//2][:,:,1])
                     melsp_cv = batch_melsp_cv[i//2]
-                    magsp_cv = batch_magsp_cv[i//2]
                     uv_cv = batch_lf0_cv[i//2][:,:,0]
                     f0_cv = torch.exp(batch_lf0_cv[i//2][:,:,1])
                     uvcap_cv = batch_lf0_cv[i//2][:,:,2]
@@ -3306,34 +3140,13 @@ def main():
                 batch_loss_px[i] += batch_loss_melsp[i]
                 batch_loss_melsp_dB[i] = torch.mean(torch.sqrt(torch.mean((20*(torch.log10(torch.clamp(melsp_est_rest, min=1e-16))-melsp_rest_log))**2, -1)))
 
-                batch_loss_magsp_ = torch.mean(torch.sum(criterion_l1(magsp_est, magsp), -1), -1) \
-                                        + torch.mean(torch.mean(criterion_l1(magsp_est, magsp), -1), -1) \
-                                    + torch.sqrt(torch.mean(torch.sum(criterion_l2(magsp_est, magsp), -1), -1)) \
-                                        + torch.sqrt(torch.mean(torch.mean(criterion_l2(magsp_est, magsp), -1), -1))
-                if iter_idx >= 50:
-                    batch_loss_px_sum += batch_loss_magsp_.sum()
-                batch_loss_magsp[i] = batch_loss_magsp_.mean()
-                batch_loss_px[i] += batch_loss_magsp[i]
-                batch_loss_magsp_dB[i] = torch.mean(torch.mean(torch.sqrt(torch.mean((20*(torch.log10(torch.clamp(magsp_est_rest, min=1e-16))
-                                                        -torch.log10(torch.clamp(magsp_rest, min=1e-16))))**2, -1)), -1))
-
                 batch_loss_px_ms_norm_, batch_loss_px_ms_err_ = criterion_ms(melsp_est_rest, melsp_rest)
                 batch_loss_ms_norm[i] = batch_loss_px_ms_norm_.mean()
+                if iter_idx >= 50 and not torch.isinf(batch_loss_ms_norm[i]) and not torch.isnan(batch_loss_ms_norm[i]):
+                    batch_loss_px_sum += batch_loss_px_ms_norm_.sum()
                 batch_loss_ms_err[i] = batch_loss_px_ms_err_.mean()
-                if iter_idx >= 50:
-                    if  not torch.isinf(batch_loss_ms_norm[i]) and not torch.isnan(batch_loss_ms_norm[i]):
-                        batch_loss_px_sum += batch_loss_px_ms_norm_.sum()
-                    if not torch.isinf(batch_loss_ms_err[i]) and not torch.isnan(batch_loss_ms_err[i]):
-                        batch_loss_px_sum += batch_loss_px_ms_err_.sum()
-
-                batch_loss_px_ms_magsp_norm_, batch_loss_px_ms_magsp_err_ = criterion_ms(magsp_est_rest, magsp_rest)
-                batch_loss_ms_norm_magsp[i] = batch_loss_px_ms_magsp_norm_.mean()
-                batch_loss_ms_err_magsp[i] = batch_loss_px_ms_magsp_err_.mean()
-                if iter_idx >= 50:
-                    if not torch.isinf(batch_loss_ms_norm_magsp[i]) and not torch.isnan(batch_loss_ms_norm_magsp[i]):
-                        batch_loss_px_sum += batch_loss_px_ms_magsp_norm_.sum()
-                    if not torch.isinf(batch_loss_ms_err_magsp[i]) and not torch.isnan(batch_loss_ms_err_magsp[i]):
-                        batch_loss_px_sum += batch_loss_px_ms_magsp_err_.sum()
+                if iter_idx >= 50 and not torch.isinf(batch_loss_ms_err[i]) and not torch.isnan(batch_loss_ms_err[i]):
+                    batch_loss_px_sum += batch_loss_px_ms_err_.sum()
 
                 ## conversion
                 if i % 2 == 0:
@@ -3351,18 +3164,12 @@ def main():
                                                     + torch.sqrt(torch.mean(torch.sum(criterion_l2(melsp_cv, melsp), -1))) \
                                                 + torch.mean(criterion_l1(melsp_cv, melsp)) \
                                                     + torch.sqrt(torch.mean(criterion_l2(melsp_cv, melsp)))
-                    batch_loss_magsp_cv[i//2] = torch.mean(torch.sum(criterion_l1(magsp_cv, magsp), -1)) \
-                                                    + torch.sqrt(torch.mean(torch.sum(criterion_l2(magsp_cv, magsp), -1))) \
-                                                + torch.mean(torch.mean(criterion_l1(magsp_cv, magsp), -1)) \
-                                                    + torch.sqrt(torch.mean(torch.mean(criterion_l2(magsp_cv, magsp), -1)))
 
                 # KL-div lat., CE and error-percentage spk.
                 batch_sc_cv_ = batch_sc_cv[i//2].reshape(-1)
                 batch_loss_sc_feat_ = torch.mean(criterion_ce(batch_feat_rec_sc[i].reshape(-1, n_spk), batch_sc_).reshape(n_batch_utt, -1), -1)
                 batch_loss_sc_feat[i] = batch_loss_sc_feat_.mean()
-                batch_loss_sc_feat_magsp_ = torch.mean(criterion_ce(batch_feat_magsp_rec_sc[i].reshape(-1, n_spk), batch_sc_).reshape(n_batch_utt, -1), -1)
-                batch_loss_sc_feat_magsp[i] = batch_loss_sc_feat_magsp_.mean()
-                batch_loss_sc_feat_kl = batch_loss_sc_feat_.sum() + batch_loss_sc_feat_magsp_.sum()
+                batch_loss_sc_feat_kl = batch_loss_sc_feat_.sum()
                 if i % 2 == 0:
                     batch_loss_qy_py_ = torch.mean(criterion_ce(qy_logits[i].reshape(-1, n_spk), batch_sc_).reshape(n_batch_utt, -1), -1)
                     batch_loss_qy_py[i] = batch_loss_qy_py_.mean()
@@ -3370,13 +3177,11 @@ def main():
                     batch_loss_qy_py_err[i] = batch_loss_qy_py_err_.mean()
                     batch_loss_sc_feat_cv_ = torch.mean(criterion_ce(batch_feat_cv_sc[i//2].reshape(-1, n_spk), batch_sc_cv_).reshape(n_batch_utt, -1), -1)
                     batch_loss_sc_feat_cv[i//2] = batch_loss_sc_feat_cv_.mean()
-                    batch_loss_sc_feat_magsp_cv_ = torch.mean(criterion_ce(batch_feat_magsp_cv_sc[i//2].reshape(-1, n_spk), batch_sc_cv_).reshape(n_batch_utt, -1), -1)
-                    batch_loss_sc_feat_magsp_cv[i//2] = batch_loss_sc_feat_magsp_cv_.mean()
                     if args.n_half_cyc == 1:
                         batch_loss_qy_py[i+1] = torch.mean(criterion_ce(qy_logits[i+1].reshape(-1, n_spk), batch_sc_cv_).reshape(n_batch_utt, -1), -1).mean()
                         batch_loss_qy_py_err[i+1] = torch.mean(100*torch.sum(criterion_l1(F.softmax(qy_logits[i+1], dim=-1), F.one_hot(batch_sc_cv[i//2], num_classes=n_spk).float()), -1), -1).mean()
                         batch_loss_qz_pz[i+1] = torch.mean(torch.sum(kl_laplace(qz_alpha[i+1]), -1), -1).mean()
-                    batch_loss_sc_feat_kl += batch_loss_sc_feat_cv_.sum() + batch_loss_sc_feat_magsp_cv_.sum()
+                    batch_loss_sc_feat_kl += batch_loss_sc_feat_cv_.sum()
                 else:
                     batch_loss_qy_py_ = torch.mean(criterion_ce(qy_logits[i].reshape(-1, n_spk), batch_sc_cv_).reshape(n_batch_utt, -1), -1)
                     batch_loss_qy_py[i] = batch_loss_qy_py_.mean()
@@ -3436,20 +3241,13 @@ def main():
                     total_train_loss["train/loss_rmse-%d"%(i+1)].append(batch_loss_lat_rmse[i].item())
                 total_train_loss["train/loss_sc_z-%d"%(i+1)].append(batch_loss_sc_z[i].item())
                 total_train_loss["train/loss_sc_feat-%d"%(i+1)].append(batch_loss_sc_feat[i].item())
-                total_train_loss["train/loss_sc_feat_magsp-%d"%(i+1)].append(batch_loss_sc_feat_magsp[i].item())
                 if i == 0:
                     total_train_loss["train/loss_sc_feat_in"].append(batch_loss_sc_feat_in.item())
-                    total_train_loss["train/loss_sc_feat_magsp_in"].append(batch_loss_sc_feat_magsp_in.item())
                     loss_sc_feat_in.append(batch_loss_sc_feat_in.item())
-                #    loss_sc_feat_magsp_in.append(batch_loss_sc_feat_magsp_in.item())
                 total_train_loss["train/loss_ms_norm-%d"%(i+1)].append(batch_loss_ms_norm[i].item())
                 total_train_loss["train/loss_ms_err-%d"%(i+1)].append(batch_loss_ms_err[i].item())
-                total_train_loss["train/loss_ms_norm_magsp-%d"%(i+1)].append(batch_loss_ms_norm_magsp[i].item())
-                total_train_loss["train/loss_ms_err_magsp-%d"%(i+1)].append(batch_loss_ms_err_magsp[i].item())
                 loss_elbo[i].append(batch_loss_elbo[i].item())
                 loss_px[i].append(batch_loss_px[i].item())
-                #loss_sc_feat[i].append(batch_loss_sc_feat[i].item())
-                #loss_sc_feat_magsp[i].append(batch_loss_sc_feat_magsp[i].item())
                 loss_qy_py[i].append(batch_loss_qy_py[i].item())
                 loss_qy_py_err[i].append(batch_loss_qy_py_err[i].item())
                 loss_qz_pz[i].append(batch_loss_qz_pz[i].item())
@@ -3458,11 +3256,8 @@ def main():
                 loss_qz_pz_e[i].append(batch_loss_qz_pz_e[i].item())
                 loss_sc_z[i].append(batch_loss_sc_z[i].item())
                 loss_sc_feat[i].append(batch_loss_sc_feat[i].item())
-                #loss_sc_feat_magsp[i].append(batch_loss_sc_feat_magsp[i].item())
                 loss_ms_norm[i].append(batch_loss_ms_norm[i].item())
                 loss_ms_err[i].append(batch_loss_ms_err[i].item())
-                #loss_ms_norm_magsp[i].append(batch_loss_ms_norm_magsp[i].item())
-                #loss_ms_err_magsp[i].append(batch_loss_ms_err_magsp[i].item())
                 ## in-domain reconst.
                 total_train_loss["train/loss_uv-%d"%(i+1)].append(batch_loss_uv[i].item())
                 total_train_loss["train/loss_f0-%d"%(i+1)].append(batch_loss_f0[i].item())
@@ -3470,30 +3265,22 @@ def main():
                 total_train_loss["train/loss_cap-%d"%(i+1)].append(batch_loss_cap[i].item())
                 total_train_loss["train/loss_melsp-%d"%(i+1)].append(batch_loss_melsp[i].item())
                 total_train_loss["train/loss_melsp_dB-%d"%(i+1)].append(batch_loss_melsp_dB[i].item())
-                total_train_loss["train/loss_magsp-%d"%(i+1)].append(batch_loss_magsp[i].item())
-                total_train_loss["train/loss_magsp_dB-%d"%(i+1)].append(batch_loss_magsp_dB[i].item())
                 loss_uv[i].append(batch_loss_uv[i].item())
                 loss_f0[i].append(batch_loss_f0[i].item())
                 loss_uvcap[i].append(batch_loss_uvcap[i].item())
                 loss_cap[i].append(batch_loss_cap[i].item())
                 loss_melsp[i].append(batch_loss_melsp[i].item())
                 loss_melsp_dB[i].append(batch_loss_melsp_dB[i].item())
-                #loss_magsp[i].append(batch_loss_magsp[i].item())
-                #loss_magsp_dB[i].append(batch_loss_magsp_dB[i].item())
                 ## conversion
                 if i % 2 == 0:
                     total_train_loss["train/loss_sc_feat_cv-%d"%(i+1)].append(batch_loss_sc_feat_cv[i//2].item())
-                    total_train_loss["train/loss_sc_feat_magsp_cv-%d"%(i+1)].append(batch_loss_sc_feat_magsp_cv[i//2].item())
                     total_train_loss["train/loss_melsp_cv-%d"%(i+1)].append(batch_loss_melsp_cv[i//2].item())
-                    total_train_loss["train/loss_magsp_cv-%d"%(i+1)].append(batch_loss_magsp_cv[i//2].item())
                     total_train_loss["train/loss_uv_cv-%d"%(i+1)].append(batch_loss_uv_cv[i//2].item())
                     total_train_loss["train/loss_f0_cv-%d"%(i+1)].append(batch_loss_f0_cv[i//2].item())
                     total_train_loss["train/loss_uvcap_cv-%d"%(i+1)].append(batch_loss_uvcap_cv[i//2].item())
                     total_train_loss["train/loss_cap_cv-%d"%(i+1)].append(batch_loss_cap_cv[i//2].item())
                     loss_sc_feat_cv[i//2].append(batch_loss_sc_feat_cv[i//2].item())
-                    #loss_sc_feat_magsp_cv[i//2].append(batch_loss_sc_feat_magsp_cv[i//2].item())
                     loss_melsp_cv[i//2].append(batch_loss_melsp_cv[i//2].item())
-                    #loss_magsp_cv[i//2].append(batch_loss_magsp_cv[i//2].item())
                     loss_uv_cv[i//2].append(batch_loss_uv_cv[i//2].item())
                     loss_f0_cv[i//2].append(batch_loss_f0_cv[i//2].item())
                     loss_uvcap_cv[i//2].append(batch_loss_uvcap_cv[i//2].item())
@@ -3534,31 +3321,26 @@ def main():
                                 batch_loss_qy_py[i+1].item(), batch_loss_qy_py_err[i+1].item(), batch_loss_qz_pz[i+1].item(),
                                 batch_loss_qy_py_e[i].item(), batch_loss_qy_py_err_e[i].item(), batch_loss_qz_pz_e[i].item(),
                                 batch_loss_qy_py_e[i+1].item(), batch_loss_qy_py_err_e[i+1].item(), batch_loss_qz_pz_e[i+1].item())
-                    text_log += "%.3f %.3f , %.3f %.3f ; %.3f , %.3f %.3f , %.3f %.3f ; " \
-                        "%.3f %.3f %.3f dB , %.3f %.3f %.3f dB ; " \
+                    text_log += "%.3f %.3f ; %.3f , %.3f %.3f ; " \
+                        "%.3f %.3f %.3f dB ; " \
                         "%.3f %% %.3f %% , %.3f Hz %.3f Hz , %.3f %% %.3f %% , %.3f dB %.3f dB ;; " % (
                             batch_loss_ms_norm[i].item(), batch_loss_ms_err[i].item(),
-                            batch_loss_ms_norm_magsp[i].item(), batch_loss_ms_err_magsp[i].item(),
                                 batch_loss_sc_z[i].item(),
                                 batch_loss_sc_feat[i].item(), batch_loss_sc_feat_cv[i//2].item(),
-                                batch_loss_sc_feat_magsp[i].item(), batch_loss_sc_feat_magsp_cv[i//2].item(),
                                     batch_loss_melsp[i].item(), batch_loss_melsp_cv[i//2].item(), batch_loss_melsp_dB[i].item(),
-                                    batch_loss_magsp[i].item(), batch_loss_magsp_cv[i//2].item(), batch_loss_magsp_dB[i].item(),
                                         batch_loss_uv[i].item(), batch_loss_uv_cv[i//2].item(),
                                         batch_loss_f0[i].item(), batch_loss_f0_cv[i//2].item(),
                                         batch_loss_uvcap[i].item(), batch_loss_uvcap_cv[i//2].item(),
                                         batch_loss_cap[i].item(), batch_loss_cap_cv[i//2].item())
                 else:
-                    text_log += "[%ld] %.3f ; %.3f %.3f , %.3f %.3f %.3f %% %.3f , %.3f %.3f %% %.3f ; %.3f %.3f , %.3f %.3f ; "\
-                        "%.3f , %.3f , %.3f ; %.3f %.3f dB , %.3f %.3f dB ; %.3f %% %.3f Hz , %.3f %% %.3f dB ;; " % (
+                    text_log += "[%ld] %.3f ; %.3f %.3f , %.3f %.3f %.3f %% %.3f , %.3f %.3f %% %.3f ; %.3f %.3f ; "\
+                        "%.3f , %.3f ; %.3f %.3f dB ; %.3f %% %.3f Hz , %.3f %% %.3f dB ;; " % (
                         i+1, batch_loss_elbo[i].item(), batch_loss_lat_cossim[i].item(), batch_loss_lat_rmse[i].item(), batch_loss_px[i].item(),
                             batch_loss_qy_py[i].item(), batch_loss_qy_py_err[i].item(), batch_loss_qz_pz[i].item(),
                             batch_loss_qy_py_e[i].item(), batch_loss_qy_py_err_e[i].item(), batch_loss_qz_pz_e[i].item(),
                                 batch_loss_ms_norm[i].item(), batch_loss_ms_err[i].item(),
-                                batch_loss_ms_norm_magsp[i].item(), batch_loss_ms_err_magsp[i].item(),
-                                    batch_loss_sc_z[i].item(), batch_loss_sc_feat[i].item(), batch_loss_sc_feat_magsp[i].item(),
+                                    batch_loss_sc_z[i].item(), batch_loss_sc_feat[i].item(),
                                         batch_loss_melsp[i].item(), batch_loss_melsp_dB[i].item(),
-                                        batch_loss_magsp[i].item(), batch_loss_magsp_dB[i].item(),
                                             batch_loss_uv[i].item(), batch_loss_f0[i].item(),
                                             batch_loss_uvcap[i].item(), batch_loss_cap[i].item())
             logging.info("%s (%.3f sec)" % (text_log, time.time() - start))
