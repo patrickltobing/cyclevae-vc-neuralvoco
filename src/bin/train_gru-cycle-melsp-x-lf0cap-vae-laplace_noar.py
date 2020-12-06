@@ -239,7 +239,7 @@ def eval_generator(dataloader, device, batch_size, limit_count=None, spcidx=True
 
 def save_checkpoint(checkpoint_dir, model_encoder_melsp, model_decoder_melsp, model_encoder_excit, model_decoder_excit,
         model_spk, model_classifier, min_eval_loss_melsp_dB, min_eval_loss_melsp_dB_std, min_eval_loss_melsp_cv,
-        min_eval_loss_melsp, min_eval_loss_melsp_dB_src_trg, min_eval_loss_melsp_dB_src_trg_std,
+        min_eval_loss_melsp, min_eval_loss_melsp_dB_src_trg, min_eval_loss_melsp_dB_src_trg_std, min_eval_loss_gv_src_trg,
         iter_idx, min_idx, optimizer, numpy_random_state, torch_random_state, iterations, model_spkidtr=None):
     """FUNCTION TO SAVE CHECKPOINT
 
@@ -270,6 +270,7 @@ def save_checkpoint(checkpoint_dir, model_encoder_melsp, model_decoder_melsp, mo
         "min_eval_loss_melsp": min_eval_loss_melsp,
         "min_eval_loss_melsp_dB_src_trg": min_eval_loss_melsp_dB_src_trg,
         "min_eval_loss_melsp_dB_src_trg_std": min_eval_loss_melsp_dB_src_trg_std,
+        "min_eval_loss_gv_src_trg": min_eval_loss_gv_src_trg,
         "iter_idx": iter_idx,
         "min_idx": min_idx,
         "optimizer": optimizer.state_dict(),
@@ -791,6 +792,8 @@ def main():
     dec_pad_right = model_decoder_melsp.pad_right
     logging.info(f'dec_pad_left: {dec_pad_left}')
     logging.info(f'dec_pad_right: {dec_pad_right}')
+    dec_enc_pad_left = dec_pad_left + enc_pad_left
+    dec_enc_pad_right = dec_pad_right + enc_pad_right
     first_pad_left = (enc_pad_left + lf0_pad_left + dec_pad_left)*args.n_half_cyc
     first_pad_right = (enc_pad_right + lf0_pad_right + dec_pad_right)*args.n_half_cyc
     # paddings are added with 1 more lf0_pad because excit. flow part is also used in melsp flow part
@@ -1086,6 +1089,7 @@ def main():
     min_eval_loss_melsp[0] = 99999999.99
     min_eval_loss_melsp_dB_src_trg = 99999999.99
     min_eval_loss_melsp_dB_src_trg_std = 99999999.99
+    min_eval_loss_gv_src_trg = 99999999.99
     iter_idx = 0
     min_idx = -1
     change_min_flag = False
@@ -1098,6 +1102,7 @@ def main():
         min_eval_loss_melsp[0] = checkpoint["min_eval_loss_melsp"]
         min_eval_loss_melsp_dB_src_trg = checkpoint["min_eval_loss_melsp_dB_src_trg"]
         min_eval_loss_melsp_dB_src_trg_std = checkpoint["min_eval_loss_melsp_dB_src_trg_std"]
+        min_eval_loss_gv_src_trg = checkpoint["min_eval_loss_gv_src_trg"]
         iter_idx = checkpoint["iter_idx"]
         min_idx = checkpoint["min_idx"]
     logging.info("==%d EPOCH==" % (epoch_idx+1))
@@ -1454,10 +1459,10 @@ def main():
                                 idx_in += 1
                                 z_cat = torch.cat((z_e[j], z[j]), 2)
                                 if args.spkidtr_dim > 0:
-                                    if enc_pad_right > 0:
-                                        spk_code_in = spk_code_in[:,enc_pad_left:-enc_pad_right]
+                                    if dec_enc_pad_right > 0:
+                                        spk_code_in = spk_code_in[:,dec_enc_pad_left:-dec_enc_pad_right]
                                     else:
-                                        spk_code_in = spk_code_in[:,enc_pad_left:]
+                                        spk_code_in = spk_code_in[:,dec_enc_pad_left:]
                                     batch_spk, h_spk[j] = model_spk(spk_code_in, z=z_cat, outpad_right=outpad_rights[idx_in], h=h_spk[j])
                                     batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(z_e[j], y=spk_code_in, aux=batch_spk, outpad_right=outpad_rights[idx_in], h=h_lf0[j])
                                 else:
@@ -1728,10 +1733,10 @@ def main():
                                 idx_in += 1
                                 z_cat = torch.cat((z_e[j], z[j]), 2)
                                 if args.spkidtr_dim > 0:
-                                    if enc_pad_right > 0:
-                                        spk_code_in = spk_code_in[:,enc_pad_left:-enc_pad_right]
+                                    if dec_enc_pad_right > 0:
+                                        spk_code_in = spk_code_in[:,dec_enc_pad_left:-dec_enc_pad_right]
                                     else:
-                                        spk_code_in = spk_code_in[:,enc_pad_left:]
+                                        spk_code_in = spk_code_in[:,dec_enc_pad_left:]
                                     batch_spk, h_spk[j] = model_spk(spk_code_in, z=z_cat, outpad_right=outpad_rights[idx_in])
                                     batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(z_e[j], y=spk_code_in, aux=batch_spk, outpad_right=outpad_rights[idx_in])
                                 else:
@@ -2253,9 +2258,17 @@ def main():
                         eval_loss_uv[i], eval_loss_uv_std[i], eval_loss_f0[i], eval_loss_f0_std[i],
                         eval_loss_uvcap[i], eval_loss_uvcap_std[i], eval_loss_cap[i], eval_loss_cap_std[i])
             logging.info("%s (%.3f min., %.3f sec / batch)" % (text_log, total / 60.0, total / iter_count))
-            if (pair_exist and eval_loss_melsp_dB_src_trg <= min_eval_loss_melsp_dB_src_trg) \
-                or ((eval_loss_melsp_cv[0]-eval_loss_melsp[0]) >= (min_eval_loss_melsp_cv[0]-min_eval_loss_melsp[0]) \
-                    and (eval_loss_melsp_dB[0] <= min_eval_loss_melsp_dB[0])):
+            if (pair_exist and \
+                    eval_loss_melsp_dB_src_trg <= min_eval_loss_melsp_dB_src_trg \
+                    or (eval_loss_melsp_dB_src_trg+eval_loss_melsp_dB_src_trg_std) <= (min_eval_loss_melsp_dB_src_trg+min_eval_loss_melsp_dB_src_trg_std) \
+                    or round(eval_loss_melsp_dB_src_trg,2) <= round(min_eval_loss_melsp_dB_src_trg,2) \
+                    or ((round(eval_loss_melsp_dB_src_trg,2)-0.1) <= round(min_eval_loss_melsp_dB_src_trg,2) and round(eval_loss_gv_src_trg,2) <= round(min_eval_loss_gv_src_trg,2)) \
+                    or round(eval_loss_melsp_dB_src_trg+eval_loss_melsp_dB_src_trg_std,2) <= round(min_eval_loss_melsp_dB_src_trg+min_eval_loss_melsp_dB_src_trg_std,2) \
+                    or ((round(eval_loss_melsp_dB_src_trg+eval_loss_melsp_dB_src_trg_std,2)-0.1) <= round(min_eval_loss_melsp_dB_src_trg+min_eval_loss_melsp_dB_src_trg_std,2) \
+                        and round(eval_loss_gv_src_trg,2) <= round(min_eval_loss_gv_src_trg,2))) \
+                or (not pair_exist and \
+                    (eval_loss_melsp_cv[0]-eval_loss_melsp[0]) >= (min_eval_loss_melsp_cv[0]-min_eval_loss_melsp[0]) \
+                    and eval_loss_melsp_dB[0] <= min_eval_loss_melsp_dB[0]):
                 min_eval_loss_gv_src_src = eval_loss_gv_src_src
                 min_eval_loss_gv_src_trg = eval_loss_gv_src_trg
                 min_eval_loss_sc_feat_in = eval_loss_sc_feat_in
@@ -2397,7 +2410,7 @@ def main():
                 logging.info('save epoch:%d' % (epoch_idx+1))
                 save_checkpoint(args.expdir, model_encoder_melsp, model_decoder_melsp, model_encoder_excit, model_decoder_excit,
                     model_spk, model_classifier, min_eval_loss_melsp_dB[0], min_eval_loss_melsp_dB_std[0], min_eval_loss_melsp_cv[0],
-                    min_eval_loss_melsp[0], min_eval_loss_melsp_dB_src_trg, min_eval_loss_melsp_dB_src_trg_std,
+                    min_eval_loss_melsp[0], min_eval_loss_melsp_dB_src_trg, min_eval_loss_melsp_dB_src_trg_std, min_eval_loss_gv_src_trg,
                     iter_idx, min_idx, optimizer, numpy_random_state, torch_random_state, epoch_idx + 1, model_spkidtr=model_spkidtr)
             total = 0
             iter_count = 0
@@ -2698,10 +2711,10 @@ def main():
                         idx_in += 1
                         z_cat = torch.cat((z_e[j], z[j]), 2)
                         if args.spkidtr_dim > 0:
-                            if enc_pad_right > 0:
-                                spk_code_in = spk_code_in[:,enc_pad_left:-enc_pad_right]
+                            if dec_enc_pad_right > 0:
+                                spk_code_in = spk_code_in[:,dec_enc_pad_left:-dec_enc_pad_right]
                             else:
-                                spk_code_in = spk_code_in[:,enc_pad_left:]
+                                spk_code_in = spk_code_in[:,dec_enc_pad_left:]
                             batch_spk, h_spk[j] = model_spk(spk_code_in, z=z_cat, outpad_right=outpad_rights[idx_in], h=h_spk[j], do=True)
                             batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(z_e[j], y=spk_code_in, aux=batch_spk, outpad_right=outpad_rights[idx_in], h=h_lf0[j], do=True)
                         else:
@@ -2835,10 +2848,10 @@ def main():
                         idx_in += 1
                         z_cat = torch.cat((z_e[j], z[j]), 2)
                         if args.spkidtr_dim > 0:
-                            if enc_pad_right > 0:
-                                spk_code_in = spk_code_in[:,enc_pad_left:-enc_pad_right]
+                            if dec_enc_pad_right > 0:
+                                spk_code_in = spk_code_in[:,dec_enc_pad_left:-dec_enc_pad_right]
                             else:
-                                spk_code_in = spk_code_in[:,enc_pad_left:]
+                                spk_code_in = spk_code_in[:,dec_enc_pad_left:]
                             batch_spk, h_spk[j] = model_spk(spk_code_in, z=z_cat, outpad_right=outpad_rights[idx_in], do=True)
                             batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(z_e[j], y=spk_code_in, aux=batch_spk, outpad_right=outpad_rights[idx_in], do=True)
                         else:
