@@ -281,12 +281,14 @@ def save_checkpoint(checkpoint_dir, model_encoder_melsp, model_decoder_melsp_fix
         "min_eval_loss_melsp": min_eval_loss_melsp,
         "min_eval_loss_melsp_dB_src_trg": min_eval_loss_melsp_dB_src_trg,
         "min_eval_loss_melsp_dB_src_trg_std": min_eval_loss_melsp_dB_src_trg_std,
+        "min_eval_loss_gv_src_trg": min_eval_loss_gv_src_trg,
         "min_eval_loss_melsp_dB_post": min_eval_loss_melsp_dB_post,
         "min_eval_loss_melsp_dB_post_std": min_eval_loss_melsp_dB_post_std,
         "min_eval_loss_melsp_cv_post": min_eval_loss_melsp_cv_post,
         "min_eval_loss_melsp_post": min_eval_loss_melsp_post,
         "min_eval_loss_melsp_dB_src_trg_post": min_eval_loss_melsp_dB_src_trg_post,
         "min_eval_loss_melsp_dB_src_trg_post_std": min_eval_loss_melsp_dB_src_trg_post_std,
+        "min_eval_loss_gv_src_trg_post": min_eval_loss_gv_src_trg_post,
         "iter_idx": iter_idx,
         "min_idx": min_idx,
         "optimizer": optimizer.state_dict(),
@@ -2585,17 +2587,16 @@ def main():
                         eval_loss_magsp[i], eval_loss_magsp_std[i], eval_loss_magsp_dB[i], eval_loss_magsp_dB_std[i],
                         eval_loss_magsp_post[i], eval_loss_magsp_post_std[i], eval_loss_magsp_dB_post[i], eval_loss_magsp_dB_post_std[i])
             logging.info("%s (%.3f min., %.3f sec / batch)" % (text_log, total / 60.0, total / iter_count))
-            if (pair_exist and \
+            if ((round(eval_loss_gv_src_trg_post,2)-0.02) <= round(min_eval_loss_gv_src_trg_post,2)) and ((pair_exist and \
                     eval_loss_melsp_dB_src_trg_post <= min_eval_loss_melsp_dB_src_trg_post \
                     or (eval_loss_melsp_dB_src_trg_post+eval_loss_melsp_dB_src_trg_post_std) <= (min_eval_loss_melsp_dB_src_trg_post+min_eval_loss_melsp_dB_src_trg_post_std) \
                     or round(eval_loss_melsp_dB_src_trg_post,2) <= round(min_eval_loss_melsp_dB_src_trg_post,2) \
-                    or ((round(eval_loss_melsp_dB_src_trg_post,2)-0.1) <= round(min_eval_loss_melsp_dB_src_trg_post,2) and round(eval_loss_gv_src_trg_post,2) <= round(min_eval_loss_gv_src_trg_post,2)) \
+                    or (round(eval_loss_melsp_dB_src_trg_post,2)-0.01) <= round(min_eval_loss_melsp_dB_src_trg_post,2) \
                     or round(eval_loss_melsp_dB_src_trg_post+eval_loss_melsp_dB_src_trg_post_std,2) <= round(min_eval_loss_melsp_dB_src_trg_post+min_eval_loss_melsp_dB_src_trg_post_std,2) \
-                    or ((round(eval_loss_melsp_dB_src_trg_post+eval_loss_melsp_dB_src_trg_post_std,2)-0.1) <= round(min_eval_loss_melsp_dB_src_trg_post+min_eval_loss_melsp_dB_src_trg_post_std,2) \
-                        and round(eval_loss_gv_src_trg_post,2) <= round(min_eval_loss_gv_src_trg_post,2))) \
+                    or (round(eval_loss_melsp_dB_src_trg_post+eval_loss_melsp_dB_src_trg_post_std,2)-0.01) <= round(min_eval_loss_melsp_dB_src_trg_post+min_eval_loss_melsp_dB_src_trg_post_std,2)) \
                 or (not pair_exist and \
                     (eval_loss_melsp_cv_post[0]-eval_loss_melsp_post[0]) >= (min_eval_loss_melsp_cv_post[0]-min_eval_loss_melsp_post[0]) \
-                    and eval_loss_melsp_dB_post[0] <= min_eval_loss_melsp_dB_post[0]):
+                    and eval_loss_melsp_dB_post[0] <= min_eval_loss_melsp_dB_post[0])):
                 min_eval_loss_gv_src_src = eval_loss_gv_src_src
                 min_eval_loss_gv_src_trg = eval_loss_gv_src_trg
                 min_eval_loss_gv_src_src_post = eval_loss_gv_src_src_post

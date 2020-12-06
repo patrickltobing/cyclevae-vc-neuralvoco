@@ -438,8 +438,8 @@ def main():
                             trj_trg_code = trj_trg_code[:,model_decoder_melsp.pad_left:]
                         pdf, cvmelsp_src, _ = model_post(cvmelsp_src, y=src_code, aux=trj_src_code, e=e_post)
                         pdf_cv, cvmelsp, _ = model_post(cvmelsp, y=trg_code, aux=trj_trg_code, e=e_cv_post)
-                        #cvmelsp_src = pdf[:,:,:config.mel_dim]
-                        #cvmelsp = pdf_cv[:,:,:config.mel_dim]
+                        cvmelsp_src = pdf[:,:,:config.mel_dim]
+                        cvmelsp = pdf_cv[:,:,:config.mel_dim]
 
                         spk_logits, _, lat_rec, _ = model_encoder_melsp(cvmelsp_src, sampling=False)
                         spk_logits_e, _, lat_rec_e, _ = model_encoder_excit(cvmelsp_src, sampling=False)
@@ -494,7 +494,7 @@ def main():
                             src_code = src_code[:,model_decoder_melsp.pad_left:]
                             trj_src_code = trj_src_code[:,model_decoder_melsp.pad_left:]
                         pdf, cvmelsp_cyc, _ = model_post(cvmelsp_cyc, y=src_code, aux=trj_src_code, e=e_post)
-                        #cvmelsp_cyc = pdf[:,:,:config.mel_dim]
+                        cvmelsp_cyc = pdf[:,:,:config.mel_dim]
                     #else: # if using interpolated spk-code
                     #    z_interpolate = []
                     #    z_e_interpolate = []
