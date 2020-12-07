@@ -79,8 +79,8 @@ n_jobs=60
 #spks_open=(morikawa mizokuchi okada takada otake taga)
 #spks_open=(morikawa mizokuchi okada takada otake taga p276)
 #spks_open=(morikawa mizokuchi okada takada otake)
-#spks=(SEF1 SEF2 SEM1 SEM2 TFM1 TGM1 TMM1 TEF1 TEM1 TEF2 TEM2 TFF1 TGF1 TMF1)
 spks=(SEF1 TEF1)
+spks=(SEF1 SEF2 SEM1 SEM2 TFM1 TGM1 TMM1 TEF1 TEM1 TEF2 TEM2 TFF1 TGF1 TMF1)
 data_name=vcc2020
 #spks=(VCC2SF1 VCC2SF2 VCC2SF3 VCC2SF4 VCC2SM1 VCC2SM2 VCC2SM3 VCC2SM4 VCC2TF1 VCC2TF2 VCC2TM1 VCC2TM2)
 #data_name=vcc18
@@ -174,9 +174,9 @@ trn=tr_${data_name}
 dev=dv_${data_name}
 tst=ts_${data_name}
 
-#GPU_device=0
+GPU_device=0
 #GPU_device=1
-#GPU_device=2
+GPU_device=2
 #GPU_device=3
 GPU_device=4
 #GPU_device=5
@@ -287,11 +287,13 @@ if [ $mdl_name_post == none ]; then
     min_idx= #for cyclevae without post-net
 else
     min_idx= #for cyclevae with post-net
-    #min_idx=2
+    min_idx=2
 fi
 
 min_idx_wave= #for wavernn model
 #min_idx_wave=1
+#min_idx_wave=23
+#min_idx_wave=30
 
 n_interp=0
 #n_interp=10 #for speaker interpolation in 2-dim space with spec-excit cyclevae/cyclevqvae
@@ -309,29 +311,30 @@ fi
 
 
 ### Set GPU_device_str and n_gpus for VC/neural vocoder decoding with synchronized values
-GPU_device_str="0,1,2"
+GPU_device_str="0"
+#GPU_device_str="0,1,2"
 #GPU_device_str="7,8,9"
 #GPU_device_str="2,8,9"
-#GPU_device_str="5,6,7"
+GPU_device_str="5,6,7"
 #GPU_device_str="0,2,8,9"
 #GPU_device_str="9,2,8,0"
 #GPU_device_str="8,9"
 #GPU_device_str="0,4,7,8,9"
-#GPU_device_str="0"
 #GPU_device_str="2,0,3,4,1"
+GPU_device_str="3,2,0,4,1"
 
 n_gpus=1
 #n_gpus=2
 n_gpus=3
 #n_gpus=4
-#n_gpus=5
+n_gpus=5
 ###
 
 
 ### This is for reconstruction generation
 #spks_trg_rec=(VCC2SF1 VCC2SF2 VCC2SF3 VCC2SF4 VCC2SM1 VCC2SM2 VCC2SM3 VCC2SM4 VCC2TF1 VCC2TF2 VCC2TM1 VCC2TM2)
+spks_trg_rec=(TEM2)
 spks_trg_rec=(SEF1 SEF2 SEM1 SEM2 TFM1 TGM1 TMM1 TEF1 TEM1 TEF2 TEM2 TFF1 TGF1 TMF1)
-#spks_trg_rec=(TEM2)
 #spks_trg_rec=(TEF2 TGF1)
 #spks_trg_rec=(TEM2 TMF1 TFF1 TEF1)
 #spks_trg_rec=(TMM1 TGM1 TFM1 TEM1)
@@ -351,7 +354,7 @@ spks_src_dec=(SEM1 SEF2 SEM2 SEF1)
 #spks_src_dec=(SEM1)
 #spks_src_dec=(SEF2)
 #spks_src_dec=(SEM2)
-#spks_src_dec=(SEF1)
+spks_src_dec=(SEF1)
 
 #spks_trg_dec=(VCC2TF1 VCC2TF2 VCC2TM1 VCC2TM2)
 spks_trg_dec=(TFM1 TGM1 TMM1 TEF1 TEM1 TEF2 TEM2 TFF1 TGF1 TMF1)
@@ -359,19 +362,19 @@ spks_trg_dec=(TFM1 TGM1 TMM1 TEF1 TEM1 TEF2 TEM2 TFF1 TGF1 TMF1)
 #spks_trg_dec=(TEF2 TGF1)
 #spks_trg_dec=(TEM2 TMF1 TFF1 TEF1)
 #spks_trg_dec=(TMM1 TGM1 TFM1 TEM1)
-#spks_trg_dec=(TEF1)
+spks_trg_dec=(TEF1)
 ###
 
 
 ### This is for copy-synthesis using neural vocoder
 #spks_dec=(TFF1 TFM1 TMF1 TMM1 TGF1 TGM1 TEF1 TEF2 TEM1 TEM2 p237 p245 p248 p253 p276)
 #spks_dec=(p276 TGM1 taga TEM2 okada otake mizokuchi morikawa takada TFF1 TMM1)
-#spks_dec=(TEF1)
 #spks_dec=(TFM1)
 #spks_dec=(TGM1 TFF1 TMM1)
 #spks_dec=(TEM2)
 #spks_dec=(SEF1 SEF2 SEM1 SEM2 TFM1 TGM1 TMM1 TEF1 TEM1 TEF2 TEM2 TFF1 TGF1 TMF1)
-spks_dec=(TGM1)
+spks_dec=(TEF1)
+#spks_dec=(TGM1)
 #spks_dec=(VCC2SF1 VCC2SF2 VCC2SF3 VCC2SF4 VCC2SM1 VCC2SM2 VCC2SM3 VCC2SM4 VCC2TF1 VCC2TF2 VCC2TM1 VCC2TM2)
 ###
 
@@ -1841,8 +1844,8 @@ for spk_src in ${spks_src_dec[@]};do
 for spk_trg in ${spks_trg_dec[@]};do
         if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_16bit" ] \
             || [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_9bit" ]; then
-            outdir=${expdir_wave}/${mdl_name_post}-${mdl_name_wave}-${data_name}_dev-${hidden_units_wave}-${epoch_count_wave}-${lpc}-${n_bands}-${batch_size_wave}-${min_idx_cycvae}-${min_idx}-${min_idx_wave}
-            #outdir=${expdir_wave}/${mdl_name_post}-${mdl_name_wave}-${data_name}_tst-${hidden_units_wave}-${epoch_count_wave}-${lpc}-${n_bands}-${batch_size_wave}-${min_idx_cycvae}-${min_idx}-${min_idx_wave}
+            outdir=${expdir_wave}/${mdl_name_post}-${mdl_name}-${mdl_name_wave}-${data_name}_dev-${hidden_units_wave}-${epoch_count_wave}-${lpc}-${n_bands}-${batch_size_wave}-${min_idx_cycvae}-${min_idx}-${min_idx_wave}
+            #outdir=${expdir_wave}/${mdl_name_post}-${mdl_name}-${mdl_name_wave}-${data_name}_tst-${hidden_units_wave}-${epoch_count_wave}-${lpc}-${n_bands}-${batch_size_wave}-${min_idx_cycvae}-${min_idx}-${min_idx_wave}
         fi
 if [ `echo ${stage} | grep a` ];then
         echo $spk_src $spk_trg $min_idx_cycvae $min_idx $min_idx_wave
@@ -1855,8 +1858,8 @@ if [ `echo ${stage} | grep a` ];then
         checkpoint=${expdir_wave}/checkpoint-${min_idx_wave}.pkl
         config=${expdir_wave}/model.conf
 
-        #feats=data/${dev}/feats_cv_${spk_src}-${spk_trg}.scp
-        feats=data/${tst}/feats_cv_${spk_src}-${spk_trg}.scp
+        feats=data/${dev}/feats_cv_${spk_src}-${spk_trg}.scp
+        #feats=data/${tst}/feats_cv_${spk_src}-${spk_trg}.scp
 
         feats_scp=${expdir_wave}/feats_${min_idx_cycvae}-${min_idx}-${min_idx_wave}_${spk_src}-${spk_trg}.scp
         cat $feats | grep "\/${spk_src}-${spk_trg}\/" > ${feats_scp}

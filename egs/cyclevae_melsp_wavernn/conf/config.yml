@@ -193,8 +193,8 @@ mdl_name: cycmelspxlf0capvae-laplace
 
 mdl_name_post: cycmelspxlf0capvae-post-smpl-laplace
 
-mdl_name_wave: wavernn_dualgru_compact_lpc_mband_9bit
-#mdl_name_wave: wavernn_dualgru_compact_lpc_mband_16bit
+#mdl_name_wave: wavernn_dualgru_compact_lpc_mband_9bit
+mdl_name_wave: wavernn_dualgru_compact_lpc_mband_16bit
 
 ## sparsification scheduling settings for wavernn
 #t_start: 10000 #for noisy data
