@@ -30,3 +30,4 @@ torch: activate
 clean:
 	rm -fr venv
 	find -iname "*.pyc" -delete
+
