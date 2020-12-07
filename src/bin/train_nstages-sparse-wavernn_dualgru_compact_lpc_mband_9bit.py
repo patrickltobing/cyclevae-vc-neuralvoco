@@ -942,8 +942,8 @@ def main():
                     #    logging.info("add_loss")
                     #    batch_loss += batch_loss_ce_select_.sum() + batch_loss_ce_f_select_.sum() + batch_loss_ce_sc_select_.sum()
                     #batch_loss += batch_loss_ce_select_.sum() #350
-                    batch_loss += batch_loss_ce_select_.mean() #320/355/400[clamp]/401[failed?]/420[M(2K)]
-                    #batch_loss += batch_loss_ce_select_.sum() + batch_loss_ce_select_.mean() #360
+                    #batch_loss += batch_loss_ce_select_.mean() #320/355/400[clamp]/401[failed?]/420[M(2K)]
+                    batch_loss += batch_loss_ce_select_.sum() + batch_loss_ce_select_.mean() #360
                     logging.info('%s %d %d' % (featfile[k], slens_utt, flens_utt))
                     batch_loss_err_select += torch.mean(torch.sum(100*criterion_l1(F.softmax(batch_x_output_, dim=-1), F.one_hot(batch_x_, num_classes=args.n_quantize).float()), -1), 0) # n_bands
                 batch_loss_ce_select /= len(idx_select)
@@ -1024,8 +1024,8 @@ def main():
                 loss_err[i].append(batch_loss_err[i])
 
             #batch_loss += batch_loss_ce_.sum() #310/350
-            batch_loss += batch_loss_ce_.mean(-1).sum() #320/355/400[clamp]/401[failed?]/420[M(2K)]
-            #batch_loss += batch_loss_ce_.sum() + batch_loss_ce_.mean(-1).sum() #360
+            #batch_loss += batch_loss_ce_.mean(-1).sum() #320/355/400[clamp]/401[failed?]/420[M(2K)]
+            batch_loss += batch_loss_ce_.sum() + batch_loss_ce_.mean(-1).sum() #360
 
             optimizer.zero_grad()
             batch_loss.backward()

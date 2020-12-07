@@ -7,22 +7,21 @@
 * Created experiment branch (exp) for agile update version
     * Added Laplace fine-sampling for fine-structure recovery of mel-spectrogram
     * Added the use of mel-filterbank to encode WORLD spectrum instead of mel-cepstrum
-    * Added VAE-based underdetermined Blind Source Separation (BSS), e.g., for noisy mel-spectrogram
-    * Contents will be merged with v2.[] and master when confirmed
-* Lots of work to be done...
-    * CycleVAE with mcep+excit
-    * CycleVQVAE (mcep,mcep+excit,melsp)
-    * Reduced speaker-dimension for speaker-interpolation
-    * Pretrained models
+    * Development of mel-cepstrum based (WORLD) is suspended to allocate resources for mel-spectrogram systems
+    * Contents will be merged with v2.1 and master when confirmed
+* In progress
+    * Source separation with pretrained VAE source prior
     * Multiband WaveRNN real-time in C (AVX/FMA/Neon)
     * VC real-time in C following WaveRNN code
+    * Pretrained models
+    * CycleVQVAE
 
 
 ## Requirements
 
 * Python 3.6/3.7/3.8
 * CUDA 10.1
-* Linux 64-bit
+* Linux 64-bit [for Windows 10 user, please use Windows Subsystem for Linux]
 
 
 ## Installation
@@ -36,14 +35,10 @@ $ cd ..
 ## Usage
 
 ```
-$ cd egs/cyclevae_mcep_wavenet
-```
-or
-```
 $ cd egs/cyclevae_melsp_wavernn
 ```
 
-README files are given in each experiment directory.
+README file is given in the experiment directory.
 
 
 ## Contact

@@ -5,7 +5,7 @@
 
 * Python 3.6/3.7/3.8
 * CUDA 10.1
-* Linux 64-bit
+* Linux 64-bit [for Windows 10 user, please use Windows Subsystem for Linux]
 
 
 ## Usage
@@ -41,7 +41,7 @@ Set F0 and power threshold configuration files for each speaker in `conf/*.f0` o
 
 `stage=post` for post-network training for mel-spectrogram refinement after CycleVAE is trained
 
-`stage=5` for reconstruction/cyclic-reconstruction generation
+`stage=5` for reconstruction/cyclic-reconstruction generation (for further tuning of trained neural vocoder)
 
 `stage=6` for conversion features generation and synthesis with Griffin-Lim
 
@@ -61,6 +61,8 @@ Set F0 and power threshold configuration files for each speaker in `conf/*.f0` o
 `batch_size_utt` number of batch size in VC training, set it so that the `number of utterances / batch_size_utt` is at least `100`
 
 `mdl_name_wave` use 9-bit mu-law/16-bit output multiband WaveRNN (16-bit has better output)
+
+`spkidtr_dim` speaker dimension reduction for speaker-space interpolation, e.g., from N- to 2-dim space in the case of N number of speakers
 
 
 ## Some variable descriptions on `run.sh`

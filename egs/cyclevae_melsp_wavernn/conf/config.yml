@@ -17,7 +17,6 @@ winms: 27.5
 highpass_cutoff: 65
 
 ## Mel-cepstrum
-#mcep_dim: 34
 mcep_dim: 49
 
 ## Mel-spectrogram
@@ -31,33 +30,14 @@ gv_coeff: 0.9
 
 ## GRU hidden units encoder, decoder spec, decoder excit
 hidden_units_enc: 512
-#hidden_units_enc: 1024
-#hidden_units_enc: 768
 hidden_units_dec: 640
-#hidden_units_dec: 1024
-#hidden_units_dec: 768
 hidden_units_lf0: 128
-#hidden_units_lf0: 1024
-#hidden_units_lf0: 768
 hidden_units_post: 128
-#hidden_units_post: 1024
-#hidden_units_post: 768
-## set to 768 for allowing real-time/low-latency processing
 
 ## GRU hidden units wavernn
-#hidden_units_wave: 384
-#hidden_units_wave: 512
 hidden_units_wave: 640
-#hidden_units_wave: 768
-#hidden_units_wave: 896
-#hidden_units_wave: 1024
-#hidden_units_wave: 2048
 
-#hidden_units_wave_2: 16
-#hidden_units_wave_2: 23
 hidden_units_wave_2: 32
-#hidden_units_wave_2: 36
-#hidden_units_wave_2: 51
 
 ## GRU hidden layers encoder, decoder spec, decoder excit
 hidden_layers_enc: 1
@@ -70,12 +50,10 @@ hidden_layers_wave: 1
 
 ## kernel-size input conv encoder
 kernel_size_enc: 5
-#kernel_size_enc: 7
 dilation_size_enc: 1
 
 ## kernel-size input conv decoder spec
 kernel_size_dec: 5
-#kernel_size_dec: 7
 dilation_size_dec: 1
 
 ## kernel-size input conv encoder excit
@@ -98,44 +76,26 @@ dilation_depth: 3
 dilation_repeat: 2
 
 ## for using skewed input convolution (> 0), or balanced (0) [only for encoder]
-#right_size_enc: 0
 #right_size_enc: 1
 right_size_enc: 2
 right_size_dec: 0
-#right_size_dec: 2
 right_size_lf0: 0
-#right_size_lf0: 2
-## lookup frame limited to only 1 frame [for allowing low-latency/real-time processing]
-#right_size_wave: 0
+## lookup frame limited to only 1/2 frame [for allowing low-latency/real-time processing]
 #right_size_wave: 1
 right_size_wave: 2
 right_size_post: 0
 
 ## number of cycles :  n_half_cyc // 2
-#n_half_cyc: 1
 n_half_cyc: 2
 #n_half_cyc: 4
-#n_half_cyc: 6
 ## if cyclevae, use n_half_cyc:2, i.e., 1 cycle
 ## if cyclevqvae, use n_half_cyc:4, i.e., 2 cycles
 
 ## spect. latent dim.
-##cyclevae
-lat_dim: 32 
-##cyclevqvae spect est.
-#lat_dim: 40 
-##cyclevqvae spect+excit est.
-#lat_dim: 50 
-## use 32 for cyclevae
-## use 40 for cyclevqvae spec, 50 for cyclevqvae spec-excit
+lat_dim: 96
 
 ## excit. latent dim.
-##cyclevae
 lat_dim_e: 32
-##cyclevqvae spect+excit est.
-#lat_dim_e: 50
-## use 32 for cyclevae
-## use 50 for cyclevqvae spec-excit
 
 ## codebook size for cyclevqvae
 ctr_size: 128
@@ -144,21 +104,16 @@ ctr_size: 128
 ## if using skewed input convolution for encoder (right_size > 0), set causal_conv dec/lf0 to true
 ## always use non-causal input conv. for encoder/wave
 causal_conv_enc: false
-#causal_conv_enc: true
-#causal_conv_dec: false
 causal_conv_dec: true
-#causal_conv_lf0: false
 causal_conv_lf0: true
 causal_conv_wave: false
-#causal_conv_wave: true
-#causal_conv_post: false
 causal_conv_post: true
 ## if right_size > 0 (skewed conv encoder, i.e., future frame is limited), set causal_conv dec/lf0 to true [low-latency/real-time proc.]
 
 ## use dim-reduction for cont. spk. embed from 1-hot code (only for cyclevae spec-excit)
 spkidtr_dim: 0
 #spkidtr_dim: 2
-## only for cyclevae/cyclevqvae spec-excit, to freely interpolate between 2-dim cont. spk-embed spect & excit
+## to freely interpolate between 2-dim cont. spk-space
 
 ## learning rate
 lr: 1e-4
@@ -168,13 +123,11 @@ do_prob: 0.5
 
 ## maximum epoch count
 #epoch_count: 110
-#epoch_count: 111
-#epoch_count: 115
-epoch_count: 120
+epoch_count: 130
+#epoch_count_wave: 35
 #epoch_count_wave: 80
 #epoch_count_wave: 360
 epoch_count_wave: 487
-#epoch_count_wave: 488
 ## maximum epoch count
 
 ## use get_max_frame.sh to get max_frame of the current train/dev sets as the value of pad_len
@@ -193,12 +146,14 @@ pad_len: 2215
 batch_size: 30
 ## 15 frames for 10 ms shift
 #batch_size: 15
+
 ## cyclevae vcc20+vctk(+vcc18+arctic)
 #batch_size_utt: 80
 ## cyclevae vcc18+arctic
 #batch_size_utt: 20
 ## cyclevae vcc18.vcc20, rule of thumb is to let each epoch at least has 100 distinct batches, 60 train. utterances x 14 speakers in vcc20 = 840 / 8 = 105 distinct batches per epoch
 batch_size_utt: 8
+
 ## batch_size eval just follow the number of utterances in the corresponding dev. set or any number is ok
 #batch_size_utt_eval: 10
 batch_size_utt_eval: 14
@@ -226,6 +181,7 @@ batch_size_wave: 8
 #batch_size_utt_wave: 2
 ## wavernn --> use batch_size_utt = 8
 batch_size_utt_wave: 8
+
 ## batch_size eval just follow the number of utterances in the corresponding dev. set or any number is ok
 batch_size_utt_eval_wave: 14
 #batch_size_utt_eval_wave: 16
@@ -235,15 +191,15 @@ n_workers: 2
 
 mdl_name: cycmelspxlf0capvae-laplace
 
-mdl_name_post: post-smpl_cycmelspxlf0capvae-laplace
+mdl_name_post: cycmelspxlf0capvae-post-smpl-laplace
 
-#mdl_name_wave: wavernn_dualgru_compact_lpc_mband_9bit
-mdl_name_wave: wavernn_dualgru_compact_lpc_mband_16bit
+mdl_name_wave: wavernn_dualgru_compact_lpc_mband_9bit
+#mdl_name_wave: wavernn_dualgru_compact_lpc_mband_16bit
 
 ## sparsification scheduling settings for wavernn
-#t_start: 10000
+#t_start: 10000 #for noisy data
 t_start: 20000
-#t_end: 510000
+#t_end: 510000 #for noisy data
 t_end: 1270000
 interval: 20
 densities: 0.09-0.09-0.12
@@ -251,8 +207,8 @@ n_stage: 4
 
 ## number of data-driven linear predictive coefficients (LPC) in wavernn
 #lpc: 0
-lpc: 4
-#lpc: 6
+#lpc: 4
+lpc: 6
 
 n_bands: 5
 

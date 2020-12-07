@@ -921,7 +921,7 @@ class GRU_SPEC_DECODER(nn.Module):
     def __init__(self, feat_dim=50, out_dim=50, hidden_layers=1, hidden_units=1024, causal_conv=False,
             kernel_size=7, dilation_size=1, do_prob=0, n_spk=14, use_weight_norm=True, scale_out_flag=True,
                 excit_dim=None, pad_first=True, right_size=None, pdf=False, scale_in_flag=False,
-                    aux_dim=None):
+                    aux_dim=None, seg_conv_flag=True):
         super(GRU_SPEC_DECODER, self).__init__()
         self.n_spk = n_spk
         self.feat_dim = feat_dim
@@ -949,6 +949,7 @@ class GRU_SPEC_DECODER(nn.Module):
         else:
             self.out_dim = self.spec_dim
         self.scale_in_flag = scale_in_flag
+        self.seg_conv_flag = seg_conv_flag
         self.scale_out_flag = scale_out_flag
 
         if self.excit_dim is not None:
@@ -960,33 +961,38 @@ class GRU_SPEC_DECODER(nn.Module):
         elif self.scale_in_flag:
             self.scale_in = nn.Conv1d(self.feat_dim, self.feat_dim, 1)
 
-        # Conv. layers
-        if self.right_size <= 0:
-            if not self.causal_conv:
-                self.conv = TwoSidedDilConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size,
-                                            layers=self.dilation_size, pad_first=self.pad_first)
-                self.pad_left = self.conv.padding
-                self.pad_right = self.conv.padding
+        if self.seg_conv_flag:
+            # Conv. layers
+            if self.right_size <= 0:
+                if not self.causal_conv:
+                    self.conv = TwoSidedDilConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size,
+                                                layers=self.dilation_size, pad_first=self.pad_first)
+                    self.pad_left = self.conv.padding
+                    self.pad_right = self.conv.padding
+                else:
+                    self.conv = CausalDilConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size,
+                                                layers=self.dilation_size, pad_first=self.pad_first)
+                    self.pad_left = self.conv.padding
+                    self.pad_right = 0
             else:
-                self.conv = CausalDilConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size,
-                                            layers=self.dilation_size, pad_first=self.pad_first)
-                self.pad_left = self.conv.padding
-                self.pad_right = 0
+                self.conv = SkewedConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size,
+                                            right_size=self.right_size, pad_first=self.pad_first)
+                self.pad_left = self.conv.left_size
+                self.pad_right = self.conv.right_size
+            if self.do_prob > 0:
+                self.conv_drop = nn.Dropout(p=self.do_prob)
+            self.in_gru = self.in_dim*self.conv.rec_field
         else:
-            self.conv = SkewedConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size,
-                                        right_size=self.right_size, pad_first=self.pad_first)
-            self.pad_left = self.conv.left_size
-            self.pad_right = self.conv.right_size
-
-        if self.do_prob > 0:
-            self.conv_drop = nn.Dropout(p=self.do_prob)
+            self.in_gru = self.in_dim
+            self.pad_left = 0
+            self.pad_right = 0
 
         # GRU layer(s)
         if self.do_prob > 0 and self.hidden_layers > 1:
-            self.gru = nn.GRU(self.in_dim*self.conv.rec_field, self.hidden_units, self.hidden_layers,
+            self.gru = nn.GRU(self.in_gru, self.hidden_units, self.hidden_layers,
                                 dropout=self.do_prob, batch_first=True)
         else:
-            self.gru = nn.GRU(self.in_dim*self.conv.rec_field, self.hidden_units, self.hidden_layers,
+            self.gru = nn.GRU(self.in_gru, self.hidden_units, self.hidden_layers,
                                 batch_first=True)
         if self.do_prob > 0:
             self.gru_drop = nn.Dropout(p=self.do_prob)
@@ -1051,11 +1057,14 @@ class GRU_SPEC_DECODER(nn.Module):
                         z = torch.cat((self.scale_in(e.transpose(1,2)).transpose(1,2), z), 2) # B x T_frm x C
                 elif self.scale_in_flag:
                         z = self.scale_in(z.transpose(1,2)).transpose(1,2) # B x T_frm x C
-        # Input e layers
-        if self.do_prob > 0 and do:
-            e = self.conv_drop(self.conv(z.transpose(1,2)).transpose(1,2)) # B x C x T --> B x T x C
+        if self.seg_conv_flag:
+            # Input e layers
+            if self.do_prob > 0 and do:
+                e = self.conv_drop(self.conv(z.transpose(1,2)).transpose(1,2)) # B x C x T --> B x T x C
+            else:
+                e = self.conv(z.transpose(1,2)).transpose(1,2) # B x C x T --> B x T x C
         else:
-            e = self.conv(z.transpose(1,2)).transpose(1,2) # B x C x T --> B x T x C
+            e = z
         if outpad_right > 0:
             # GRU e layers
             if h is None:
@@ -1474,6 +1483,52 @@ class GRU_SPK(nn.Module):
             e = self.out(e.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
 
         return F.tanhshrink(e), h.detach()
+
+    def apply_weight_norm(self):
+        """Apply weight normalization module from all of the layers."""
+        def _apply_weight_norm(m):
+            if isinstance(m, torch.nn.Conv1d):
+                torch.nn.utils.weight_norm(m)
+                logging.info(f"Weight norm is applied to {m}.")
+
+        self.apply(_apply_weight_norm)
+
+    def remove_weight_norm(self):
+        """Remove weight normalization module from all of the layers."""
+        def _remove_weight_norm(m):
+            try:
+                if isinstance(m, torch.nn.Conv1d):
+                    torch.nn.utils.remove_weight_norm(m)
+                    logging.info(f"Weight norm is removed from {m}.")
+            except ValueError:
+                return
+
+        self.apply(_remove_weight_norm)
+
+
+class TRANSFORM_LAYER(nn.Module):
+    def __init__(self, in_dim=160, out_dim=80, use_weight_norm=True):
+        super(TRANSFORM_LAYER, self).__init__()
+
+        self.in_dim = in_dim
+        self.out_dim = out_dim
+        self.use_weight_norm = use_weight_norm
+
+        #conv = [nn.Conv1d(self.in_dim, self.out_dim, 1, bias=False), nn.Hardshrink()]
+        #self.conv = nn.Sequential(*conv)
+        self.conv = nn.Conv1d(self.in_dim, self.out_dim, 1, bias=False)
+
+        # apply weight norm
+        if self.use_weight_norm:
+            self.apply_weight_norm()
+        else:
+            self.apply(initialize)
+
+    def forward(self, x):
+        # in: B x T x C_in
+        # out: B x T x C_out
+        #return self.conv(x.transpose(1,2)).transpose(1,2)
+        return F.tanhshrink(torch.clamp(self.conv(x.transpose(1,2)).transpose(1,2), min=-32, max=32))
 
     def apply_weight_norm(self):
         """Apply weight normalization module from all of the layers."""

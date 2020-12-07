@@ -1,6 +1,6 @@
 #!/bin/bash
 ##################################################################################################
-#   SCRIPT FOR NON-PARALLEL VOICE CONVERSION based on CycleVAE/CycleVQVAE and WaveNet/WaveRNN    #
+#   SCRIPT FOR NON-PARALLEL VOICE CONVERSION based on CycleVAE/CycleVQVAE and WaveRNN/WaveNet    #
 ##################################################################################################
 
 # Copyright 2020 Patrick Lumban Tobing (Nagoya University)
@@ -18,11 +18,11 @@
 # init: feature extraction with initial speaker config
 # 1: feature extraction step
 # 2: statistics calculation step
-# 3: apply noise shaping step [pre-emphasis] [for neural vocoder waveform training data]
+# 3: apply noise shaping [pre-emphasis] and multiband processing [neural vocoder waveform train. data]
 # 4: vc training step
 # post: vc post-net training step
-# 5: reconstruction decoding step [for GV computation and neural vocoder training data augmentation]
-# 6: conversion decoding step [converted waveform with conventional vocoder]
+# 5: reconstruction decoding step [for possible neural vocoder training data augmentation]
+# 6: conversion decoding step [converted waveform with Griffin-Lim]
 # 7: wavernn training step
 # 8: copy-synthesis decoding step with wavernn [original waveform with neural vocoder]
 # 9: restore noise shaping step [de-emphasis] from copy-synthesis
@@ -38,8 +38,9 @@
 #stage=12
 #stage=1
 #stage=2
-#stage=3
 #stage=123
+#stage=23
+#stage=3
 #stage=4
 #stage=post
 #stage=5
@@ -78,7 +79,8 @@ n_jobs=60
 #spks_open=(morikawa mizokuchi okada takada otake taga)
 #spks_open=(morikawa mizokuchi okada takada otake taga p276)
 #spks_open=(morikawa mizokuchi okada takada otake)
-spks=(SEF1 SEF2 SEM1 SEM2 TFM1 TGM1 TMM1 TEF1 TEM1 TEF2 TEM2 TFF1 TGF1 TMF1)
+#spks=(SEF1 SEF2 SEM1 SEM2 TFM1 TGM1 TMM1 TEF1 TEM1 TEF2 TEM2 TFF1 TGF1 TMF1)
+spks=(SEF1 TEF1)
 data_name=vcc2020
 #spks=(VCC2SF1 VCC2SF2 VCC2SF3 VCC2SF4 VCC2SM1 VCC2SM2 VCC2SM3 VCC2SM4 VCC2TF1 VCC2TF2 VCC2TM1 VCC2TM2)
 #data_name=vcc18
@@ -172,10 +174,10 @@ trn=tr_${data_name}
 dev=dv_${data_name}
 tst=ts_${data_name}
 
-GPU_device=0
+#GPU_device=0
 #GPU_device=1
 #GPU_device=2
-GPU_device=3
+#GPU_device=3
 GPU_device=4
 #GPU_device=5
 #GPU_device=6
@@ -269,24 +271,23 @@ right_size_wave=`awk '{if ($1 == "right_size_wave:") print $2}' conf/config.yml`
 #     DECODING/FINE-TUNING SETTING    #
 #######################################
 
-#idx_resume_cycvae= #for resume cyclevae
+#idx_resume_cycvae=1 #for resume cyclevae
 idx_resume_cycvae=0 #set <= 0 for not resume
 
-#idx_resume= #for resume post-net
+#idx_resume=1 #for resume post-net
 idx_resume=0 #set <= 0 for not resume
 
-#idx_resume_wave= #for resume wavernn
+#idx_resume_wave=1 #for resume wavernn
 idx_resume_wave=0 #set <= 0 for not resume
 
 min_idx_cycvae= #for raw cyclevae
-#min_idx_cycvae=1
+#min_idx_cycvae=2
 
 if [ $mdl_name_post == none ]; then
     min_idx= #for cyclevae without post-net
-    #min_idx=1
 else
     min_idx= #for cyclevae with post-net
-    #min_idx=1
+    #min_idx=2
 fi
 
 min_idx_wave= #for wavernn model
@@ -298,7 +299,7 @@ n_interp=0
 
 gv_coeff=`awk '{if ($1 == "gv_coeff:") print $2}' conf/config.yml`
 
-if [ $mdl_name_post == "post-smpl_cycmelspxlf0capvae-laplace" ]; then
+if [ $mdl_name_post == "cycmelspxlf0capvae-post-smpl-laplace" ]; then
     string_path_rec=/feat_rec_${mdl_name_post}-${mdl_name}-${epoch_count}-${lat_dim}-${lat_dim_e}-${spkidtr_dim}-${n_half_cyc}-${min_idx_cycvae}-${min_idx}
     string_path_cv=/feat_cv_${mdl_name_post}-${mdl_name}-${epoch_count}-${lat_dim}-${lat_dim_e}-${spkidtr_dim}-${n_half_cyc}-${min_idx_cycvae}-${min_idx}
 elif [ $mdl_name == "cycmelspxlf0capvae-laplace" ]; then
@@ -308,20 +309,22 @@ fi
 
 
 ### Set GPU_device_str and n_gpus for VC/neural vocoder decoding with synchronized values
-#GPU_device_str="0,1,2"
+GPU_device_str="0,1,2"
 #GPU_device_str="7,8,9"
 #GPU_device_str="2,8,9"
-GPU_device_str="5,6,7"
+#GPU_device_str="5,6,7"
 #GPU_device_str="0,2,8,9"
 #GPU_device_str="9,2,8,0"
 #GPU_device_str="8,9"
-GPU_device_str="0,4,7,8,9"
+#GPU_device_str="0,4,7,8,9"
+#GPU_device_str="0"
+#GPU_device_str="2,0,3,4,1"
 
 n_gpus=1
-n_gpus=2
+#n_gpus=2
 n_gpus=3
 #n_gpus=4
-n_gpus=5
+#n_gpus=5
 ###
 
 
@@ -332,6 +335,8 @@ spks_trg_rec=(SEF1 SEF2 SEM1 SEM2 TFM1 TGM1 TMM1 TEF1 TEM1 TEF2 TEM2 TFF1 TGF1 T
 #spks_trg_rec=(TEF2 TGF1)
 #spks_trg_rec=(TEM2 TMF1 TFF1 TEF1)
 #spks_trg_rec=(TMM1 TGM1 TFM1 TEM1)
+#spks_trg_rec=(TEF1)
+#spks_trg_rec=(SEF1 TEF1)
 
 #spks_trg_rec=(p237 p245 p251 p252 p259 p274)
 #spks_trg_rec=(p266 p276 p304 p311 p326 p345)
@@ -354,6 +359,7 @@ spks_trg_dec=(TFM1 TGM1 TMM1 TEF1 TEM1 TEF2 TEM2 TFF1 TGF1 TMF1)
 #spks_trg_dec=(TEF2 TGF1)
 #spks_trg_dec=(TEM2 TMF1 TFF1 TEF1)
 #spks_trg_dec=(TMM1 TGM1 TFM1 TEM1)
+#spks_trg_dec=(TEF1)
 ###
 
 
@@ -364,6 +370,7 @@ spks_trg_dec=(TFM1 TGM1 TMM1 TEF1 TEM1 TEF2 TEM2 TFF1 TGF1 TMF1)
 #spks_dec=(TFM1)
 #spks_dec=(TGM1 TFF1 TMM1)
 #spks_dec=(TEM2)
+#spks_dec=(SEF1 SEF2 SEM1 SEM2 TFM1 TGM1 TMM1 TEF1 TEM1 TEF2 TEM2 TFF1 TGF1 TMF1)
 spks_dec=(TGM1)
 #spks_dec=(VCC2SF1 VCC2SF2 VCC2SF3 VCC2SF4 VCC2SM1 VCC2SM2 VCC2SM3 VCC2SM4 VCC2TF1 VCC2TF2 VCC2TM1 VCC2TM2)
 ###
@@ -502,6 +509,7 @@ if [ `echo ${stage} | grep 0` ];then
                 | sort >> data/${tst}/wav.scp
         fi
         set +e
+        touch conf/spkr.yml
         tmp=`yq ".${spk}" conf/spkr.yml`
         if [[ -z $tmp ]] || [[ $tmp == "null" ]]; then
             echo $spk: >> conf/spkr.yml
@@ -816,15 +824,15 @@ if [ `echo ${stage} | grep 1` ];then
         done
         rm -f tmp2 tmp3
     done
-    for set in ${tst};do
-        echo $set
-        find hdf5/${set} -name "*.h5" | sort > tmp2
-        for spk in ${spks_open[@]}; do
-            cat tmp2 | grep "\/${spk}\/" >> data/${set}/feats.scp
-            echo $set $spk
-        done
-        rm -f tmp2
-    done
+    #for set in ${tst};do
+    #    echo $set
+    #    find hdf5/${set} -name "*.h5" | sort > tmp2
+    #    for spk in ${spks_open[@]}; do
+    #        cat tmp2 | grep "\/${spk}\/" >> data/${set}/feats.scp
+    #        echo $set $spk
+    #    done
+    #    rm -f tmp2
+    #done
     set -e
 fi
 # }}}
@@ -1009,14 +1017,14 @@ echo ${spk_list}
 
 echo $mdl_name
 if [ $mdl_name == "cycmelspxlf0capvae-laplace" ]; then
-    setting=${mdl_name}_${data_name}_lr${lr}_bs${batch_size}_bsu${batch_size_utt}_bsue${batch_size_utt_eval}_lat${lat_dim}_late${lat_dim_e}_hue${hidden_units_enc}_hud${hidden_units_dec}_hul${hidden_units_lf0}_kse${kernel_size_enc}_ksd${kernel_size_dec}_ksf${kernel_size_lf0}_rse${right_size_enc}_rsd${right_size_dec}_rsf${right_size_lf0}_do${do_prob}_ep${epoch_count}_mel${mel_dim}_nhcyc${n_half_cyc}_s${spkidtr_dim}
+    setting=${mdl_name}_${data_name}_lr${lr}_bs${batch_size}_bsu${batch_size_utt}_bsue${batch_size_utt_eval}_lat${lat_dim}_late${lat_dim_e}_hue${hidden_units_enc}_hud${hidden_units_dec}_huf${hidden_units_lf0}_kse${kernel_size_enc}_ksd${kernel_size_dec}_ksf${kernel_size_lf0}_rse${right_size_enc}_rsd${right_size_dec}_rsf${right_size_lf0}_do${do_prob}_ep${epoch_count}_mel${mel_dim}_nhcyc${n_half_cyc}_s${spkidtr_dim}
 fi
 
 # STAGE 4 {{
 # set variables
 expdir=exp/tr_${setting}
-mkdir -p $expdir
 if [ `echo ${stage} | grep 4` ];then
+    mkdir -p $expdir
     echo "###########################################################"
     echo "#               FEATURE MODELING STEP                     #"
     echo "###########################################################"
@@ -1118,26 +1126,26 @@ fi
 echo $min_idx_cycvae $setting
 echo $mdl_name_post
 setting_cycvae=${setting}
-if [ $mdl_name_post == "post-smpl_cycmelspxlf0capvae-laplace" ]; then
-    setting=${mdl_name_post}_${data_name}_lr${lr}_bs${batch_size}_bsu${batch_size_utt}_bsue${batch_size_utt_eval}_lat${lat_dim}_late${lat_dim_e}_hue${hidden_units_enc}_hud${hidden_units_dec}_hul${hidden_units_lf0}_hup${hidden_units_post}_kse${kernel_size_enc}_ksd${kernel_size_dec}_ksf${kernel_size_lf0}_ksp${kernel_size_post}_rse${right_size_enc}_rsd${right_size_dec}_rsf${right_size_lf0}_rsp${right_size_post}_do${do_prob}_ep${epoch_count}_mel${mel_dim}_nhcyc${n_half_cyc}_s${spkidtr_dim}
+if [ $mdl_name_post == "cycmelspxlf0capvae-post-smpl-laplace" ]; then
+    setting=${mdl_name_post}_${data_name}_lr${lr}_bs${batch_size}_bsu${batch_size_utt}_bsue${batch_size_utt_eval}_lat${lat_dim}_late${lat_dim_e}_hue${hidden_units_enc}_hud${hidden_units_dec}_huf${hidden_units_lf0}_hup${hidden_units_post}_kse${kernel_size_enc}_ksd${kernel_size_dec}_ksf${kernel_size_lf0}_ksp${kernel_size_post}_rse${right_size_enc}_rsd${right_size_dec}_rsf${right_size_lf0}_rsp${right_size_post}_do${do_prob}_ep${epoch_count}_mel${mel_dim}_nhcyc${n_half_cyc}_s${spkidtr_dim}_c${min_idx_cycvae}
 fi
 
 # STAGE post {{
 # set variables
 expdir_cycvae=exp/tr_${setting_cycvae}
 expdir=exp/tr_${setting}
-mkdir -p $expdir
 if [ `echo ${stage} | grep post` ];then
+    mkdir -p $expdir
     echo "###########################################################"
     echo "#               POST NETWORK TRAINING                     #"
     echo "###########################################################"
     echo $expdir
 
-    if [ $mdl_name_post == "post-smpl_cycmelspxlf0capvae-laplace" ];then
+    if [ $mdl_name_post == "cycmelspxlf0capvae-post-smpl-laplace" ];then
         feats=data/${trn}/feats.scp
         if [ $idx_resume -gt 0 ]; then
             ${cuda_cmd} ${expdir}/log/train_resume-${idx_resume}.log \
-                train_post-smpl-gru-cycle-melsp-x-lf0cap-vae-laplace_noar.py \
+                train_gru-cycle-melsp-x-lf0cap-vae-post-smpl-laplace_noar.py \
                     --feats ${feats} \
                     --feats_eval_list $feats_list_eval_list \
                     --stats data/${trn}/stats_jnt.h5 \
@@ -1189,7 +1197,7 @@ if [ `echo ${stage} | grep post` ];then
                     --GPU_device ${GPU_device}
         else
             ${cuda_cmd} ${expdir}/log/train.log \
-                train_post-smpl-gru-cycle-melsp-x-lf0cap-vae-laplace_noar.py \
+                train_gru-cycle-melsp-x-lf0cap-vae-post-smpl-laplace_noar.py \
                     --feats ${feats} \
                     --feats_eval_list $feats_list_eval_list \
                     --stats data/${trn}/stats_jnt.h5 \
@@ -1269,10 +1277,10 @@ if [ `echo ${stage} | grep 5` ];then
                 if [ $n_feats_dev -gt 0 ]; then
                     cat ${feats_dv} | grep "\/${spk_trg}\/" >> ${feats_scp}
                 fi
-                if [ $mdl_name_post == "post-smpl_cycmelspxlf0capvae-laplace" ];then
+                if [ $mdl_name_post == "cycmelspxlf0capvae-post-smpl-laplace" ];then
                     model=${expdir}/checkpoint-${min_idx}.pkl
                     ${cuda_cmd} ${expdir}/log/decode_rec-cycrec_${spk_trg}_${min_idx_cycvae}-${min_idx}.log \
-                        calc_rec-cycrec-gv_post-smpl-gru-cycle-melspxlf0capvae-laplace_noar.py \
+                        calc_rec-cycrec-gv_gru-cycle-melspxlf0capvae-post-smpl-laplace_noar.py \
                             --feats ${feats_scp} \
                             --spk ${spk_trg} \
                             --outdir ${outdir} \
@@ -1357,7 +1365,7 @@ if [ $spkr != $spk_trg ]; then
     echo "######################################################"
     echo "#                DECODING CONV. FEAT DEV             #"
     echo "######################################################"
-    if [ $mdl_name_post == "post-smpl_cycmelspxlf0capvae-laplace" ]; then
+    if [ $mdl_name_post == "cycmelspxlf0capvae-post-smpl-laplace" ]; then
         model=${expdir}/checkpoint-${min_idx}.pkl
         if [ $spkidtr_dim != "0" ]; then
             outdir=${expdir}/wav_cv_${mdl_name_post}-${data_name}-${lat_dim}-${lat_dim_e}-${spkidtr_dim}-${n_half_cyc}-${epoch_count}-${batch_size}-${batch_size_utt}-${min_idx_cycvae}-${min_idx}_${spkr}-${spk_trg}-${n_interp}_dev
@@ -1375,10 +1383,10 @@ if [ $spkr != $spk_trg ]; then
     mkdir -p ${outdir}
     feats_scp=${outdir}/feats.scp
     cat data/${dev}/feats.scp | grep "\/${spkr}\/" > ${feats_scp}
-    if [ $mdl_name_post == "post-smpl_cycmelspxlf0capvae-laplace" ]; then
+    if [ $mdl_name_post == "cycmelspxlf0capvae-post-smpl-laplace" ]; then
         if [ $spkidtr_dim != "0" ]; then
             ${cuda_cmd} ${expdir}/log/decode_dev_${min_idx_cycvae}-${min_idx}_${spkr}-${spk_trg}-${n_interp}.log \
-                decode_post-smpl-gru-cycle-melspxlf0capvae-laplace_noar.py \
+                decode_gru-cycle-melspxlf0capvae-post-smpl-laplace_noar.py \
                     --feats ${feats_scp} \
                     --spk_trg ${spk_trg} \
                     --outdir ${outdir} \
@@ -1395,7 +1403,7 @@ if [ $spkr != $spk_trg ]; then
                     #--GPU_device ${GPU_device} \
         else
             ${cuda_cmd} ${expdir}/log/decode_dev_${min_idx_cycvae}-${min_idx}_${spkr}-${spk_trg}.log \
-                decode_post-smpl-gru-cycle-melspxlf0capvae-laplace_noar.py \
+                decode_gru-cycle-melspxlf0capvae-post-smpl-laplace_noar.py \
                     --feats ${feats_scp} \
                     --spk_trg ${spk_trg} \
                     --outdir ${outdir} \
@@ -1456,7 +1464,7 @@ if [ $spkr != $spk_trg ]; then
     echo "######################################################"
     echo "#                DECODING CONV. FEAT TST             #"
     echo "######################################################"
-    if [ $mdl_name_post == "post-smpl_cycmelspxlf0capvae-laplace" ]; then
+    if [ $mdl_name_post == "cycmelspxlf0capvae-post-smpl-laplace" ]; then
         model=${expdir}/checkpoint-${min_idx}.pkl
         if [ $spkidtr_dim != "0" ]; then
             outdir=${expdir}/wav_cv_${mdl_name_post}-${data_name}-${lat_dim}-${lat_dim_e}-${spkidtr_dim}-${n_half_cyc}-${epoch_count}-${batch_size}-${batch_size_utt}-${min_idx_cycvae}-${min_idx}_${spkr}-${spk_trg}-${n_interp}_tst
@@ -1474,10 +1482,10 @@ if [ $spkr != $spk_trg ]; then
     mkdir -p ${outdir}
     feats_scp=${outdir}/feats.scp
     cat data/${tst}/feats.scp | grep "\/${spkr}\/" > ${feats_scp}
-    if [ $mdl_name_post == "post-smpl_cycmelspxlf0capvae-laplace" ]; then
+    if [ $mdl_name_post == "cycmelspxlf0capvae-post-smpl-laplace" ]; then
         if [ $spkidtr_dim != "0" ]; then
             ${cuda_cmd} ${expdir}/log/decode_tst_${min_idx_cycvae}-${min_idx}_${spkr}-${spk_trg}-${n_interp}.log \
-                decode_post-smpl-gru-cycle-melspxlf0capvae-laplace_noar.py \
+                decode_gru-cycle-melspxlf0capvae-post-smpl-laplace_noar.py \
                     --feats ${feats_scp} \
                     --spk_trg ${spk_trg} \
                     --outdir ${outdir} \
@@ -1494,7 +1502,7 @@ if [ $spkr != $spk_trg ]; then
                     #--GPU_device ${GPU_device} \
         else
             ${cuda_cmd} ${expdir}/log/decode_tst_${min_idx_cycvae}-${min_idx}_${spkr}-${spk_trg}.log \
-                decode_post-smpl-gru-cycle-melspxlf0capvae-laplace_noar.py \
+                decode_gru-cycle-melspxlf0capvae-post-smpl-laplace_noar.py \
                     --feats ${feats_scp} \
                     --spk_trg ${spk_trg} \
                     --outdir ${outdir} \
@@ -1568,8 +1576,8 @@ fi
 # STAGE 7 {{
 # set variables
 expdir_wave=exp/tr_${setting_wave}
-mkdir -p $expdir_wave
 if [ `echo ${stage} | grep 7` ];then
+    mkdir -p $expdir_wave
     if [ $use_mcep == "false" ]; then
         powmcep_dim=$mel_dim
     fi
@@ -1752,13 +1760,11 @@ if [ `echo ${stage} | grep 8` ] || [ `echo ${stage} | grep 9` ];then
 for spk_src in ${spks_dec[@]};do
         if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_16bit" ] \
             || [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_9bit" ]; then
-            #outdir=${expdir_wave}/${mdl_name_wave}-${data_name}_dev-${hidden_units_wave}-${epoch_count_wave}-${lpc}-${n_bands}-${batch_size_wave}-${min_idx_wave}
-            outdir=${expdir_wave}/${mdl_name_wave}-${data_name}_tst-${hidden_units_wave}-${epoch_count_wave}-${lpc}-${n_bands}-${batch_size_wave}-${min_idx_wave}
+            outdir=${expdir_wave}/${mdl_name_wave}-${data_name}_dev-${hidden_units_wave}-${epoch_count_wave}-${lpc}-${n_bands}-${batch_size_wave}-${min_idx_wave}
+            #outdir=${expdir_wave}/${mdl_name_wave}-${data_name}_tst-${hidden_units_wave}-${epoch_count_wave}-${lpc}-${n_bands}-${batch_size_wave}-${min_idx_wave}
         fi
 if [ `echo ${stage} | grep 8` ];then
         echo $spk_src
-     #   for spk_src in ${spks_src[@]};do
-        #if [ $spk_src != $spk_trg ]; then
         echo $spk_src $min_idx_wave $data_name $mdl_name_wave
         echo $outdir
         echo "###################################################"
@@ -1768,29 +1774,17 @@ if [ `echo ${stage} | grep 8` ];then
         checkpoint=${expdir_wave}/checkpoint-${min_idx_wave}.pkl
         config=${expdir_wave}/model.conf
 
-        #feats=data/${dev}/feats.scp
-        feats=data/${tst}/feats.scp
-        #if [ -n "$(echo $spk_src | sed -n 's/\(p\)/\1/p')" ]; then
-        #    feats=data/${tst}/feats.scp
-        #else
-        #    #feats=data/${dev}/feats.scp
-        #    feats=data/${tst}/feats.scp
-        #fi
         #feats=data/${trn}/feats.scp
+        feats=data/${dev}/feats.scp
+        #feats=data/${tst}/feats.scp
 
         feats_scp=${expdir_wave}/feats_${min_idx_wave}_${spk_src}.scp
-        #cat $feats | grep "\/${spk_src}\/" | head -n 9 > ${feats_scp}
         cat $feats | grep "\/${spk_src}\/" > ${feats_scp}
-        #cat $feats | grep "\/${spk_src}\/" > tmp
-        #cat tmp | grep "E30004" > ${feats_scp}
-        #cat tmp | grep "p_007" > ${feats_scp}
-        #rm -f tmp
-        #head -n 3 ${feats_scp}
 
         # decode
         if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_9bit" ]; then
-            #${cuda_cmd} ${expdir_wave}/log/decode_dev_${min_idx_wave}_${spk_src}.log \
-            ${cuda_cmd} ${expdir_wave}/log/decode_tst_${min_idx_wave}_${spk_src}.log \
+            #${cuda_cmd} ${expdir_wave}/log/decode_tst_${min_idx_wave}_${spk_src}.log \
+            ${cuda_cmd} ${expdir_wave}/log/decode_dev_${min_idx_wave}_${spk_src}.log \
                 decode_wavernn_dualgru_compact_lpc_mband_9bit.py \
                     --feats ${feats_scp} \
                     --outdir ${outdir}/${spk_src} \
@@ -1800,10 +1794,9 @@ if [ `echo ${stage} | grep 8` ];then
                     --batch_size ${decode_batch_size} \
                     --n_gpus ${n_gpus} \
                     --GPU_device_str ${GPU_device_str}
-                    #--waveforms ${scp} \
         elif [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_16bit" ]; then
-            #${cuda_cmd} ${expdir_wave}/log/decode_dev_${min_idx_wave}_${spk_src}.log \
-            ${cuda_cmd} ${expdir_wave}/log/decode_tst_${min_idx_wave}_${spk_src}.log \
+            #${cuda_cmd} ${expdir_wave}/log/decode_tst_${min_idx_wave}_${spk_src}.log \
+            ${cuda_cmd} ${expdir_wave}/log/decode_dev_${min_idx_wave}_${spk_src}.log \
                 decode_wavernn_dualgru_compact_lpc_mband_16bit.py \
                     --feats ${feats_scp} \
                     --outdir ${outdir}/${spk_src} \
@@ -1813,7 +1806,6 @@ if [ `echo ${stage} | grep 8` ];then
                     --batch_size ${decode_batch_size} \
                     --n_gpus ${n_gpus} \
                     --GPU_device_str ${GPU_device_str}
-                    #--waveforms ${scp} \
         fi
 fi
 # }}}
@@ -1824,26 +1816,19 @@ if [ `echo ${stage} | grep 9` ];then
     echo "###########################################################"
     echo "#             RESTORE NOISE SHAPING STEP                  #"
     echo "###########################################################"
-    #outdir=${expdir}/wav_${setting}_dev-${min_idx}
-    #[ ! -e exp/noise_shaping/${setting} ] && mkdir -p exp/noise_shaping/${setting}
-    #nj=0
-        # make scp of each speaker
-        scp=${expdir_wave}/wav_generated_${min_idx_wave}_${spk_src}.scp
-        find ${outdir}/${spk_src} -name "*.wav" | grep "\/${spk_src}\/" | sort > ${scp}
+    scp=${expdir_wave}/wav_generated_${min_idx_wave}_${spk_src}.scp
+    find ${outdir}/${spk_src} -name "*.wav" | grep "\/${spk_src}\/" | sort > ${scp}
 
-        # restore noise shaping
-        ${train_cmd} --num-threads ${n_jobs} \
-            ${expdir_wave}/${log}/noise_shaping_restore_${min_idx_wave}_${spk_src}.log \
-            noise_shaping_emph.py \
-                --waveforms ${scp} \
-                --writedir ${outdir}_restored/${spk_src} \
-                --alpha ${alpha} \
-                --fs ${fs} \
-                --inv true \
-                --n_jobs ${n_jobs}
-
-        #fi
-    #done
+    # restore noise shaping
+    ${train_cmd} --num-threads ${n_jobs} \
+        ${expdir_wave}/${log}/noise_shaping_restore_${min_idx_wave}_${spk_src}.log \
+        noise_shaping_emph.py \
+            --waveforms ${scp} \
+            --writedir ${outdir}_restored/${spk_src} \
+            --alpha ${alpha} \
+            --fs ${fs} \
+            --inv true \
+            --n_jobs ${n_jobs}
 fi
 # }}}
 done
@@ -1856,14 +1841,12 @@ for spk_src in ${spks_src_dec[@]};do
 for spk_trg in ${spks_trg_dec[@]};do
         if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_16bit" ] \
             || [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_9bit" ]; then
-            #outdir=${expdir_wave}/${mdl_name_post}-${mdl_name_wave}-${data_name}_dev-${hidden_units_wave}-${epoch_count_wave}-${lpc}-${n_bands}-${batch_size_wave}-${min_idx_cycvae}-${min_idx}-${min_idx_wave}
-            outdir=${expdir_wave}/${mdl_name_post}-${mdl_name_wave}-${data_name}_tst-${hidden_units_wave}-${epoch_count_wave}-${lpc}-${n_bands}-${batch_size_wave}-${min_idx_cycvae}-${min_idx}-${min_idx_wave}
+            outdir=${expdir_wave}/${mdl_name_post}-${mdl_name_wave}-${data_name}_dev-${hidden_units_wave}-${epoch_count_wave}-${lpc}-${n_bands}-${batch_size_wave}-${min_idx_cycvae}-${min_idx}-${min_idx_wave}
+            #outdir=${expdir_wave}/${mdl_name_post}-${mdl_name_wave}-${data_name}_tst-${hidden_units_wave}-${epoch_count_wave}-${lpc}-${n_bands}-${batch_size_wave}-${min_idx_cycvae}-${min_idx}-${min_idx_wave}
         fi
 if [ `echo ${stage} | grep a` ];then
-        echo $spk_src $spk_trg $min_idx $min_idx_wave
-     #   for spk_src in ${spks_src[@]};do
-        #if [ $spk_src != $spk_trg ]; then
-        echo $data_name $mdl_name_post $mdl_name_wave
+        echo $spk_src $spk_trg $min_idx_cycvae $min_idx $min_idx_wave
+        echo $data_name $mdl_name $mdl_name_post $mdl_name_wave
         echo $outdir
         echo "###################################################"
         echo "#               DECODING STEP                     #"
@@ -1874,23 +1857,14 @@ if [ `echo ${stage} | grep a` ];then
 
         #feats=data/${dev}/feats_cv_${spk_src}-${spk_trg}.scp
         feats=data/${tst}/feats_cv_${spk_src}-${spk_trg}.scp
-        #if [ -n "$(echo $spk_src | sed -n 's/\(p\)/\1/p')" ]; then
-        #    feats=data/${tst}/feats.scp
-        #else
-        #    #feats=data/${dev}/feats.scp
-        #    feats=data/${tst}/feats.scp
-        #fi
-        #feats=data/${trn}/feats.scp
 
         feats_scp=${expdir_wave}/feats_${min_idx_cycvae}-${min_idx}-${min_idx_wave}_${spk_src}-${spk_trg}.scp
-        #cat $feats | grep "\/${spk_src}-${spk_trg}\/" | head -n 9 > ${feats_scp}
         cat $feats | grep "\/${spk_src}-${spk_trg}\/" > ${feats_scp}
-        #head -n 3 ${feats_scp}
 
         # decode
         if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_9bit" ]; then
-            #${cuda_cmd} ${expdir_wave}/log/decode_dev_${min_idx_cycvae}-${min_idx}-${min_idx_wave}_${spk_src}-${spk_trg}.log \
-            ${cuda_cmd} ${expdir_wave}/log/decode_tst_${min_idx_cycvae}-${min_idx}-${min_idx_wave}_${spk_src}-${spk_trg}.log \
+            #${cuda_cmd} ${expdir_wave}/log/decode_tst_${min_idx_cycvae}-${min_idx}-${min_idx_wave}_${spk_src}-${spk_trg}.log \
+            ${cuda_cmd} ${expdir_wave}/log/decode_dev_${min_idx_cycvae}-${min_idx}-${min_idx_wave}_${spk_src}-${spk_trg}.log \
                 decode_wavernn_dualgru_compact_lpc_mband_9bit.py \
                     --feats ${feats_scp} \
                     --outdir ${outdir}/${spk_src}-${spk_trg} \
@@ -1901,10 +1875,9 @@ if [ `echo ${stage} | grep a` ];then
                     --n_gpus ${n_gpus} \
                     --string_path ${string_path_cv} \
                     --GPU_device_str ${GPU_device_str}
-                    #--waveforms ${scp} \
         elif [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_16bit" ]; then
-            #${cuda_cmd} ${expdir_wave}/log/decode_dev_${min_idx_cycvae}-${min_idx}-${min_idx_wave}_${spk_src}-${spk_trg}.log \
-            ${cuda_cmd} ${expdir_wave}/log/decode_tst_${min_idx_cycvae}-${min_idx}-${min_idx_wave}_${spk_src}-${spk_trg}.log \
+            #${cuda_cmd} ${expdir_wave}/log/decode_tst_${min_idx_cycvae}-${min_idx}-${min_idx_wave}_${spk_src}-${spk_trg}.log \
+            ${cuda_cmd} ${expdir_wave}/log/decode_dev_${min_idx_cycvae}-${min_idx}-${min_idx_wave}_${spk_src}-${spk_trg}.log \
                 decode_wavernn_dualgru_compact_lpc_mband_16bit.py \
                     --feats ${feats_scp} \
                     --outdir ${outdir}/${spk_src}-${spk_trg} \
@@ -1915,7 +1888,6 @@ if [ `echo ${stage} | grep a` ];then
                     --n_gpus ${n_gpus} \
                     --string_path ${string_path_cv} \
                     --GPU_device_str ${GPU_device_str}
-                    #--waveforms ${scp} \
         fi
 fi
 # }}}
@@ -1926,26 +1898,19 @@ if [ `echo ${stage} | grep b` ];then
     echo "###########################################################"
     echo "#             RESTORE NOISE SHAPING STEP                  #"
     echo "###########################################################"
-    #outdir=${expdir}/wav_${setting}_dev-${min_idx}
-    #[ ! -e exp/noise_shaping/${setting} ] && mkdir -p exp/noise_shaping/${setting}
-    #nj=0
-        # make scp of each speaker
-        scp=${expdir_wave}/wav_generated_${min_idx_cycvae}-${min_idx}-${min_idx_wave}_${spk_src}-${spk_trg}.scp
-        find ${outdir}/${spk_src}-${spk_trg} -name "*.wav" | grep "\/${spk_src}-${spk_trg}\/" | sort > ${scp}
+    scp=${expdir_wave}/wav_generated_${min_idx_cycvae}-${min_idx}-${min_idx_wave}_${spk_src}-${spk_trg}.scp
+    find ${outdir}/${spk_src}-${spk_trg} -name "*.wav" | grep "\/${spk_src}-${spk_trg}\/" | sort > ${scp}
 
-        # restore noise shaping
-        ${train_cmd} --num-threads ${n_jobs} \
-            ${expdir_wave}/${log}/noise_shaping_restore_${min_idx_cycvae}-${min_idx}-${min_idx_wave}_${spk_src}-${spk_trg}.log \
-            noise_shaping_emph.py \
-                --waveforms ${scp} \
-                --writedir ${outdir}_restored/${spk_src}-${spk_trg} \
-                --alpha ${alpha} \
-                --fs ${fs} \
-                --inv true \
-                --n_jobs ${n_jobs}
-
-        #fi
-    #done
+    # restore noise shaping
+    ${train_cmd} --num-threads ${n_jobs} \
+        ${expdir_wave}/${log}/noise_shaping_restore_${min_idx_cycvae}-${min_idx}-${min_idx_wave}_${spk_src}-${spk_trg}.log \
+        noise_shaping_emph.py \
+            --waveforms ${scp} \
+            --writedir ${outdir}_restored/${spk_src}-${spk_trg} \
+            --alpha ${alpha} \
+            --fs ${fs} \
+            --inv true \
+            --n_jobs ${n_jobs}
 fi
 # }}}
 done
