@@ -123,7 +123,8 @@ do_prob: 0.5
 
 ## maximum epoch count
 #epoch_count: 110
-epoch_count: 130
+epoch_count: 125
+#epoch_count: 130
 #epoch_count_wave: 35
 #epoch_count_wave: 80
 #epoch_count_wave: 360
@@ -187,6 +188,7 @@ batch_size_utt_eval_wave: 14
 #batch_size_utt_eval_wave: 16
 #batch_size_utt_eval_wave: 42
 
+# number of workers (threads) for batch data handling
 n_workers: 2
 
 mdl_name: cycmelspxlf0capvae-laplace
@@ -197,9 +199,7 @@ mdl_name_post: cycmelspxlf0capvae-post-smpl-laplace
 mdl_name_wave: wavernn_dualgru_compact_lpc_mband_16bit
 
 ## sparsification scheduling settings for wavernn
-#t_start: 10000 #for noisy data
 t_start: 20000
-#t_end: 510000 #for noisy data
 t_end: 1270000
 interval: 20
 densities: 0.09-0.09-0.12

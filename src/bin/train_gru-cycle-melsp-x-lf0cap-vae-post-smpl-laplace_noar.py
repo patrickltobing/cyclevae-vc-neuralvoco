@@ -849,6 +849,8 @@ def main():
     dec_post_pad_right = dec_pad_right + post_pad_right
     first_pad_left = (enc_pad_left + lf0_pad_left + dec_post_pad_left)*args.n_half_cyc
     first_pad_right = (enc_pad_right + lf0_pad_right + dec_post_pad_right)*args.n_half_cyc
+    post_enc_pad_left = post_pad_left + enc_pad_left
+    post_enc_pad_right = post_pad_right + enc_pad_right
     # paddings are added with 1 more lf0_pad because excit. flow part is also used in melsp flow part
     if args.n_half_cyc == 1:
         first_pad_left += enc_pad_left
@@ -1684,10 +1686,10 @@ def main():
                                 idx_in += 1
                                 z_cat = torch.cat((z_e[j], z[j]), 2)
                                 if args.spkidtr_dim > 0:
-                                    if enc_pad_right > 0:
-                                        spk_code_in = spk_code_in[:,enc_pad_left:-enc_pad_right]
+                                    if post_enc_pad_right > 0:
+                                        spk_code_in = spk_code_in[:,post_enc_pad_left:-post_enc_pad_right]
                                     else:
-                                        spk_code_in = spk_code_in[:,enc_pad_left:]
+                                        spk_code_in = spk_code_in[:,post_enc_pad_left:]
                                     batch_spk, h_spk[j] = model_spk(spk_code_in, z=z_cat, outpad_right=outpad_rights[idx_in], h=h_spk[j])
                                     batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(z_e[j], y=spk_code_in, aux=batch_spk, outpad_right=outpad_rights[idx_in], h=h_lf0[j])
                                 else:
@@ -2030,10 +2032,10 @@ def main():
                                 idx_in += 1
                                 z_cat = torch.cat((z_e[j], z[j]), 2)
                                 if args.spkidtr_dim > 0:
-                                    if enc_pad_right > 0:
-                                        spk_code_in = spk_code_in[:,enc_pad_left:-enc_pad_right]
+                                    if post_enc_pad_right > 0:
+                                        spk_code_in = spk_code_in[:,post_enc_pad_left:-post_enc_pad_right]
                                     else:
-                                        spk_code_in = spk_code_in[:,enc_pad_left:]
+                                        spk_code_in = spk_code_in[:,post_enc_pad_left:]
                                     batch_spk, h_spk[j] = model_spk(spk_code_in, z=z_cat, outpad_right=outpad_rights[idx_in])
                                     batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(z_e[j], y=spk_code_in, aux=batch_spk, outpad_right=outpad_rights[idx_in])
                                 else:
@@ -3110,10 +3112,10 @@ def main():
                         idx_in += 1
                         z_cat = torch.cat((z_e[j], z[j]), 2)
                         if args.spkidtr_dim > 0:
-                            if enc_pad_right > 0:
-                                spk_code_in = spk_code_in[:,enc_pad_left:-enc_pad_right]
+                            if post_enc_pad_right > 0:
+                                spk_code_in = spk_code_in[:,post_enc_pad_left:-post_enc_pad_right]
                             else:
-                                spk_code_in = spk_code_in[:,enc_pad_left:]
+                                spk_code_in = spk_code_in[:,post_enc_pad_left:]
                             batch_spk, h_spk[j] = model_spk(spk_code_in, z=z_cat, outpad_right=outpad_rights[idx_in], h=h_spk[j], do=True)
                             batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(z_e[j], y=spk_code_in, aux=batch_spk, outpad_right=outpad_rights[idx_in], h=h_lf0[j], do=True)
                         else:
@@ -3315,10 +3317,10 @@ def main():
                         idx_in += 1
                         z_cat = torch.cat((z_e[j], z[j]), 2)
                         if args.spkidtr_dim > 0:
-                            if enc_pad_right > 0:
-                                spk_code_in = spk_code_in[:,enc_pad_left:-enc_pad_right]
+                            if post_enc_pad_right > 0:
+                                spk_code_in = spk_code_in[:,post_enc_pad_left:-post_enc_pad_right]
                             else:
-                                spk_code_in = spk_code_in[:,enc_pad_left:]
+                                spk_code_in = spk_code_in[:,post_enc_pad_left:]
                             batch_spk, h_spk[j] = model_spk(spk_code_in, z=z_cat, outpad_right=outpad_rights[idx_in], do=True)
                             batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(z_e[j], y=spk_code_in, aux=batch_spk, outpad_right=outpad_rights[idx_in], do=True)
                         else:
