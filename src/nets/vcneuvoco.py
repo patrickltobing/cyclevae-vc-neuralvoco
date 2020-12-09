@@ -320,7 +320,7 @@ class CausalDilConv1d(nn.Module):
 class DualFC_CF(nn.Module):
     """Compact Dual Fully Connected layers based on LPCNet"""
 
-    def __init__(self, in_dim=16, out_dim=32, lpc=6, bias=True, n_bands=10, mid_out=16):
+    def __init__(self, in_dim=32, out_dim=256, lpc=6, bias=True, n_bands=10, mid_out=32):
         super(DualFC_CF, self).__init__()
         self.in_dim = in_dim
         self.out_dim = out_dim
@@ -333,12 +333,17 @@ class DualFC_CF(nn.Module):
         self.lpc4bands = self.lpc4*self.n_bands
         self.mid_out = mid_out
 
-        self.mid_out_bands = self.mid_out*self.n_bands
-        self.mid_out_bands2 = self.mid_out_bands*2
-        self.conv = nn.Conv1d(self.in_dim, self.mid_out_bands2+self.lpc4bands, 1, bias=self.bias)
-        #self.fact = EmbeddingZero(1, self.mid_out_bands2+self.lpc4)
-        self.fact = EmbeddingZero(1, self.mid_out_bands2+self.lpc4bands)
-        self.out = nn.Conv1d(self.mid_out, self.out_dim, 1, bias=self.bias)
+        if self.mid_out is not None:
+            self.mid_out_bands = self.mid_out*self.n_bands
+            self.mid_out_bands2 = self.mid_out_bands*2
+            self.conv = nn.Conv1d(self.in_dim, self.mid_out_bands2+self.lpc4bands, 1, bias=self.bias)
+            self.fact = EmbeddingZero(1, self.mid_out_bands2+self.lpc4bands)
+            self.out = nn.Conv1d(self.mid_out, self.out_dim, 1, bias=self.bias)
+        else:
+            self.out_bands = self.out_dim*self.n_bands
+            self.out_bands2 = self.out_bands*2
+            self.conv = nn.Conv1d(self.in_dim, self.out_bands2+self.lpc4bands, 1, bias=self.bias)
+            self.fact = EmbeddingZero(1, self.out_bands2+self.lpc4bands)
 
     def forward(self, x):
         """Forward calculation
@@ -352,36 +357,57 @@ class DualFC_CF(nn.Module):
 
         # out = fact_1 o tanh(conv_1 * x) + fact_2 o tanh(conv_2 * x)
         if self.n_bands > 1:
-            if self.lpc > 0:
-                conv = self.conv(x).transpose(1,2) # B x T x n_bands*(K*4+mid_dim*2)
-                fact_weight = 0.5*torch.exp(self.fact.weight[0]) # K*4+256*2
-                B = x.shape[0]
-                T = x.shape[2]
-                # B x T x n_bands x K*2 --> B x T x n_bands x K
-                #return torch.sum((torch.tanh(conv[:,:,:self.lpc2bands]).reshape(B,T,self.n_bands,-1)*fact_weight[:self.lpc2]).reshape(B,T,self.n_bands,2,-1), 3), \
-                #        torch.sum((torch.exp(conv[:,:,self.lpc2bands:self.lpc4bands]).reshape(B,T,self.n_bands,-1)*fact_weight[self.lpc2:self.lpc4]).reshape(B,T,self.n_bands,2,-1), 3), \
-                #            F.tanhshrink(self.out(torch.sum((F.relu(conv[:,:,self.lpc4bands:])\
-                #                *fact_weight[self.lpc4:]).reshape(B,T,self.n_bands,2,-1), 3).reshape(B,T*self.n_bands,-1).transpose(1,2))).transpose(1,2).reshape(B,T,self.n_bands,-1)
-                return torch.sum((torch.tanh(conv[:,:,:self.lpc2bands])*fact_weight[:self.lpc2bands]).reshape(B,T,self.n_bands,2,-1), 3), \
-                        torch.sum((torch.exp(conv[:,:,self.lpc2bands:self.lpc4bands])*fact_weight[self.lpc2bands:self.lpc4bands]).reshape(B,T,self.n_bands,2,-1), 3), \
-                            F.tanhshrink(self.out(torch.sum((F.relu(conv[:,:,self.lpc4bands:])\
-                                *fact_weight[self.lpc4bands:]).reshape(B,T,self.n_bands,2,-1), 3).reshape(B,T*self.n_bands,-1).transpose(1,2))).transpose(1,2).reshape(B,T,self.n_bands,-1)
-                # B x T x n_bands x mid*2 --> B x (T x n_bands) x mid --> B x mid x (T x n_bands) --> B x T x n_bands x 256
+            if self.mid_out is not None:
+                if self.lpc > 0:
+                    conv = self.conv(x).transpose(1,2) # B x T x n_bands*(K*4+mid_dim*2)
+                    fact_weight = 0.5*torch.exp(self.fact.weight[0]) # K*4+256*2
+                    B = x.shape[0]
+                    T = x.shape[2]
+                    # B x T x n_bands x K*2 --> B x T x n_bands x K
+                    return torch.sum((torch.tanh(conv[:,:,:self.lpc2bands])*fact_weight[:self.lpc2bands]).reshape(B,T,self.n_bands,2,-1), 3), \
+                            torch.sum((torch.exp(conv[:,:,self.lpc2bands:self.lpc4bands])*fact_weight[self.lpc2bands:self.lpc4bands]).reshape(B,T,self.n_bands,2,-1), 3), \
+                                F.tanhshrink(self.out(torch.sum((F.relu(conv[:,:,self.lpc4bands:])\
+                                    *fact_weight[self.lpc4bands:]).reshape(B,T,self.n_bands,2,-1), 3).reshape(B,T*self.n_bands,-1).transpose(1,2))).transpose(1,2).reshape(B,T,self.n_bands,-1)
+                    # B x T x n_bands x mid*2 --> B x (T x n_bands) x mid --> B x mid x (T x n_bands) --> B x T x n_bands x 256
+                else:
+                    # B x T x n_bands x mid*2 --> B x (T x n_bands) x mid --> B x mid x (T x n_bands) --> B x T x n_bands x 256
+                    B = x.shape[0]
+                    T = x.shape[2]
+                    return F.tanhshrink(self.out(torch.sum((F.relu(self.conv(x).transpose(1,2))\
+                                *(0.5*torch.exp(self.fact.weight[0]))).reshape(B,T,self.n_bands,2,-1), 3).reshape(B,T*self.n_bands,-1).transpose(1,2))).transpose(1,2).reshape(B,T,self.n_bands,-1)
             else:
-                # B x T x n_bands x mid*2 --> B x (T x n_bands) x mid --> B x mid x (T x n_bands) --> B x T x n_bands x 256
-                B = x.shape[0]
-                T = x.shape[2]
-                return F.tanhshrink(self.out(torch.sum((F.relu(self.conv(x).transpose(1,2))\
-                            *(0.5*torch.exp(self.fact.weight[0]))).reshape(B,T,self.n_bands,2,-1), 3).reshape(B,T*self.n_bands,-1).transpose(1,2))).transpose(1,2).reshape(B,T,self.n_bands,-1)
+                if self.lpc > 0:
+                    conv = self.conv(x).transpose(1,2) # B x T x n_bands*(K*4+out_dim*2)
+                    fact_weight = 0.5*torch.exp(self.fact.weight[0]) # K*4+32*2
+                    B = x.shape[0]
+                    T = x.shape[2]
+                    # B x T x n_bands x K*2 --> B x T x n_bands x K
+                    return torch.sum((torch.tanh(conv[:,:,:self.lpc2bands])*fact_weight[:self.lpc2bands]).reshape(B,T,self.n_bands,2,-1), 3), \
+                            torch.sum((torch.exp(conv[:,:,self.lpc2bands:self.lpc4bands])*fact_weight[self.lpc2bands:self.lpc4bands]).reshape(B,T,self.n_bands,2,-1), 3), \
+                                torch.sum((F.tanhshrink(conv[:,:,self.lpc4bands:])*fact_weight[self.lpc4bands:]).reshape(B,T,self.n_bands,2,-1), 3)
+                    # B x T x n_bands x out*2 --> B x T x n_bands x 32
+                else:
+                    # B x T x n_bands x out*2 --> B x T x n_bands x 32
+                    return torch.sum((F.tanhshrink(self.conv(x).transpose(1,2))*(0.5*torch.exp(self.fact.weight[0]))).reshape(x.shape[0],x.shape[2],self.n_bands,2,-1), 3)
         else:
-            if self.lpc > 0:
-                conv = self.conv(x).transpose(1,2)
-                fact_weight = 0.5*torch.exp(self.fact.weight[0])
-                return torch.sum((torch.tanh(conv[:,:,:self.lpc2])*fact_weight[:self.lpc2]).reshape(x.shape[0],x.shape[2],2,-1), 2), \
-                        torch.sum((torch.exp(conv[:,:,self.lpc2:self.lpc4])*fact_weight[self.lpc2:self.lpc4]).reshape(x.shape[0],x.shape[2],2,-1), 2), \
-                            F.tanhshrink(self.out(torch.sum((F.relu(conv[:,:,self.lpc4:])*fact_weight[self.lpc4:]).reshape(x.shape[0],x.shape[2],2,-1), 2).transpose(1,2))).transpose(1,2)
+            if self.mid_out is not None:
+                if self.lpc > 0:
+                    conv = self.conv(x).transpose(1,2)
+                    fact_weight = 0.5*torch.exp(self.fact.weight[0])
+                    return torch.sum((torch.tanh(conv[:,:,:self.lpc2])*fact_weight[:self.lpc2]).reshape(x.shape[0],x.shape[2],2,-1), 2), \
+                            torch.sum((torch.exp(conv[:,:,self.lpc2:self.lpc4])*fact_weight[self.lpc2:self.lpc4]).reshape(x.shape[0],x.shape[2],2,-1), 2), \
+                                F.tanhshrink(self.out(torch.sum((F.relu(conv[:,:,self.lpc4:])*fact_weight[self.lpc4:]).reshape(x.shape[0],x.shape[2],2,-1), 2).transpose(1,2))).transpose(1,2)
+                else:
+                    return F.tanhshrink(self.out(torch.sum((F.relu(self.conv(x).transpose(1,2))*(0.5*torch.exp(self.fact.weight[0]))).reshape(x.shape[0],x.shape[2],2,-1), 2).transpose(1,2))).transpose(1,2)
             else:
-                return F.tanhshrink(self.out(torch.sum((F.relu(self.conv(x).transpose(1,2))*(0.5*torch.exp(self.fact.weight[0]))).reshape(x.shape[0],x.shape[2],2,-1), 2).transpose(1,2))).transpose(1,2)
+                if self.lpc > 0:
+                    conv = self.conv(x).transpose(1,2)
+                    fact_weight = 0.5*torch.exp(self.fact.weight[0])
+                    return torch.sum((torch.tanh(conv[:,:,:self.lpc2])*fact_weight[:self.lpc2]).reshape(x.shape[0],x.shape[2],2,-1), 2), \
+                            torch.sum((torch.exp(conv[:,:,self.lpc2:self.lpc4])*fact_weight[self.lpc2:self.lpc4]).reshape(x.shape[0],x.shape[2],2,-1), 2), \
+                                torch.sum((F.tanhshrink(conv[:,:,self.lpc4:])*fact_weight[self.lpc4:]).reshape(x.shape[0],x.shape[2],2,-1), 2)
+                else:
+                    return torch.sum((F.tanhshrink(self.conv(x).transpose(1,2))*(0.5*torch.exp(self.fact.weight[0]))).reshape(x.shape[0],x.shape[2],2,-1), 2)
 
 
 class DualFC(nn.Module):
@@ -410,7 +436,6 @@ class DualFC(nn.Module):
             self.mid_out_bands = self.mid_out*self.n_bands
             self.mid_out_bands2 = self.mid_out_bands*2
             self.conv = nn.Conv1d(self.in_dim, self.mid_out_bands2+self.lpc4bands, 1, bias=self.bias)
-            #self.fact = EmbeddingZero(1, self.mid_out_bands2+self.lpc4)
             self.fact = EmbeddingZero(1, self.mid_out_bands2+self.lpc4bands)
             self.out = nn.Conv1d(self.mid_out, self.out_dim, 1, bias=self.bias)
 
@@ -426,7 +451,25 @@ class DualFC(nn.Module):
 
         # out = fact_1 o tanh(conv_1 * x) + fact_2 o tanh(conv_2 * x)
         if self.n_bands > 1:
-            if self.mid_out is None:
+            if self.mid_out is not None:
+                if self.lpc > 0:
+                    conv = self.conv(x).transpose(1,2) # B x T x n_bands*(K*4+mid_dim*2)
+                    fact_weight = 0.5*torch.exp(self.fact.weight[0]) # K*4+256*2
+                    B = x.shape[0]
+                    T = x.shape[2]
+                    # B x T x n_bands x K*2 --> B x T x n_bands x K
+                    return torch.sum((torch.tanh(conv[:,:,:self.lpc2bands])*fact_weight[:self.lpc2bands]).reshape(B,T,self.n_bands,2,-1), 3), \
+                            torch.sum((torch.exp(conv[:,:,self.lpc2bands:self.lpc4bands])*fact_weight[self.lpc2bands:self.lpc4bands]).reshape(B,T,self.n_bands,2,-1), 3), \
+                                F.tanhshrink(self.out(torch.sum((F.relu(conv[:,:,self.lpc4bands:])\
+                                    *fact_weight[self.lpc4bands:]).reshape(B,T,self.n_bands,2,-1), 3).reshape(B,T*self.n_bands,-1).transpose(1,2))).transpose(1,2).reshape(B,T,self.n_bands,-1)
+                    # B x T x n_bands x mid*2 --> B x (T x n_bands) x mid --> B x mid x (T x n_bands) --> B x T x n_bands x 256
+                else:
+                    # B x T x n_bands x mid*2 --> B x (T x n_bands) x mid --> B x mid x (T x n_bands) --> B x T x n_bands x 256
+                    B = x.shape[0]
+                    T = x.shape[2]
+                    return F.tanhshrink(self.out(torch.sum((F.relu(self.conv(x).transpose(1,2))\
+                                *(0.5*torch.exp(self.fact.weight[0]))).reshape(B,T,self.n_bands,2,-1), 3).reshape(B,T*self.n_bands,-1).transpose(1,2))).transpose(1,2).reshape(B,T,self.n_bands,-1)
+            else:
                 if self.lpc > 0:
                     conv = self.conv(x).transpose(1,2) # B x T x n_bands*(K*4+256*2)
                     fact_weight = 0.5*torch.exp(self.fact.weight[0]) # K*4+256*2
@@ -442,39 +485,8 @@ class DualFC(nn.Module):
                     B = x.shape[0]
                     T = x.shape[2]
                     return torch.sum((F.tanhshrink(self.conv(x).transpose(1,2)).reshape(B,T,self.n_bands,-1)*(0.5*torch.exp(self.fact.weight[0]))).reshape(B,T,self.n_bands,2,-1), 3)
-            else:
-                if self.lpc > 0:
-                    conv = self.conv(x).transpose(1,2) # B x T x n_bands*(K*4+mid_dim*2)
-                    fact_weight = 0.5*torch.exp(self.fact.weight[0]) # K*4+256*2
-                    B = x.shape[0]
-                    T = x.shape[2]
-                    # B x T x n_bands x K*2 --> B x T x n_bands x K
-                    #return torch.sum((torch.tanh(conv[:,:,:self.lpc2bands]).reshape(B,T,self.n_bands,-1)*fact_weight[:self.lpc2]).reshape(B,T,self.n_bands,2,-1), 3), \
-                    #        torch.sum((torch.exp(conv[:,:,self.lpc2bands:self.lpc4bands]).reshape(B,T,self.n_bands,-1)*fact_weight[self.lpc2:self.lpc4]).reshape(B,T,self.n_bands,2,-1), 3), \
-                    #            F.tanhshrink(self.out(torch.sum((F.relu(conv[:,:,self.lpc4bands:])\
-                    #                *fact_weight[self.lpc4:]).reshape(B,T,self.n_bands,2,-1), 3).reshape(B,T*self.n_bands,-1).transpose(1,2))).transpose(1,2).reshape(B,T,self.n_bands,-1)
-                    return torch.sum((torch.tanh(conv[:,:,:self.lpc2bands])*fact_weight[:self.lpc2bands]).reshape(B,T,self.n_bands,2,-1), 3), \
-                            torch.sum((torch.exp(conv[:,:,self.lpc2bands:self.lpc4bands])*fact_weight[self.lpc2bands:self.lpc4bands]).reshape(B,T,self.n_bands,2,-1), 3), \
-                                F.tanhshrink(self.out(torch.sum((F.relu(conv[:,:,self.lpc4bands:])\
-                                    *fact_weight[self.lpc4bands:]).reshape(B,T,self.n_bands,2,-1), 3).reshape(B,T*self.n_bands,-1).transpose(1,2))).transpose(1,2).reshape(B,T,self.n_bands,-1)
-                    # B x T x n_bands x mid*2 --> B x (T x n_bands) x mid --> B x mid x (T x n_bands) --> B x T x n_bands x 256
-                else:
-                    # B x T x n_bands x mid*2 --> B x (T x n_bands) x mid --> B x mid x (T x n_bands) --> B x T x n_bands x 256
-                    B = x.shape[0]
-                    T = x.shape[2]
-                    return F.tanhshrink(self.out(torch.sum((F.relu(self.conv(x).transpose(1,2))\
-                                *(0.5*torch.exp(self.fact.weight[0]))).reshape(B,T,self.n_bands,2,-1), 3).reshape(B,T*self.n_bands,-1).transpose(1,2))).transpose(1,2).reshape(B,T,self.n_bands,-1)
         else:
-            if self.mid_out is None:
-                if self.lpc > 0:
-                    conv = self.conv(x).transpose(1,2)
-                    fact_weight = 0.5*torch.exp(self.fact.weight[0])
-                    return torch.sum((torch.tanh(conv[:,:,:self.lpc2])*fact_weight[:self.lpc2]).reshape(x.shape[0],x.shape[2],2,-1), 2), \
-                            torch.sum((torch.exp(conv[:,:,self.lpc2:self.lpc4])*fact_weight[self.lpc2:self.lpc4]).reshape(x.shape[0],x.shape[2],2,-1), 2), \
-                    #return signs, scales, logits
-                else:
-                    return torch.sum((F.tanhshrink(self.conv(x).transpose(1,2))*(0.5*torch.exp(self.fact.weight[0]))).reshape(x.shape[0],x.shape[2],2,-1), 2)
-            else:
+            if self.mid_out is not None:
                 if self.lpc > 0:
                     conv = self.conv(x).transpose(1,2)
                     fact_weight = 0.5*torch.exp(self.fact.weight[0])
@@ -483,6 +495,15 @@ class DualFC(nn.Module):
                             F.tanhshrink(self.out(torch.sum((F.relu(conv[:,:,self.lpc4:])*fact_weight[self.lpc4:]).reshape(x.shape[0],x.shape[2],2,-1), 2).transpose(1,2))).transpose(1,2)
                 else:
                     return F.tanhshrink(self.out(torch.sum((F.relu(self.conv(x).transpose(1,2))*(0.5*torch.exp(self.fact.weight[0]))).reshape(x.shape[0],x.shape[2],2,-1), 2).transpose(1,2))).transpose(1,2)
+            else:
+                if self.lpc > 0:
+                    conv = self.conv(x).transpose(1,2)
+                    fact_weight = 0.5*torch.exp(self.fact.weight[0])
+                    return torch.sum((torch.tanh(conv[:,:,:self.lpc2])*fact_weight[:self.lpc2]).reshape(x.shape[0],x.shape[2],2,-1), 2), \
+                            torch.sum((torch.exp(conv[:,:,self.lpc2:self.lpc4])*fact_weight[self.lpc2:self.lpc4]).reshape(x.shape[0],x.shape[2],2,-1), 2), \
+                                torch.sum((F.tanhshrink(conv[:,:,self.lpc4:])*fact_weight[self.lpc4:]).reshape(x.shape[0],x.shape[2],2,-1), 2)
+                else:
+                    return torch.sum((F.tanhshrink(self.conv(x).transpose(1,2))*(0.5*torch.exp(self.fact.weight[0]))).reshape(x.shape[0],x.shape[2],2,-1), 2)
 
 
 class OutputConv1d(nn.Module):
@@ -1737,18 +1758,19 @@ class GRU_EXCIT_DECODER(nn.Module):
 
 
 class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
-    def __init__(self, feat_dim=52, upsampling_factor=120, hidden_units=384, hidden_units_2=24, n_quantize=65536, lpc=6,
-            kernel_size=7, dilation_size=1, do_prob=0, causal_conv=False, use_weight_norm=True, nonlinear_conv=False,
-                right_size=0, n_bands=2, n_spk=None, lat_in=0, excit_dim=0, pad_first=False, quantize_spec=None, remove_weight_norm_scale=True):
+    def __init__(self, feat_dim=80, upsampling_factor=120, hidden_units=640, hidden_units_2=32, n_quantize=65536,
+            kernel_size=7, dilation_size=1, do_prob=0, causal_conv=False, use_weight_norm=True, lpc=6,
+                right_size=2, n_bands=5, excit_dim=0, pad_first=False, mid_out_flag=True):
         super(GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF, self).__init__()
         self.feat_dim = feat_dim
         self.in_dim = self.feat_dim
         self.n_quantize = n_quantize
         self.cf_dim = int(np.sqrt(self.n_quantize))
-        if self.cf_dim > 64:
-            self.cf_dim_in = 64
-        else:
-            self.cf_dim_in = self.cf_dim
+        #if self.cf_dim > 64:
+        #    self.cf_dim_in = 64
+        #else:
+        #    self.cf_dim_in = self.cf_dim
+        self.cf_dim_in = 64
         self.out_dim = self.n_quantize
         self.n_bands = n_bands
         self.upsampling_factor = upsampling_factor // self.n_bands
@@ -1758,7 +1780,6 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
         self.dilation_size = dilation_size
         self.do_prob = do_prob
         self.causal_conv = causal_conv
-        self.nonlinear_conv = nonlinear_conv
         self.s_dim = 320
         self.wav_dim = self.s_dim // self.n_bands
         self.wav_dim = self.cf_dim_in
@@ -1766,62 +1787,34 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
         self.use_weight_norm = use_weight_norm
         self.lpc = lpc
         self.right_size = right_size
-        self.n_spk = n_spk
-        self.lat_in = lat_in
         self.excit_dim = excit_dim
         self.pad_first = pad_first
-        self.quantize_spec = quantize_spec
-        self.remove_weight_norm_scale = remove_weight_norm_scale
+        self.mid_out_flag = mid_out_flag
+        if self.mid_out_flag:
+            self.mid_out = self.cf_dim_in // 2
+        else:
+            self.mid_out = None
 
         # Conv. layers
-        if self.quantize_spec is not None:
-            if self.excit_dim > 0:
-                self.scale_in = nn.Conv1d(self.excit_dim, self.excit_dim, 1)
-            if self.right_size <= 0:
-                if not self.causal_conv:
-                    self.conv = TwoSidedDilConv1d(in_dim=self.lat_in+self.excit_dim, kernel_size=self.kernel_size,
-                                                layers=self.dilation_size, nonlinear=self.nonlinear_conv, pad_first=self.pad_first)
-                    self.pad_left = self.conv.padding
-                    self.pad_right = self.conv.padding
-                else:
-                    self.conv = CausalDilConv1d(in_dim=self.lat_in+self.excit_dim, kernel_size=self.kernel_size,
-                                                layers=self.dilation_size, nonlinear=self.nonlinear_conv, pad_first=self.pad_first)
-                    self.pad_left = self.conv.padding
-                    self.pad_right = 0
+        self.scale_in = nn.Conv1d(self.in_dim, self.in_dim, 1)
+        if self.right_size <= 0:
+            if not self.causal_conv:
+                self.conv = TwoSidedDilConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size,
+                                            layers=self.dilation_size, pad_first=self.pad_first)
+                self.pad_left = self.conv.padding
+                self.pad_right = self.conv.padding
             else:
-                self.conv = SkewedConv1d(in_dim=self.lat_in+self.excit_dim, kernel_size=self.kernel_size,
-                                            right_size=self.right_size, nonlinear=self.nonlinear_conv, pad_first=self.pad_first)
-                self.pad_left = self.conv.left_size
-                self.pad_right = self.conv.right_size
-            if self.excit_dim is not None:
-                self.spec_dim = self.in_dim - self.excit_dim
-            else:
-                self.spec_dim = self.in_dim
-            self.spec_emb_dim = self.quantize_spec // 4
-            self.embed_spec = nn.Embedding(self.quantize_spec, self.spec_emb_dim)
-            self.spec_in_dim = self.spec_emb_dim * self.spec_dim
-            conv_s_c = [nn.Conv1d((self.lat_in+self.excit_dim)*self.conv.rec_field+self.spec_in_dim, self.s_dim, 1), nn.ReLU()]
-            self.conv_s_c = nn.Sequential(*conv_s_c)
+                self.conv = CausalDilConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size,
+                                            layers=self.dilation_size, pad_first=self.pad_first)
+                self.pad_left = self.conv.padding
+                self.pad_right = 0
         else:
-            self.scale_in = nn.Conv1d(self.in_dim, self.in_dim, 1)
-            if self.right_size <= 0:
-                if not self.causal_conv:
-                    self.conv = TwoSidedDilConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size,
-                                                layers=self.dilation_size, nonlinear=self.nonlinear_conv, pad_first=self.pad_first)
-                    self.pad_left = self.conv.padding
-                    self.pad_right = self.conv.padding
-                else:
-                    self.conv = CausalDilConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size,
-                                                layers=self.dilation_size, nonlinear=self.nonlinear_conv, pad_first=self.pad_first)
-                    self.pad_left = self.conv.padding
-                    self.pad_right = 0
-            else:
-                self.conv = SkewedConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size,
-                                            right_size=self.right_size, nonlinear=self.nonlinear_conv, pad_first=self.pad_first)
-                self.pad_left = self.conv.left_size
-                self.pad_right = self.conv.right_size
-            conv_s_c = [nn.Conv1d(self.in_dim*self.conv.rec_field, self.s_dim, 1), nn.ReLU()]
-            self.conv_s_c = nn.Sequential(*conv_s_c)
+            self.conv = SkewedConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size,
+                                        right_size=self.right_size, pad_first=self.pad_first)
+            self.pad_left = self.conv.left_size
+            self.pad_right = self.conv.right_size
+        conv_s_c = [nn.Conv1d(self.in_dim*self.conv.rec_field, self.s_dim, 1), nn.ReLU()]
+        self.conv_s_c = nn.Sequential(*conv_s_c)
         if self.do_prob > 0:
             self.drop = nn.Dropout(p=self.do_prob)
 
@@ -1833,15 +1826,13 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
         self.gru_2 = nn.GRU(self.s_dim+self.hidden_units, self.hidden_units_2, 1, batch_first=True)
 
         # Output layers coarse
-        self.out = DualFC_CF(self.hidden_units_2, self.cf_dim, self.lpc, n_bands=self.n_bands, mid_out=self.cf_dim_in//2)
-        #self.out = DualFC_CF(self.hidden_units_2, self.cf_dim, self.lpc, n_bands=self.n_bands, mid_out=self.cf_dim_in//4)
+        self.out = DualFC_CF(self.hidden_units_2, self.cf_dim, self.lpc, n_bands=self.n_bands, mid_out=self.mid_out)
 
         # GRU layer(s) fine
         self.gru_f = nn.GRU(self.s_dim+self.wav_dim_bands+self.hidden_units_2, self.hidden_units_2, 1, batch_first=True)
 
         # Output layers fine
-        self.out_f = DualFC_CF(self.hidden_units_2, self.cf_dim, self.lpc, n_bands=self.n_bands, mid_out=self.cf_dim_in//2)
-        #self.out_f = DualFC_CF(self.hidden_units_2, self.cf_dim, self.lpc, n_bands=self.n_bands, mid_out=self.cf_dim_in//4)
+        self.out_f = DualFC_CF(self.hidden_units_2, self.cf_dim, self.lpc, n_bands=self.n_bands, mid_out=self.mid_out)
 
         # Prev logits if using data-driven lpc
         if self.lpc > 0:
@@ -1851,37 +1842,19 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
                 logits_param[i,i] = 1
             self.logits.weight = torch.nn.Parameter(logits_param)
 
-        if self.n_spk is not None:
-            conv_spk_in = [nn.Conv1d(self.cf_dim*self.n_bands*2, self.hidden_units_2, 1), nn.ReLU()]
-            self.conv_spk_in = nn.Sequential(*conv_spk_in)
-            self.gru_spk = nn.GRU(self.hidden_units_2, self.hidden_units_2, 1, batch_first=True)
-            self.conv_spk = nn.Conv1d(self.hidden_units_2, self.n_spk*self.n_bands, 1)
-
         # apply weight norm
         if self.use_weight_norm:
             self.apply_weight_norm()
-            if self.quantize_spec is None and self.remove_weight_norm_scale:
-                torch.nn.utils.remove_weight_norm(self.scale_in)
+            torch.nn.utils.remove_weight_norm(self.scale_in)
         else:
             self.apply(initialize)
 
-    def forward(self, c, x_c_prev, x_f_prev, x_c, h=None, h_2=None, h_f=None, h_spk=None, do=False, x_c_lpc=None, x_f_lpc=None, in_spec=None, in_lat=None):
+    def forward(self, c, x_c_prev, x_f_prev, x_c, h=None, h_2=None, h_f=None, h_spk=None, do=False, x_c_lpc=None, x_f_lpc=None):
         # Input
-        if self.quantize_spec is not None:
-            if self.excit_dim > 0:
-                x_in = self.conv(torch.cat((self.scale_in(c.transpose(1,2)), in_lat.transpose(1,2)), 1))
-            else:
-                x_in = in_lat.transpose(1,2)
-            x_in = torch.cat((x_in, self.embed_spec(in_spec.long()).reshape(in_spec.shape[0], in_spec.shape[1], -1).transpose(1,2)), 1)
-            if self.do_prob > 0 and do:
-                conv = self.drop(torch.repeat_interleave(self.conv_s_c(x_in).transpose(1,2),self.upsampling_factor,dim=1))
-            else:
-                conv = torch.repeat_interleave(self.conv_s_c(x_in).transpose(1,2),self.upsampling_factor,dim=1)
+        if self.do_prob > 0 and do:
+            conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(self.scale_in(c.transpose(1,2)))).transpose(1,2),self.upsampling_factor,dim=1))
         else:
-            if self.do_prob > 0 and do:
-                conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(self.scale_in(c.transpose(1,2)))).transpose(1,2),self.upsampling_factor,dim=1))
-            else:
-                conv = torch.repeat_interleave(self.conv_s_c(self.conv(self.scale_in(c.transpose(1,2)))).transpose(1,2),self.upsampling_factor,dim=1)
+            conv = torch.repeat_interleave(self.conv_s_c(self.conv(self.scale_in(c.transpose(1,2)))).transpose(1,2),self.upsampling_factor,dim=1)
 
         # GRU1
         if h is not None:
@@ -1914,38 +1887,18 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
             #logging.info(torch.mean(torch.mean(torch.mean(scales_f, 2), 1), 0))
             # x_lpc B x T_lpc x n_bands --> B x T x n_bands x K --> B x T x n_bands x K x 256
             # unfold put new dimension on the last
-            if self.n_spk is not None:
-                logits_c = logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3)
-                logits_f = logits_f + torch.sum((signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3)
-                B = logits_c.shape[0]
-                T = logits_c.shape[1]
-                if h_spk is not None:
-                    out, h_spk = self.gru_spk(self.conv_spk_in(torch.cat((logits_c, logits_f), 2).reshape(B, T, -1).transpose(1,2)).transpose(1,2), h_spk)
-                else:
-                    out, h_spk = self.gru_spk(self.conv_spk_in(torch.cat((logits_c, logits_f), 2).reshape(B, T, -1).transpose(1,2)).transpose(1,2))
-                return logits_c, logits_f, F.selu(self.conv_spk(out.transpose(1,2)).transpose(1,2).reshape(B, T, self.n_bands, -1)), h.detach(), h_2.detach(), h_f.detach(), h_spk.detach()
-            else:
-                #return logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), \
-                #    logits_f + torch.sum((signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3), h.detach(), h_2.detach(), h_f.detach()
-                return torch.clamp(logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), -32, 32), \
-                    torch.clamp(logits_f + torch.sum((signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3), -32, 32), h.detach(), h_2.detach(), h_f.detach()
+            #return logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), \
+            #    logits_f + torch.sum((signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3), h.detach(), h_2.detach(), h_f.detach()
+            return torch.clamp(logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), -32, 32), \
+                torch.clamp(logits_f + torch.sum((signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3), -32, 32), h.detach(), h_2.detach(), h_f.detach()
             # B x T x n_bands x 256
         else:
             logits_c = self.out(out.transpose(1,2))
             logits_f = self.out_f(out_f.transpose(1,2))
-            if self.n_spk is not None:
-                B = logits_c.shape[0]
-                T = logits_f.shape[1]
-                if h_spk is not None:
-                    out, h_spk = self.gru_spk(self.conv_spk_in(torch.cat((logits_c, logits_f), 2).reshape(B, T, -1).transpose(1,2)).transpose(1,2), h_spk)
-                else:
-                    out, h_spk = self.gru_spk(self.conv_spk_in(torch.cat((logits_c, logits_f), 2).reshape(B, T, -1).transpose(1,2)).transpose(1,2))
-                return logits_c, logits_f, F.selu(self.conv_spk(out.transpose(1,2)).transpose(1,2).reshape(B, T, self.n_bands, -1)), h.detach(), h_2.detach(), h_f.detach(), h_spk.detach()
-            else:
-                #return logits_c, logits_f, h.detach(), h_2.detach(), h_f.detach()
-                return torch.clamp(logits_c, -32, 32), torch.clamp(logits_f, -32, 32), h.detach(), h_2.detach(), h_f.detach()
+            #return logits_c, logits_f, h.detach(), h_2.detach(), h_f.detach()
+            return torch.clamp(logits_c, -32, 32), torch.clamp(logits_f, -32, 32), h.detach(), h_2.detach(), h_f.detach()
 
-    def generate(self, c, in_spec=None, in_lat=None, intervals=4000):
+    def generate(self, c, intervals=4000):
         start = time.time()
         time_sample = []
         intervals /= self.n_bands
@@ -1957,15 +1910,7 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
 
         B = c.shape[0]
         c = F.pad(c.transpose(1,2), (self.pad_left,self.pad_right), "replicate").transpose(1,2)
-        if self.quantize_spec is not None:
-            if self.excit_dim > 0:
-                x_in = self.conv(torch.cat((self.scale_in(c.transpose(1,2)), in_lat.transpose(1,2)), 1))
-            else:
-                x_in = in_lat.transpose(1,2)
-            x_in = torch.cat((x_in, self.embed_spec(in_spec.long()).reshape(in_spec.shape[0], in_spec.shape[1], -1).transpose(1,2)), 1)
-            c = self.conv_s_c(x_in).transpose(1,2)
-        else:
-            c = self.conv_s_c(self.conv(self.scale_in(c.transpose(1,2)))).transpose(1,2)
+        c = self.conv_s_c(self.conv(self.scale_in(c.transpose(1,2)))).transpose(1,2)
         if self.lpc > 0:
             x_c_lpc = torch.empty(B,1,self.n_bands,self.lpc).cuda().fill_(c_pad).long() # B x 1 x n_bands x K
             x_f_lpc = torch.empty(B,1,self.n_bands,self.lpc).cuda().fill_(f_pad).long() # B x 1 x n_bands x K
@@ -2139,9 +2084,9 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
 
 
 class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND(nn.Module):
-    def __init__(self, feat_dim=52, upsampling_factor=120, hidden_units=384, hidden_units_2=24, n_quantize=256, lpc=6,
-            kernel_size=7, dilation_size=1, do_prob=0, causal_conv=False, use_weight_norm=True, nonlinear_conv=False,
-                right_size=0, n_bands=2, n_spk=None, pad_first=False):
+    def __init__(self, feat_dim=80, upsampling_factor=120, hidden_units=640, hidden_units_2=32, n_quantize=512,
+            lpc=6, kernel_size=7, dilation_size=1, do_prob=0, causal_conv=False, use_weight_norm=True,
+                right_size=0, n_bands=5, pad_first=False):
         super(GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND, self).__init__()
         self.feat_dim = feat_dim
         self.in_dim = self.feat_dim
@@ -2155,7 +2100,6 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND(nn.Module):
         self.dilation_size = dilation_size
         self.do_prob = do_prob
         self.causal_conv = causal_conv
-        self.nonlinear_conv = nonlinear_conv
         self.s_dim = 320
         #self.wav_dim = self.s_dim // self.n_bands
         self.wav_dim = 64
@@ -2163,7 +2107,6 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND(nn.Module):
         self.use_weight_norm = use_weight_norm
         self.lpc = lpc
         self.right_size = right_size
-        self.n_spk = n_spk
         self.pad_first = pad_first
 
         self.scale_in = nn.Conv1d(self.in_dim, self.in_dim, 1)
@@ -2172,17 +2115,17 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND(nn.Module):
         if self.right_size <= 0:
             if not self.causal_conv:
                 self.conv = TwoSidedDilConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size,
-                                            layers=self.dilation_size, nonlinear=self.nonlinear_conv, pad_first=self.pad_first)
+                                            layers=self.dilation_size, pad_first=self.pad_first)
                 self.pad_left = self.conv.padding
                 self.pad_right = self.conv.padding
             else:
                 self.conv = CausalDilConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size,
-                                            layers=self.dilation_size, nonlinear=self.nonlinear_conv, pad_first=self.pad_first)
+                                            layers=self.dilation_size, pad_first=self.pad_first)
                 self.pad_left = self.conv.padding
                 self.pad_right = 0
         else:
             self.conv = SkewedConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size,
-                                        right_size=self.right_size, nonlinear=self.nonlinear_conv, pad_first=self.pad_first)
+                                        right_size=self.right_size, pad_first=self.pad_first)
             self.pad_left = self.conv.left_size
             self.pad_right = self.conv.right_size
         conv_s_c = [nn.Conv1d(self.in_dim*self.conv.rec_field, self.s_dim, 1), nn.ReLU()]
@@ -2205,10 +2148,6 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND(nn.Module):
             for i in range(self.n_quantize):
                 logits_param[i,i] = 1
             self.logits.weight = torch.nn.Parameter(logits_param)
-
-        if self.n_spk is not None:
-            self.gru_spk = nn.GRU(self.n_quantize*self.n_bands, self.hidden_units_2, 1, batch_first=True)
-            self.conv_spk = nn.Conv1d(self.hidden_units_2, self.n_spk*self.n_bands, 1)
 
         # apply weight norm
         if self.use_weight_norm:
@@ -2243,35 +2182,11 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND(nn.Module):
             #logging.info(torch.mean(torch.mean(torch.mean(scales, 2), 1), 0))
             # x_lpc B x T_lpc x n_bands --> B x T x n_bands x K --> B x T x n_bands x K x 256
             # unfold put new dimension on the last
-            if self.n_spk is not None:
-                logits = logits + torch.sum((signs*scales).flip(-1).unsqueeze(-1)*self.logits(x_lpc.unfold(1, self.lpc, 1)), 3)
-                B = logits.shape[0]
-                T = logits.shape[1]
-                if h_spk is not None:
-                    #out, h_spk = self.gru_spk(logits.reshape(B, T*self.n_bands, -1), h_spk)
-                    out, h_spk = self.gru_spk(logits.reshape(B, T, -1), h_spk)
-                else:
-                    #out, h_spk = self.gru_spk(logits.reshape(B, T*self.n_bands, -1))
-                    out, h_spk = self.gru_spk(logits.reshape(B, T, -1))
-                return logits, F.selu(self.conv_spk(out.transpose(1,2)).transpose(1,2).reshape(B, T, self.n_bands, -1)), h.detach(), h_2.detach(), h_spk.detach()
-            else:
-                return torch.clamp(logits + torch.sum((signs*scales).flip(-1).unsqueeze(-1)*self.logits(x_lpc.unfold(1, self.lpc, 1)), 3), -32, 32), h.detach(), h_2.detach()
+            return torch.clamp(logits + torch.sum((signs*scales).flip(-1).unsqueeze(-1)*self.logits(x_lpc.unfold(1, self.lpc, 1)), 3), -32, 32), h.detach(), h_2.detach()
             # B x T x n_bands x 256
         else:
-            if self.n_spk is not None:
-                logits = self.out(out.transpose(1,2))
-                B = logits.shape[0]
-                T = logits.shape[1]
-                if h_spk is not None:
-                    #out, h_spk = self.gru_spk(logits.reshape(B, T*self.n_bands, -1), h_spk)
-                    out, h_spk = self.gru_spk(logits.reshape(B, T, -1), h_spk)
-                else:
-                    #out, h_spk = self.gru_spk(logits.reshape(B, T*self.n_bands, -1))
-                    out, h_spk = self.gru_spk(logits.reshape(B, T, -1))
-                return logits, F.selu(self.conv_spk(out.transpose(1,2)).transpose(1,2).reshape(B, T, self.n_bands, -1)), h.detach(), h_2.detach(), h_spk.detach()
-            else:
-                #return self.out(out.transpose(1,2)), h.detach(), h_2.detach()
-                return torch.clamp(self.out(out.transpose(1,2)), -32, 32), h.detach(), h_2.detach()
+            #return self.out(out.transpose(1,2)), h.detach(), h_2.detach()
+            return torch.clamp(self.out(out.transpose(1,2)), -32, 32), h.detach(), h_2.detach()
 
     def generate(self, c, intervals=4000):
         start = time.time()
