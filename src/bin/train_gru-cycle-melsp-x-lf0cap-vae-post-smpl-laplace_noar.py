@@ -430,7 +430,9 @@ def main():
     parser.add_argument("--resume", default=None,
                         type=str, help="model path to restart training")
     parser.add_argument("--gen_model", required=True,
-                        type=str, help="model path to restart training")
+                        type=str, help="model path for cyclevae")
+    parser.add_argument("--ft_flag", default=False,
+                        type=strtobool, help="flag to fine-tune postnet only")
     #parser.add_argument("--string_path", default=None,
     #                    type=str, help="model path to restart training")
     parser.add_argument("--GPU_device", default=None,
@@ -704,12 +706,16 @@ def main():
         param.requires_grad = False
     for param in model_decoder_melsp_fix.parameters():
         param.requires_grad = False
-    for param in model_decoder_melsp.parameters():
-        param.requires_grad = True
-    for param in model_decoder_melsp.scale_in.parameters():
-        param.requires_grad = False
-    for param in model_decoder_melsp.scale_out.parameters():
-        param.requires_grad = False
+    if not args.ft_flag:
+        for param in model_decoder_melsp.parameters():
+            param.requires_grad = True
+        for param in model_decoder_melsp.scale_in.parameters():
+            param.requires_grad = False
+        for param in model_decoder_melsp.scale_out.parameters():
+            param.requires_grad = False
+    else:
+        for param in model_decoder_melsp.parameters():
+            param.requires_grad = False
     for param in model_encoder_excit.parameters():
         param.requires_grad = False
     for param in model_decoder_excit.parameters():
@@ -726,8 +732,13 @@ def main():
     for param in model_post.scale_out.parameters():
         param.requires_grad = False
 
-    module_list = list(model_decoder_melsp.conv.parameters())
-    module_list += list(model_decoder_melsp.gru.parameters()) + list(model_decoder_melsp.out.parameters())
+    if not args.ft_flag:
+        module_list = list(model_decoder_melsp.conv.parameters())
+        module_list += list(model_decoder_melsp.gru.parameters()) + list(model_decoder_melsp.out.parameters())
+
+        module_list += list(model_post.conv.parameters())
+    else:
+        module_list = list(model_post.conv.parameters())
 
     module_list += list(model_post.gru.parameters()) + list(model_post.out.parameters())
 
@@ -750,10 +761,15 @@ def main():
     model_encoder_excit.load_state_dict(checkpoint["model_encoder_excit"])
     model_decoder_excit.load_state_dict(checkpoint["model_decoder_excit"])
     model_spk.load_state_dict(checkpoint["model_spk"])
+    if args.ft_flag:
+        model_post.load_state_dict(checkpoint["model_post"])
     if (args.spkidtr_dim > 0):
         model_spkidtr.load_state_dict(checkpoint["model_spkidtr"])
     epoch_idx = checkpoint["iterations"]
-    logging.info("gen_model from %d-iter checkpoint." % epoch_idx)
+    if args.ft_flag:
+        logging.info("pre-fine-tuned_model from %d-iter checkpoint." % epoch_idx)
+    else:
+        logging.info("gen_model from %d-iter checkpoint." % epoch_idx)
     epoch_idx = 0
 
     # resume
@@ -1361,8 +1377,9 @@ def main():
             model_classifier.eval()
             if args.spkidtr_dim > 0:
                 model_spkidtr.eval()
-            for param in model_decoder_melsp.parameters():
-                param.requires_grad = False
+            if not args.ft_flag:
+                for param in model_decoder_melsp.parameters():
+                    param.requires_grad = False
             for param in model_post.parameters():
                 param.requires_grad = False
             for param in model_classifier.parameters():
@@ -2789,12 +2806,13 @@ def main():
             model_classifier.train()
             if args.spkidtr_dim > 0:
                 model_spkidtr.train()
-            for param in model_decoder_melsp.parameters():
-                param.requires_grad = True
-            for param in model_decoder_melsp.scale_in.parameters():
-                param.requires_grad = False
-            for param in model_decoder_melsp.scale_out.parameters():
-                param.requires_grad = False
+            if not args.ft_flag:
+                for param in model_decoder_melsp.parameters():
+                    param.requires_grad = True
+                for param in model_decoder_melsp.scale_in.parameters():
+                    param.requires_grad = False
+                for param in model_decoder_melsp.scale_out.parameters():
+                    param.requires_grad = False
             for param in model_post.parameters():
                 param.requires_grad = True
             for param in model_post.scale_in.parameters():

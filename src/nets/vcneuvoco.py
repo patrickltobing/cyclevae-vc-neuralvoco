@@ -87,7 +87,7 @@ def decode_mu_law(y, mu=256):
     mu = mu - 1
     fx = y / mu * 2 - 1
     x = np.sign(fx) / mu * ((1 + mu) ** np.abs(fx) - 1)
-    return x
+    return np.clip(x, a_min=-1, a_max=0.999969482421875)
 
 
 def decode_mu_law_torch(y, mu=256):
@@ -104,7 +104,7 @@ def decode_mu_law_torch(y, mu=256):
     mu = mu - 1
     fx = y / mu * 2 - 1
     x = torch.sign(fx) / mu * ((1 + mu) ** torch.abs(fx) - 1)
-    return x
+    return torch.clamp(x, min=-1, max=0.999969482421875)
 
 
 class ConvTranspose2d(nn.ConvTranspose2d):
@@ -645,7 +645,9 @@ def kl_categorical_categorical_logits(p, logits_p, logits_q):
 
 
 def sampling_laplace_wave(loc, scale):
-    eps = torch.empty_like(loc).uniform_(torch.finfo(loc.dtype).eps-1,1)
+    #eps = torch.empty_like(loc).uniform_(torch.finfo(loc.dtype).eps-1,1)
+    small_zero = torch.finfo(loc.dtype).eps
+    eps = torch.empty_like(loc).uniform_(small_zero-1,1-small_zero)
 
     return loc - scale * eps.sign() * torch.log1p(-eps.abs()) # scale
 
@@ -716,7 +718,9 @@ def sampling_laplace(param, log_scale=None):
         k = param.shape[-1]//2
         mu = param[:,:,:k]
         scale = torch.exp(param[:,:,k:])
-    eps = torch.empty_like(mu).uniform_(torch.finfo(mu.dtype).eps-1,1)
+    small_zero = torch.finfo(mu.dtype).eps
+    #eps = torch.empty_like(mu).uniform_(torch.finfo(mu.dtype).eps-1,1)
+    eps = torch.empty_like(mu).uniform_(small_zero-1,1-small_zero)
 
     return mu - scale * eps.sign() * torch.log1p(-eps.abs()) # scale
  
@@ -1766,11 +1770,10 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
         self.in_dim = self.feat_dim
         self.n_quantize = n_quantize
         self.cf_dim = int(np.sqrt(self.n_quantize))
-        #if self.cf_dim > 64:
-        #    self.cf_dim_in = 64
-        #else:
-        #    self.cf_dim_in = self.cf_dim
-        self.cf_dim_in = 64
+        if self.cf_dim > 64:
+            self.cf_dim_in = 64
+        else:
+            self.cf_dim_in = self.cf_dim
         self.out_dim = self.n_quantize
         self.n_bands = n_bands
         self.upsampling_factor = upsampling_factor // self.n_bands
