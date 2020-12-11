@@ -4,13 +4,14 @@
 ## Requirements
 
 * Python 3.6/3.7/3.8
+* `virtualenv` and `jq`
 * CUDA 10.1
-* Linux 64-bit [for Windows 10 user, please use Windows Subsystem for Linux]
+* Linux 64-bit [for Windows 10 user, please use WSL (Please see top README for details)]
 
 
 ## Usage
 
-With respect to the parent-root folder,
+From the top folder,
 
 ```
 $ cd tools
@@ -43,7 +44,7 @@ Please check the optimum model index from training log file on exp/tr_<model_fol
 
 `stage=post` for post-network training for mel-spectrogram refinement after CycleVAE is trained
 
-`stage=5` for reconstruction/cyclic-reconstruction generation (for further tuning of trained neural vocoder)
+`stage=5` for reconstruction/cyclic-reconstruction generation (for possible further tuning of trained neural vocoder)
 
 `stage=6` for conversion features generation and synthesis with Griffin-Lim
 
@@ -62,7 +63,7 @@ Please check the optimum model index from training log file on exp/tr_<model_fol
 
 `batch_size_utt` number of batch size in VC training, set it so that the `number of utterances / batch_size_utt` is at least `100`
 
-`mdl_name_wave` use 9-bit mu-law/16-bit output multiband WaveRNN (16-bit has better output)
+`mdl_name_wave` use 9-bit mu-law/10-bit mu-law/16-bit output multiband WaveRNN (16-bit has better output, 10-bit has the most balanced performance-speed)
 
 `spkidtr_dim` speaker dimension reduction for speaker-space interpolation, e.g., from N- to 2-dim space in the case of N number of speakers
 
@@ -93,7 +94,7 @@ Please check the optimum model index from training log file on exp/tr_<model_fol
 
 `min_idx_wave` checkpoint index for WaveRNN model
 
-`spks_trg_rec` speaker list in reconstruction/cyclic-reconstruction for WaveRNN fine-tuning
+`spks_trg_rec` speaker list in reconstruction/cyclic-reconstruction for possible WaveRNN fine-tuning
 
 `spks_src_dec` source speaker in conversion
 
@@ -101,7 +102,7 @@ Please check the optimum model index from training log file on exp/tr_<model_fol
 
 `spks_dec` speaker in neural vocoder decoding with natural features
 
-`decode_batch_size` number of batch sequence per GPU in WaveNet decoding
+`decode_batch_size` number of batch sequence per GPU in WaveRNN decoding
 
 
 ## References

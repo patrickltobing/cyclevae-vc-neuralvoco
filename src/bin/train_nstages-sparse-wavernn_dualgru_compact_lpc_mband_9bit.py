@@ -1069,10 +1069,7 @@ def main():
             total += time.time() - start
 
 
-    # save final model
-    model_waveform.cpu()
-    torch.save({"model_waveform": model_waveform.state_dict()}, args.expdir + "/checkpoint-final.pkl")
-    logging.info("final checkpoint created.")
+    logging.info("Maximum epoch is reached, please check the development optimum index, or continue training by increasing maximum epoch.")
 
 
 if __name__ == "__main__":
