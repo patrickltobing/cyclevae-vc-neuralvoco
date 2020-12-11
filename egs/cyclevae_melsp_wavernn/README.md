@@ -31,7 +31,7 @@ Set `STAGE 0` to accomodate your training/development/testing dataset list
 
 Set F0 and power threshold configuration files for each speaker in `conf/*.f0` or `conf/*.pow` (calculate speaker histogram with `STAGE init`)
 
-Please check the optimum model index from training log file on exp/tr_<model_folder>/log/train.log by searching with the phrase "sme" or "min_idx" without quotes, e.g., `vim log/train.log`, press backslash "/", then type "sme" or "min_idx", and enter.
+Please check the optimum model index from training log file on exp/tr_<model_folder>/log/train.log by searching with the phrase "sme" or "min_idx" without quotes, e.g., `less log/train.log` or `vim log/train.log`, press backslash "/", then type "sme" or "min_idx", and enter.
 
 
 ## STAGE description

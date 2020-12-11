@@ -199,20 +199,6 @@ def main():
                     pad_first=True,
                     right_size=config.right_size_enc)
                 logging.info(model_encoder_melsp)
-                model_decoder_melsp_fix = GRU_SPEC_DECODER(
-                    feat_dim=config.lat_dim+config.lat_dim_e,
-                    excit_dim=config.excit_dim,
-                    out_dim=config.mel_dim,
-                    n_spk=n_spk,
-                    aux_dim=n_spk,
-                    hidden_layers=config.hidden_layers_dec,
-                    hidden_units=config.hidden_units_dec,
-                    kernel_size=config.kernel_size_dec,
-                    dilation_size=config.dilation_size_dec,
-                    causal_conv=config.causal_conv_dec,
-                    pad_first=True,
-                    right_size=config.right_size_dec)
-                logging.info(model_decoder_melsp_fix)
                 model_decoder_melsp = GRU_SPEC_DECODER(
                     feat_dim=config.lat_dim+config.lat_dim_e,
                     excit_dim=config.excit_dim,
@@ -278,7 +264,6 @@ def main():
                     laplace=True)
                 logging.info(model_post)
                 model_encoder_melsp.load_state_dict(torch.load(args.model)["model_encoder_melsp"])
-                model_decoder_melsp_fix.load_state_dict(torch.load(args.model)["model_decoder_melsp_fix"])
                 model_decoder_melsp.load_state_dict(torch.load(args.model)["model_decoder_melsp"])
                 model_encoder_excit.load_state_dict(torch.load(args.model)["model_encoder_excit"])
                 model_decoder_excit.load_state_dict(torch.load(args.model)["model_decoder_excit"])
@@ -287,7 +272,6 @@ def main():
                 model_spk.load_state_dict(torch.load(args.model)["model_spk"])
                 model_post.load_state_dict(torch.load(args.model)["model_post"])
                 model_encoder_melsp.cuda()
-                model_decoder_melsp_fix.cuda()
                 model_decoder_melsp.cuda()
                 model_encoder_excit.cuda()
                 model_decoder_excit.cuda()
@@ -296,7 +280,6 @@ def main():
                 model_spk.cuda()
                 model_post.cuda()
                 model_encoder_melsp.eval()
-                model_decoder_melsp_fix.eval()
                 model_decoder_melsp.eval()
                 model_encoder_excit.eval()
                 model_decoder_excit.eval()
@@ -305,8 +288,6 @@ def main():
                 model_spk.eval()
                 model_post.eval()
                 for param in model_encoder_melsp.parameters():
-                    param.requires_grad = False
-                for param in model_decoder_melsp_fix.parameters():
                     param.requires_grad = False
                 for param in model_decoder_melsp.parameters():
                     param.requires_grad = False
@@ -461,8 +442,7 @@ def main():
                         #cvmelsp_src_post = pdf[:,:,:config.mel_dim]
                         #cvmelsp_post = pdf_cv[:,:,:config.mel_dim]
 
-                        # cyclic flow using fixed decoder for 1st rec./conv.
-                        cvmelsp_src, _ = model_decoder_melsp_fix(lat_cat, y=src_code, aux=trj_src_code, e=cvlf0_src[:,:,:config.excit_dim])
+                        cvmelsp_src, _ = model_decoder_melsp(lat_cat, y=src_code, aux=trj_src_code, e=cvlf0_src[:,:,:config.excit_dim])
                         if model_post.pad_right > 0:
                             cvmelsp_src = cvmelsp_src[:,model_post.pad_left:-model_post.pad_right]
                         else:
@@ -480,7 +460,7 @@ def main():
                         else:
                             logging.info(torch.mean(F.softmax(spk_logits_e[:,outpad_lefts[4]:], dim=-1), 1))
 
-                        cvmelsp, _ = model_decoder_melsp_fix(lat_cat, y=trg_code, aux=trj_trg_code, e=cvlf0[:,:,:config.excit_dim])
+                        cvmelsp, _ = model_decoder_melsp(lat_cat, y=trg_code, aux=trj_trg_code, e=cvlf0[:,:,:config.excit_dim])
                         if model_post.pad_right > 0:
                             cvmelsp = cvmelsp[:,model_post.pad_left:-model_post.pad_right]
                         else:
