@@ -287,7 +287,7 @@ if [ $mdl_name_post == none ]; then
     min_idx= #for cyclevae without post-net
 else
     min_idx= #for cyclevae with post-net
-    min_idx=2
+    #min_idx=2
 fi
 
 min_idx_wave= #for wavernn model
@@ -1845,9 +1845,10 @@ fi
 if [ `echo ${stage} | grep 8` ] || [ `echo ${stage} | grep 9` ];then
 for spk_src in ${spks_dec[@]};do
         if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_16bit" ] \
-            || [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_9bit" ]; then
-            outdir=${expdir_wave}/${mdl_name_wave}-${data_name}_dev-${hidden_units_wave}-${epoch_count_wave}-${lpc}-${n_bands}-${batch_size_wave}-${min_idx_wave}
-            #outdir=${expdir_wave}/${mdl_name_wave}-${data_name}_tst-${hidden_units_wave}-${epoch_count_wave}-${lpc}-${n_bands}-${batch_size_wave}-${min_idx_wave}
+            || [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_9bit" ] \
+                || [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf" ];then
+            outdir=${expdir_wave}/${mdl_name_wave}-${data_name}_dev-${hidden_units_wave}-${epoch_count_wave}-${lpc}-${n_bands}-${batch_size_wave}-${min_idx_wave}_${spk_src}
+            #outdir=${expdir_wave}/${mdl_name_wave}-${data_name}_tst-${hidden_units_wave}-${epoch_count_wave}-${lpc}-${n_bands}-${batch_size_wave}-${min_idx_wave}_${spk_src}
         fi
 if [ `echo ${stage} | grep 8` ];then
         echo $spk_src
@@ -1873,7 +1874,7 @@ if [ `echo ${stage} | grep 8` ];then
             ${cuda_cmd} ${expdir_wave}/log/decode_dev_${min_idx_wave}_${spk_src}.log \
                 decode_wavernn_dualgru_compact_lpc_mband_9bit.py \
                     --feats ${feats_scp} \
-                    --outdir ${outdir}/${spk_src} \
+                    --outdir ${outdir} \
                     --checkpoint ${checkpoint} \
                     --config ${config} \
                     --fs ${fs} \
@@ -1885,7 +1886,7 @@ if [ `echo ${stage} | grep 8` ];then
             ${cuda_cmd} ${expdir_wave}/log/decode_dev_${min_idx_wave}_${spk_src}.log \
                 decode_wavernn_dualgru_compact_lpc_mband_16bit.py \
                     --feats ${feats_scp} \
-                    --outdir ${outdir}/${spk_src} \
+                    --outdir ${outdir} \
                     --checkpoint ${checkpoint} \
                     --config ${config} \
                     --fs ${fs} \
@@ -1903,14 +1904,14 @@ if [ `echo ${stage} | grep 9` ];then
     echo "#             RESTORE NOISE SHAPING STEP                  #"
     echo "###########################################################"
     scp=${expdir_wave}/wav_generated_${min_idx_wave}_${spk_src}.scp
-    find ${outdir}/${spk_src} -name "*.wav" | grep "\/${spk_src}\/" | sort > ${scp}
+    find ${outdir} -name "*.wav" > ${scp}
 
     # restore noise shaping
     ${train_cmd} --num-threads ${n_jobs} \
         ${expdir_wave}/${log}/noise_shaping_restore_${min_idx_wave}_${spk_src}.log \
         noise_shaping_emph.py \
             --waveforms ${scp} \
-            --writedir ${outdir}_restored/${spk_src} \
+            --writedir ${outdir}_restored \
             --alpha ${alpha} \
             --fs ${fs} \
             --inv true \
@@ -1927,8 +1928,8 @@ for spk_src in ${spks_src_dec[@]};do
 for spk_trg in ${spks_trg_dec[@]};do
         if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_16bit" ] \
             || [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_9bit" ]; then
-            outdir=${expdir_wave}/${mdl_name_post}-${mdl_name}-${mdl_name_wave}-${data_name}_dev-${hidden_units_wave}-${epoch_count_wave}-${lpc}-${n_bands}-${batch_size_wave}-${min_idx_cycvae}-${min_idx}-${min_idx_wave}
-            #outdir=${expdir_wave}/${mdl_name_post}-${mdl_name}-${mdl_name_wave}-${data_name}_tst-${hidden_units_wave}-${epoch_count_wave}-${lpc}-${n_bands}-${batch_size_wave}-${min_idx_cycvae}-${min_idx}-${min_idx_wave}
+            outdir=${expdir_wave}/${mdl_name_post}-${mdl_name}-${mdl_name_wave}-${data_name}_dev-${hidden_units_wave}-${epoch_count_wave}-${lpc}-${n_bands}-${batch_size_wave}-${min_idx_cycvae}-${min_idx}-${min_idx_wave}_${spk_src}-${spk_trg}
+            #outdir=${expdir_wave}/${mdl_name_post}-${mdl_name}-${mdl_name_wave}-${data_name}_tst-${hidden_units_wave}-${epoch_count_wave}-${lpc}-${n_bands}-${batch_size_wave}-${min_idx_cycvae}-${min_idx}-${min_idx_wave}_${spk_src}-${spk_trg}
         fi
 if [ `echo ${stage} | grep a` ];then
         echo $spk_src $spk_trg $min_idx_cycvae $min_idx $min_idx_wave
@@ -1953,7 +1954,7 @@ if [ `echo ${stage} | grep a` ];then
             ${cuda_cmd} ${expdir_wave}/log/decode_dev_${min_idx_cycvae}-${min_idx}-${min_idx_wave}_${spk_src}-${spk_trg}.log \
                 decode_wavernn_dualgru_compact_lpc_mband_9bit.py \
                     --feats ${feats_scp} \
-                    --outdir ${outdir}/${spk_src}-${spk_trg} \
+                    --outdir ${outdir} \
                     --checkpoint ${checkpoint} \
                     --config ${config} \
                     --fs ${fs} \
@@ -1966,7 +1967,7 @@ if [ `echo ${stage} | grep a` ];then
             ${cuda_cmd} ${expdir_wave}/log/decode_dev_${min_idx_cycvae}-${min_idx}-${min_idx_wave}_${spk_src}-${spk_trg}.log \
                 decode_wavernn_dualgru_compact_lpc_mband_16bit.py \
                     --feats ${feats_scp} \
-                    --outdir ${outdir}/${spk_src}-${spk_trg} \
+                    --outdir ${outdir} \
                     --checkpoint ${checkpoint} \
                     --config ${config} \
                     --fs ${fs} \
@@ -1985,14 +1986,14 @@ if [ `echo ${stage} | grep b` ];then
     echo "#             RESTORE NOISE SHAPING STEP                  #"
     echo "###########################################################"
     scp=${expdir_wave}/wav_generated_${min_idx_cycvae}-${min_idx}-${min_idx_wave}_${spk_src}-${spk_trg}.scp
-    find ${outdir}/${spk_src}-${spk_trg} -name "*.wav" | grep "\/${spk_src}-${spk_trg}\/" | sort > ${scp}
+    find ${outdir} -name "*.wav" > ${scp}
 
     # restore noise shaping
     ${train_cmd} --num-threads ${n_jobs} \
         ${expdir_wave}/${log}/noise_shaping_restore_${min_idx_cycvae}-${min_idx}-${min_idx_wave}_${spk_src}-${spk_trg}.log \
         noise_shaping_emph.py \
             --waveforms ${scp} \
-            --writedir ${outdir}_restored/${spk_src}-${spk_trg} \
+            --writedir ${outdir}_restored \
             --alpha ${alpha} \
             --fs ${fs} \
             --inv true \

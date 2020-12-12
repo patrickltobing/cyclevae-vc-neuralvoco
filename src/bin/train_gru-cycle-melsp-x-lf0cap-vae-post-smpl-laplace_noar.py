@@ -1935,9 +1935,9 @@ def main():
                                                 + torch.sqrt(torch.mean(torch.sum(criterion_l2(melsp_est_post, melsp), -1), -1)) \
                                             + torch.mean(torch.mean(criterion_l1(melsp_est_post, melsp), -1), -1) \
                                                 + torch.sqrt(torch.mean(torch.mean(criterion_l2(melsp_est_post, melsp), -1), -1))
-                        batch_loss_px_sum += batch_loss_melsp_post_.sum()
+                        batch_loss_px_sum = batch_loss_melsp_post_.sum()
                         batch_loss_melsp_post[i] = batch_loss_melsp_post_.mean()
-                        batch_loss_px[i] += batch_loss_melsp_post[i]
+                        batch_loss_px[i] = batch_loss_melsp_post_.mean()
                         batch_loss_melsp_dB_post[i] = torch.mean(torch.sqrt(torch.mean((20*(torch.log10(torch.clamp(melsp_est_rest_post, min=1e-16))-melsp_rest_log))**2, -1)))
 
                         batch_loss_magsp_post_ = torch.mean(torch.sum(criterion_l1(magsp_est_post, magsp), -1), -1) \
@@ -3043,7 +3043,7 @@ def main():
                                         + torch.sqrt(torch.mean(torch.mean(criterion_l2(melsp_est_post, melsp), -1), -1))
                 batch_loss_px_sum = batch_loss_melsp_post_.sum()
                 batch_loss_melsp_post[i] = batch_loss_melsp_post_.mean()
-                batch_loss_px[i] = batch_loss_melsp_post[i]
+                batch_loss_px[i] = batch_loss_melsp_post_.mean()
                 batch_loss_melsp_dB_post[i] = torch.mean(torch.sqrt(torch.mean((20*(torch.log10(torch.clamp(melsp_est_rest_post, min=1e-16))-melsp_rest_log))**2, -1)))
 
                 batch_loss_magsp_post_ = torch.mean(torch.sum(criterion_l1(magsp_est_post, magsp), -1), -1) \

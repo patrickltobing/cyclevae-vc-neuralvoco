@@ -212,6 +212,7 @@ n_stage: 4
 lpc: 6
 
 n_bands: 5
+#n_bands: 10 [for sampling rate 44.1 or 48 kHz, please use 10 bands and 10bit_cf model for real-time]
 
 #use_mcep: true
 ## mel-spectrogram-based modeling (wavernn)
