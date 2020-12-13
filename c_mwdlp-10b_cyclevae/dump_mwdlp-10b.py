@@ -1,0 +1,463 @@
+#!/usr/bin/env python
+'''Copyright (c) 2017-2018 Mozilla
+
+   Redistribution and use in source and binary forms, with or without
+   modification, are permitted provided that the following conditions
+   are met:
+
+   - Redistributions of source code must retain the above copyright
+   notice, this list of conditions and the following disclaimer.
+
+   - Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions and the following disclaimer in the
+   documentation and/or other materials provided with the distribution.
+
+   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+   ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+   LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+   A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE FOUNDATION OR
+   CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+   EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+   PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+   PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+   LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+   NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+'''
+'''
+    based on dump_lpcnet.py
+    modified for 16-bit output multiband wavernn with data-driven LPC
+    by: Patrick Lumban Tobing (Nagoya University) on October 2020
+'''
+
+import argparse
+import os
+import sys
+
+import torch
+from mwdlpnet import GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF
+from pqmf import PQMF
+
+import numpy as np
+
+#import h5py
+#import re
+
+
+def printVector(f, vector, name, dtype='float'):
+    v = np.reshape(vector, (-1));
+    #print('static const float ', name, '[', len(v), '] = \n', file=f)
+    f.write('static const {} {}[{}] = {{\n   '.format(dtype, name, len(v)))
+    for i in range(0, len(v)):
+        f.write('{}'.format(v[i]))
+        if (i!=len(v)-1):
+            f.write(',')
+        else:
+            break;
+        if (i%8==7):
+            f.write("\n   ")
+        else:
+            f.write(" ")
+    #print(v, file=f)
+    f.write('\n};\n\n')
+    return;
+
+def printSparseVector(f, A, name):
+    N = A.shape[0]
+    W = np.zeros((0,))
+    diag = np.concatenate([np.diag(A[:,:N]), np.diag(A[:,N:2*N]), np.diag(A[:,2*N:])])
+    A[:,:N] = A[:,:N] - np.diag(np.diag(A[:,:N]))
+    A[:,N:2*N] = A[:,N:2*N] - np.diag(np.diag(A[:,N:2*N]))
+    A[:,2*N:] = A[:,2*N:] - np.diag(np.diag(A[:,2*N:]))
+    printVector(f, diag, name + '_diag')
+    idx = np.zeros((0,), dtype='int')
+    for i in range(3*N//16):
+        pos = idx.shape[0]
+        idx = np.append(idx, -1)
+        nb_nonzero = 0
+        for j in range(N):
+            if np.sum(np.abs(A[j, i*16:(i+1)*16])) > 1e-10:
+                nb_nonzero = nb_nonzero + 1
+                idx = np.append(idx, j)
+                W = np.concatenate([W, A[j, i*16:(i+1)*16]])
+        idx[pos] = nb_nonzero
+    printVector(f, W, name)
+    #idx = np.tile(np.concatenate([np.array([N]), np.arange(N)]), 3*N//16)
+    printVector(f, idx, name + '_idx', dtype='int')
+    return;
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    # mandatory arguments
+    parser.add_argument("config", metavar="string",
+                        type=str, help="path of model config")
+    parser.add_argument("model", metavar="string",
+                        type=str, help="path of model file")
+    # optional arguments
+    parser.add_argument("--c_out_file", "-cf", default="nnet_data.c", metavar="string",
+                        type=str, help="c out file; default is nnet_data.c")
+    parser.add_argument("--h_out_file", "-hf", default="nnet_data.h", metavar="string",
+                        type=str, help="header out file; default is nnet_data.h")
+    args = parser.parse_args()
+
+    #set config and model
+    config = torch.load(args.config)
+    print(config)
+
+    model = GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(
+        feat_dim=config.mcep_dim+config.excit_dim,
+        upsampling_factor=config.upsampling_factor,
+        hidden_units=config.hidden_units_wave,
+        hidden_units_2=config.hidden_units_wave_2,
+        kernel_size=config.kernel_size_wave,
+        dilation_size=config.dilation_size_wave,
+        n_quantize=config.n_quantize,
+        causal_conv=config.causal_conv_wave,
+        right_size=config.right_size,
+        n_bands=config.n_bands,
+        pad_first=True,
+        lpc=config.lpc)
+    print(model)
+    model.load_state_dict(torch.load(args.model)["model_waveform"])
+    model.remove_weight_norm()
+    model.eval()
+    for name, param in model.named_parameters():
+        param.requires_grad = False
+
+    cfile = args.c_out_file
+    hfile = args.h_out_file
+    
+    f = open(cfile, 'w')
+    hf = open(hfile, 'w')
+    
+    f.write('/*This file is automatically generated from a PyTorch model*/\n\n')
+    f.write('#ifdef HAVE_CONFIG_H\n#include "config.h"\n#endif\n\n#include "nnet.h"\n#include "{}"\n\n'.format(hfile))
+    
+    hf.write('/*This file is automatically generated from a PyTorch model*/\n\n')
+    hf.write('#ifndef RNN_DATA_H\n#define RNN_DATA_H\n\n#include "nnet.h"\n\n')
+    
+    cond_size = model.s_dim
+    #PyTorch & Keras = (emb_dict_size,emb_size)
+    embed_size = model.wav_dim
+    embed_size_bands = model.wav_dim_bands
+    
+    max_rnn_neurons = 1
+    #PyTorch = (hidden_dim*3,in_dim*3)
+    #Keras = (in_dim*3,hidden_dim*3)
+
+    #embedding coarse and fine
+    E_coarse = model.embed_c_wav.weight.numpy()
+    E_fine = model.embed_f_wav.weight.numpy()
+
+    #gru_main weight_input
+    W = model.gru.weight_ih_l0.permute(1,0).numpy()
+    #dump coarse_embed pre-computed input_weight contribution for all classes
+    name = 'gru_a_embed_coarse'
+    print("printing layer " + name)
+    W_bands = W[cond_size:-embed_size_bands]
+    # n_bands x embed_dict_size x hidden_size
+    weights = np.expand_dims(np.dot(E_coarse, W_bands[:embed_size]), axis=0)
+    for i in range(1,model.n_bands):
+        weights = np.r_[weights, np.expand_dims(np.dot(E_coarse, W_bands[embed_size*i:embed_size*(i+1)]), axis=0)]
+    printVector(f, weights, name + '_weights')
+    f.write('const EmbeddingLayer {} = {{\n   {}_weights,\n   {}, {}\n}};\n\n'
+            .format(name, name, weights.shape[0], weights.shape[1]))
+    hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
+    hf.write('extern const EmbeddingLayer {};\n\n'.format(name));
+    #dump coarse_fine pre-computed input_weight contribution for all classes
+    name = 'gru_a_embed_fine'
+    print("printing layer " + name)
+    W_bands = W[-embed_size_bands:]
+    # n_bands x embed_dict_size x hidden_size
+    weights = np.expand_dims(np.dot(E_fine, W_bands[:embed_size]), axis=0)
+    for i in range(1,model.n_bands):
+        weights = np.r_[weights, np.expand_dims(np.dot(E_fine, W_bands[embed_size*i:embed_size*(i+1)]), axis=0)]
+    printVector(f, weights, name + '_weights')
+    f.write('const EmbeddingLayer {} = {{\n   {}_weights,\n   {}, {}\n}};\n\n'
+            .format(name, name, weights.shape[0], weights.shape[1]))
+    hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
+    hf.write('extern const EmbeddingLayer {};\n\n'.format(name));
+    #dump input cond-part weight and input bias
+    name = 'gru_a_dense_feature'
+    print("printing layer " + name)
+    weights = W[:cond_size]
+    bias = model.gru.bias_ih_l0.numpy()
+    printVector(f, weights, name + '_weights')
+    printVector(f, bias, name + '_bias')
+    f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_LINEAR\n}};\n\n'
+            .format(name, name, name, weights.shape[0], weights.shape[1]))
+    hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
+    hf.write('extern const DenseLayer {};\n\n'.format(name));
+
+    #dump gru_coarse input weight cond-part and input bias
+    name = 'gru_b_dense_feature'
+    print("printing layer " + name)
+    W = model.gru_2.weight_ih_l0.permute(1,0).numpy()
+    weights = W[:cond_size]
+    bias = model.gru_2.bias_ih_l0.numpy()
+    printVector(f, weights, name + '_weights')
+    printVector(f, bias, name + '_bias')
+    f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_LINEAR\n}};\n\n'
+            .format(name, name, name, weights.shape[0], weights.shape[1]))
+    hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
+    hf.write('extern const DenseLayer {};\n\n'.format(name));
+    #dump gru_coarse input weight state-part
+    name = 'gru_b_dense_feature_state'
+    print("printing layer " + name)
+    weights = W[cond_size:]
+    bias = np.zeros(W.shape[1])
+    printVector(f, weights, name + '_weights')
+    printVector(f, bias, name + '_bias')
+    f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_LINEAR\n}};\n\n'
+            .format(name, name, name, weights.shape[0], weights.shape[1]))
+    hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
+    hf.write('extern const DenseLayer {};\n\n'.format(name));
+
+    #gru_fine weight_input
+    W = model.gru_f.weight_ih_l0.permute(1,0).numpy()
+    #dump coarse_embed pre-computed input_weight contribution for all classes
+    name = 'gru_c_embed_coarse'
+    print("printing layer " + name)
+    W_bands = W[cond_size:-model.hidden_units_2]
+    # n_bands x embed_dict_size x hidden_size
+    weights = np.expand_dims(np.dot(E_coarse, W_bands[:embed_size]), axis=0)
+    for i in range(1,model.n_bands):
+        weights = np.r_[weights, np.expand_dims(np.dot(E_coarse, W_bands[embed_size*i:embed_size*(i+1)]), axis=0)]
+    printVector(f, weights, name + '_weights')
+    f.write('const EmbeddingLayer {} = {{\n   {}_weights,\n   {}, {}\n}};\n\n'
+            .format(name, name, weights.shape[0], weights.shape[1]))
+    hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
+    hf.write('extern const EmbeddingLayer {};\n\n'.format(name));
+    #dump input cond-part weight and input bias
+    name = 'gru_c_dense_feature'
+    print("printing layer " + name)
+    weights = W[:cond_size]
+    bias = model.gru_f.bias_ih_l0.numpy()
+    printVector(f, weights, name + '_weights')
+    printVector(f, bias, name + '_bias')
+    f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_LINEAR\n}};\n\n'
+            .format(name, name, name, weights.shape[0], weights.shape[1]))
+    hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
+    hf.write('extern const DenseLayer {};\n\n'.format(name));
+    #dump input state-part weight
+    name = 'gru_c_dense_feature_state'
+    print("printing layer " + name)
+    weights = W[-model.hidden_units_2:]
+    bias = np.zeros(W.shape[1])
+    printVector(f, weights, name + '_weights')
+    printVector(f, bias, name + '_bias')
+    f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_LINEAR\n}};\n\n'
+            .format(name, name, name, weights.shape[0], weights.shape[1]))
+    hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
+    hf.write('extern const DenseLayer {};\n\n'.format(name));
+  
+    #PyTorch = (out,in,ks) / (out,in)
+    #Keras = (ks,in,out) / (in,out)
+
+    #dump scale_in
+    name = 'feature_norm'
+    print("printing layer " + name + " of type " + model.scale_in.__class__.__name__)
+    weights = model.scale_in.weight.permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
+    bias = model.scale_in.bias.numpy()
+    printVector(f, weights, name + '_weights')
+    printVector(f, bias, name + '_bias')
+    f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_LINEAR\n}};\n\n'
+            .format(name, name, name, weights.shape[0], weights.shape[1]))
+    hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
+    hf.write('extern const DenseLayer {};\n\n'.format(name));
+
+    #dump segmental_conv
+    name = "feature_conv"
+    #FIXME: model format without sequential for two-sided/causal conv
+    if model.right_size <= 0:
+        print("printing layer " + name + " of type " + model.conv.conv[0].__class__.__name__)
+        if not model.causal_conv:
+            weights = model.conv.conv[0].weight.permute(2,1,0).numpy()
+            bias = model.conv.conv[0].bias.numpy()
+        else:
+            weights = model.conv.conv[0].weight.permute(2,1,0)
+            bias = model.conv.conv[0].bias.numpy()
+    else:
+        print("printing layer " + name + " of type " + model.conv.conv.__class__.__name__)
+        weights = model.conv.conv.weight.permute(2,1,0).numpy()
+        bias = model.conv.conv.bias.numpy()
+    printVector(f, weights, name + '_weights')
+    printVector(f, bias, name + '_bias')
+    f.write('const Conv1DLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, {}, ACTIVATION_LINEAR\n}};\n\n'
+            .format(name, name, name, weights.shape[1], weights.shape[0], weights.shape[2]))
+    hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[2]))
+    hf.write('#define {}_STATE_SIZE ({}*{})\n'.format(name.upper(), weights.shape[1],
+        model.pad_left+1+model.pad_right-1))
+    hf.write('#define {}_DELAY {}\n'.format(name.upper(), model.pad_right))
+    hf.write('extern const Conv1DLayer {};\n\n'.format(name));
+
+    #dump dense_relu
+    name = 'feature_dense'
+    print("printing layer " + name + " of type " + model.conv_s_c[0].__class__.__name__)
+    weights = model.conv_s_c[0].weight.permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
+    bias = model.conv_s_c[0].bias.numpy()
+    printVector(f, weights, name + '_weights')
+    printVector(f, bias, name + '_bias')
+    f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_RELU\n}};\n\n'
+            .format(name, name, name, weights.shape[0], weights.shape[1]))
+    hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
+    hf.write('extern const DenseLayer {};\n\n'.format(name));
+
+    #dump sparse_main_gru
+    name = 'sparse_gru_a'
+    print("printing layer " + name + " of type sparse " + model.gru.__class__.__name__)
+    weights = model.gru.weight_hh_l0.transpose(0,1).numpy()
+    bias = model.gru.bias_hh_l0.numpy()
+    printSparseVector(f, weights, name + '_recurrent_weights')
+    printVector(f, bias, name + '_bias')
+    activation = 'TANH'
+    reset_after = 1
+    neurons = weights.shape[1]//3
+    max_rnn_neurons = max(max_rnn_neurons, neurons)
+    f.write('const SparseGRULayer {} = {{\n   {}_bias,\n   {}_recurrent_weights_diag,\n   {}_recurrent_weights,\n   '\
+        '{}_recurrent_weights_idx,\n   {}, ACTIVATION_{}, {}\n}};\n\n'.format(name, name, name, name, name,
+            weights.shape[1]//3, activation, reset_after))
+    hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]//3))
+    hf.write('#define {}_STATE_SIZE {}\n'.format(name.upper(), weights.shape[1]//3))
+    hf.write('extern const SparseGRULayer {};\n\n'.format(name));
+
+    #dump dense_gru_coarse
+    name = "gru_b"
+    print("printing layer " + name + " of type " + model.gru_2.__class__.__name__)
+    weights_ih = model.gru_2.weight_ih_l0.transpose(0,1)[cond_size:].numpy()
+    weights_hh = model.gru_2.weight_hh_l0.transpose(0,1).numpy()
+    bias = model.gru_2.bias_hh_l0
+    printVector(f, weights_ih, name + '_weights')
+    printVector(f, weights_hh, name + '_recurrent_weights')
+    printVector(f, bias, name + '_bias')
+    activation = 'TANH'
+    reset_after = 1
+    neurons = weights_hh.shape[1]//3
+    max_rnn_neurons = max(max_rnn_neurons, neurons)
+    f.write('const GRULayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}_recurrent_weights,\n   {}, {}, ACTIVATION_{}, '\
+        '{}\n}};\n\n'.format(name, name, name, name, weights_ih.shape[0], weights_hh.shape[1]//3,
+            activation, reset_after))
+    hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights_hh.shape[1]//3))
+    hf.write('#define {}_STATE_SIZE {}\n'.format(name.upper(), weights_hh.shape[1]//3))
+    hf.write('extern const GRULayer {};\n\n'.format(name));
+
+    #dump dense_gru_fine
+    name = "gru_c"
+    print("printing layer " + name + " of type " + model.gru_f.__class__.__name__)
+    weights_ih = model.gru_f.weight_ih_l0.transpose(0,1)[-model.hidden_units_2:].numpy()
+    weights_hh = model.gru_f.weight_hh_l0.transpose(0,1).numpy()
+    bias = model.gru_f.bias_hh_l0
+    printVector(f, weights_ih, name + '_weights')
+    printVector(f, weights_hh, name + '_recurrent_weights')
+    printVector(f, bias, name + '_bias')
+    activation = 'TANH'
+    reset_after = 1
+    neurons = weights_hh.shape[1]//3
+    max_rnn_neurons = max(max_rnn_neurons, neurons)
+    f.write('const GRULayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}_recurrent_weights,\n   {}, {}, ACTIVATION_{}, '\
+        '{}\n}};\n\n'.format(name, name, name, name, weights_ih.shape[0], weights_hh.shape[1]//3,
+            activation, reset_after))
+    hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights_hh.shape[1]//3))
+    hf.write('#define {}_STATE_SIZE {}\n'.format(name.upper(), weights_hh.shape[1]//3))
+    hf.write('extern const GRULayer {};\n\n'.format(name));
+
+    #dump dual_fc_coarse
+    name = "dual_fc_coarse"
+    print("printing layer " + name)
+    weights = model.out.conv.weight.permute(2,1,0)[0].numpy()
+    bias = model.out.conv.bias.numpy()
+    factors = (0.5*torch.exp(model.out.fact.weight[0])).numpy()
+    printVector(f, weights, name + '_weights')
+    printVector(f, bias, name + '_bias')
+    printVector(f, factors[:model.out.lpc2], name + '_factor_signs')
+    printVector(f, factors[model.out.lpc2:model.out.lpc4], name + '_factor_mags')
+    printVector(f, factors[model.out.lpc4:], name + '_factor_mids')
+    f.write('const MDenseLayerMBDLP {} = {{\n   {}_bias,\n   {}_weights,\n   {}_factor_signs,\n   {}_factor_mags,\n   '\
+        '{}_factor_mids,\n   ACTIVATION_TANH, ACTIVATION_EXP, ACTIVATION_RELU\n}};\n\n'.format(name, name, name,
+            name, name, name))
+    hf.write('extern const MDenseLayerMBDLP {};\n\n'.format(name));
+
+    #dump dense_fc_out_coarse
+    name = 'fc_out_coarse'
+    print("printing layer " + name)
+    weights = model.out.out.weight.permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
+    bias = model.out.out.bias.numpy()
+    printVector(f, weights, name + '_weights')
+    printVector(f, bias, name + '_bias')
+    f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_TANHSHRINK\n}};\n\n'
+            .format(name, name, name, weights.shape[0], weights.shape[1]))
+    hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
+    hf.write('extern const DenseLayer {};\n\n'.format(name));
+
+    #dump dual_fc_fine
+    name = "dual_fc_fine"
+    print("printing layer " + name)
+    weights = model.out_f.conv.weight.permute(2,1,0)[0].numpy()
+    bias = model.out_f.conv.bias.numpy()
+    factors = (0.5*torch.exp(model.out_f.fact.weight[0])).numpy()
+    printVector(f, weights, name + '_weights')
+    printVector(f, bias, name + '_bias')
+    printVector(f, factors[:model.out_f.lpc2], name + '_factor_signs')
+    printVector(f, factors[model.out_f.lpc2:model.out_f.lpc4], name + '_factor_mags')
+    printVector(f, factors[model.out_f.lpc4:], name + '_factor_mids')
+    f.write('const MDenseLayerMBDLP {} = {{\n   {}_bias,\n   {}_weights,\n   {}_factor_signs,\n   {}_factor_mags,\n   '\
+        '{}_factor_mids,\n   ACTIVATION_TANH, ACTIVATION_EXP, ACTIVATION_RELU\n}};\n\n'.format(name, name, name,
+            name, name, name))
+    hf.write('extern const MDenseLayerMBDLP {};\n\n'.format(name));
+
+    #dump dense_fc_out_fine
+    name = 'fc_out_fine'
+    print("printing layer " + name)
+    weights = model.out_f.out.weight.permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
+    bias = model.out_f.out.bias.numpy()
+    printVector(f, weights, name + '_weights')
+    printVector(f, bias, name + '_bias')
+    f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_TANHSHRINK\n}};\n\n'
+            .format(name, name, name, weights.shape[0], weights.shape[1]))
+    hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
+    hf.write('extern const DenseLayer {};\n\n'.format(name));
+
+    #dump pqmf_synthesis filt
+    name = "pqmf_synthesis"
+    print("printing layer " + name)
+    pqmf = PQMF(model.n_bands)
+    pqmf_order = pqmf.taps
+    pqmf_delay = pqmf_order // 2
+    weights = pqmf.synthesis_filter.permute(2,1,0).numpy()
+    bias = np.zeros(1)
+    printVector(f, weights, name + '_weights')
+    printVector(f, bias, name + '_bias')
+    f.write('const Conv1DLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, {}, ACTIVATION_LINEAR\n}};\n\n'
+            .format(name, name, name, weights.shape[1], weights.shape[0], weights.shape[2]))
+    hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[2]))
+    hf.write('#define {}_STATE_SIZE ({}*{})\n'.format(name.upper(), weights.shape[1], pqmf_delay+1))
+    hf.write('#define {}_DELAY {}\n'.format(name.upper(), pqmf_delay))
+    hf.write('extern const Conv1DLayer {};\n\n'.format(name));
+
+    hf.write('#define MAX_RNN_NEURONS {}\n\n'.format(max_rnn_neurons))
+    hf.write('#define RNN_MAIN_NEURONS {}\n\n'.format(model.hidden_units))
+    hf.write('#define RNN_SUB_NEURONS {}\n\n'.format(model.hidden_units_2))
+    hf.write('#define N_MBANDS {}\n\n'.format(model.n_bands))
+    hf.write('#define DLPC_ORDER {}\n\n'.format(model.lpc))
+    hf.write('#define PQMF_ORDER {}\n\n'.format(pqmf_order))
+    hf.write('#define MID_OUT {}\n\n'.format(model.cf_dim_in//2))
+    hf.write('#define LAST_FC_OUT {}\n\n'.format(model.cf_dim))
+    hf.write('#define N_SAMPLE_BANDS {}\n\n'.format(model.upsampling_factor))
+    hf.write('#define FEATURES_DIM {}\n\n'.format(model.in_dim))
+
+    hf.write('typedef struct {\n')
+    hf.write('  float feature_conv_state[FEATURE_CONV_STATE_SIZE];\n')
+    hf.write('  float gru_a_state[SPARSE_GRU_A_STATE_SIZE];\n')
+    hf.write('  float gru_b_state[GRU_B_STATE_SIZE];\n')
+    hf.write('  float gru_c_state[GRU_C_STATE_SIZE];\n')
+    hf.write('} MBDLP16NNetState;\n')
+    
+    hf.write('\n\n#endif\n')
+    
+    f.close()
+    hf.close()
+
+
+if __name__ == "__main__":
+    main()
