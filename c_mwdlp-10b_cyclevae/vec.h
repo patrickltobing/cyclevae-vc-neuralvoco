@@ -28,7 +28,13 @@
 /* No AVX2/FMA support */
 /* Modified by Patrick Lumban Tobing (Nagoya University) on Sept.-Dec. 2020,
    marked by PLT_<Sep/Dec>20 */
+
+
 #ifndef LPCNET_TEST
+
+//PLT_Dec20
+#include "tansig_table.h"
+
 static float celt_exp2(float x)
 {
    int integer;

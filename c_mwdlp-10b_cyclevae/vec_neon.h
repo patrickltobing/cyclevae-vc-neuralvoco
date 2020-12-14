@@ -27,8 +27,8 @@
    SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 /* NEON support for ARM machines */
-/* Modified by Patrick Lumban Tobing (Nagoya University) on Sept.-Dec. 2020,
-   marked by PLT_<Sep/Dec>20 */
+/* Modified by Patrick Lumban Tobing (Nagoya University) on Sept. 2020,
+   marked by PLT_<Sep>20 */
 
 #include <arm_neon.h>
 #ifndef LPCNET_TEST

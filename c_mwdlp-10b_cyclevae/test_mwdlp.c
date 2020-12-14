@@ -30,10 +30,11 @@
 #include <stdio.h>
 #include <time.h>
 #include "arch.h"
-#include "lpcnet.h"
+#include "mwdlp10net_cycvae.h"
 #include "freq.h"
 #include "nnet_data.h"
-#include "lpcnet_private.h"
+#include "nnet_cv_data.h"
+#include "mwdlp10net_cycvae_private.h"
 
 
 int main(int argc, char **argv) {

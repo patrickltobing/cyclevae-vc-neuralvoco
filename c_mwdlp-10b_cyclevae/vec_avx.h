@@ -28,8 +28,8 @@
   AVX implementation of vector operations, compile with -mavx
   AVX2/FMA implementation of vector operations, compile with -mavx2 -mfma
 */
-/* Modified by Patrick Lumban Tobing (Nagoya University) on Sept.-Dec. 2020,
-   marked by PLT_<Sep/Dec>20 */
+/* Modified by Patrick Lumban Tobing (Nagoya University) on Sept. 2020,
+   marked by PLT_<Sep>20 */
 
 #include <immintrin.h>
 
@@ -217,6 +217,7 @@ static void sgemv_accum16(float *out, const float *weights, int rows, int cols, 
      //       printf("%f\n", out[i]);
    }
 }
+
 static void sparse_sgemv_accum16(float *out, const float *weights, int rows, const int *idx, const float *x)
 {
    int i, j;

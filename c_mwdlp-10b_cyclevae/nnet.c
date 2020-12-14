@@ -38,11 +38,13 @@
 #include "opus_types.h"
 #include "arch.h"
 #include "common.h"
-#include "tansig_table.h"
 #include "nnet.h"
 #include "nnet_data.h"
-#include "lpcnet_private.h"
-#include "gumbel_table.h"
+#include "nnet_cv_data.h"
+#include "mwdlp10net_cycvae_private.h"
+
+#define HALF_RAND_MAX (RAND_MAX / 2)
+#define HALF_RAND_MAX_FLT_MIN (HALF_RAND_MAX + FLT_MIN)
 
 #define SOFTMAX_HACK
 
@@ -149,17 +151,18 @@ void compute_dense_linear(const DenseLayer *layer, float *output, const float *i
    sgemv_accum(output, layer->input_weights, N, layer->nb_inputs, N, input);
 }
 
-//PLT_Sep20
-void compute_mdense_mwdlp(const MDenseLayerMBDLP *layer, const DenseLayer *fc_layer, float *output,
+//PLT_Dec20
+void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *fc_layer, float *output,
     const float *input, const int *last_output)
 {
     int i, c, n;
-    int n_lpcbands, n_lpcbands2, n_c_lpcbands2, c_lpc;
-    int n_logitsbands, n_logitsbands2, c_logits;
+    int n_lpcbands, n_c_lpcbands2;
+    int n_logitsbands, n_c_logitsbands2;
     float tmp[MDENSE_OUT];
-    float signs[LPC_ORDER_MBANDS_2], mags[LPC_ORDER_MBANDS_2], mids[MID_OUT_MBANDS_2];
+    float signs[LPC_ORDER_MBANDS_2], mags[LPC_ORDER_MBANDS_2], outs[SQRT_QUANTIZE_MBANDS_2];
     //float lpc[LPC_ORDER_MBANDS], res_mids[MID_OUT_MBANDS];
-    float lpc_signs[LPC_ORDER_MBANDS], lpc_mags[LPC_ORDER_MBANDS], res_mids[MID_OUT_MBANDS];
+    float lpc_signs[LPC_ORDER_MBANDS], lpc_mags[LPC_ORDER_MBANDS];
+    //float res_outs[SQRT_QUANTIZE_MBANDS];
     float *logits;
     //celt_assert(input != output);
     for (i=0;i<MDENSE_OUT;i++)
@@ -187,8 +190,8 @@ void compute_mdense_mwdlp(const MDenseLayerMBDLP *layer, const DenseLayer *fc_la
     //}
     //exit(0);
     //mids, last 32*5*2
-    RNN_COPY(mids, &tmp[LPC_ORDER_MBANDS_4], MID_OUT_MBANDS_2);
-    compute_activation(mids, mids, MID_OUT_MBANDS_2, layer->activation_mids);
+    RNN_COPY(outs, &tmp[LPC_ORDER_MBANDS_4], SQRT_QUANTIZE_MBANDS_2);
+    compute_activation(outs, outs, SQRT_QUANTIZE_MBANDS_2, layer->activation_outs);
     //for (i=0;i<MID_OUT_MBANDS_2;i++) {
     //    printf("mids [%d] %f\n", i, mids[i]);
     //}
@@ -197,32 +200,32 @@ void compute_mdense_mwdlp(const MDenseLayerMBDLP *layer, const DenseLayer *fc_la
         lpc_signs[i] = 0;
         lpc_mags[i] = 0;
     }
-    for (i=0;i<MID_OUT_MBANDS;i++)
-        res_mids[i] = 0;
-    for (n=0;n<N_MBANDS;n++) { //n_bands x 2 x n_lpc or 32
+    //for (i=0;i<SQRT_QUANTIZE_MBANDS;i++)
+    //    res_outs[i] = 0;
+    for (n=0;n<N_MBANDS;n++) { //n_bands x 2 x n_lpc or 32, loop order is n_bands --> 2 --> n_lpc/32
         //lpc: n_b x 2 x n_lpc
-        for (c=0,n_lpcbands=n*DLPC_ORDER,n_lpcbands2=n_lpcbands*2;c<2;c++) {
-            //factors of lpcs shared between bands
-            //for (i=0,c_lpc=c*DLPC_ORDER,n_c_lpcbands2=n_lpcbands2+c_lpc;i<DLPC_ORDER;i++)
-            //    lpc[n_lpcbands+i] += signs[n_c_lpcbands2 + i]*layer->factor_signs[c_lpc + i] 
-            //                            * mags[n_c_lpcbands2 + i]*layer->factor_mags[c_lpc + i];
-            for (i=0,c_lpc=c*DLPC_ORDER,n_c_lpcbands2=n_lpcbands2+c_lpc;i<DLPC_ORDER;i++) {
-                lpc_signs[n_lpcbands+i] += signs[n_c_lpcbands2 + i]*layer->factor_signs[c_lpc + i];
-                lpc_mags[n_lpcbands+i] += mags[n_c_lpcbands2 + i]*layer->factor_mags[c_lpc + i];
+        for (c=0,n_lpcbands=n*DLPC_ORDER,n_c_lpcbands2=n_lpcbands*2;c<2;c++) {
+            for (i=0;i<DLPC_ORDER;i++,n_c_lpcbands2++) {
+                //previous code uses shared factors for signs/mags between bands [c*DLPC_ORDER + i]
+                //changed into band-dependent factors for signs/mags [n*DLPC_ORDER*2 + c*DLPC_ORDER + i]
+                lpc_signs[n_lpcbands+i] += signs[n_c_lpcbands2]*layer->factor_signs[n_c_lpcbands2]
+                lpc_mags[n_lpcbands+i] += mags[n_c_lpcbands2]*layer->factor_mags[n_c_lpcbands2];
             }
         }
-        //mids: n_b x 2 x 32
-        for (c=0,n_logitsbands=n*MID_OUT,n_logitsbands2=n_logitsbands*2;c<2;c++) {
-            //factor of mids band-dependent
-            for (i=0,c_logits=n_logitsbands2+c*MID_OUT;i<MID_OUT;i++)
-                res_mids[n_logitsbands+i] += mids[c_logits + i]*layer->factor_mids[c_logits + i];
+        //outs: n_b x 32
+        logits = &output[n*SQRT_QUANTIZE];
+        for (c=0,n_logitsbands=n*SQRT_QUANTIZE,n_c_logitsbands2=n_logitsbands*2;c<2;c++) {
+            //factor of outs also band-dependent, indexing similar as above signs/mags with 32-dim
+            for (i=0;i<SQRT_QUANTIZE;i++,n_c_logitsbands2++)
+                logits[n_logitsbands+i] += outs[n_c_logitsbands2]*layer->factor_outs[n_c_logitsbands2];
         }
-        //logits: 32 x 256 [[o_1,...,o_256]_1,...,[o_1,...,o_256]_N]
-        logits = &output[n*LAST_FC_OUT];
-        for (i=0;i<LAST_FC_OUT;i++)
-            logits[i] = fc_layer->bias[i];
-        sgemv_accum(logits, fc_layer->input_weights, LAST_FC_OUT, MID_OUT, LAST_FC_OUT, &res_mids[n_logitsbands]);
-        compute_activation(logits, logits, LAST_FC_OUT, fc_layer->activation);
+        //delete this part because sqrt(10-bit) mu-law does not need additional FC-layer to output 32-dim
+        ////logits: 32 x 256 [[o_1,...,o_256]_1,...,[o_1,...,o_256]_N]
+        //logits = &output[n*LAST_FC_OUT];
+        //for (i=0;i<LAST_FC_OUT;i++)
+        //    logits[i] = fc_layer->bias[i];
+        //sgemv_accum(logits, fc_layer->input_weights, LAST_FC_OUT, MID_OUT, LAST_FC_OUT, &res_mids[n_logitsbands]);
+        //compute_activation(logits, logits, LAST_FC_OUT, fc_layer->activation);
         //for (i=0;i<MID_OUT;i++) {
         //    printf("res_mids [%d][%d] %f\n", n, i, res_mids[n_logitsbands+i]);
         //}
@@ -248,106 +251,6 @@ void compute_mdense_mwdlp(const MDenseLayerMBDLP *layer, const DenseLayer *fc_la
    //    printf("lpc_mags [%d] %f\n", i, lpc_mags[i]);
    //}
    //exit(0);
-}
-
-void compute_gru(const GRULayer *gru, float *state, const float *input)
-{
-   int i;
-   int N, M;
-   int stride;
-   float tmp[MAX_RNN_NEURONS];
-   float z[MAX_RNN_NEURONS];
-   float r[MAX_RNN_NEURONS];
-   float h[MAX_RNN_NEURONS];
-   celt_assert(gru->nb_neurons <= MAX_RNN_NEURONS);
-   celt_assert(input != state);
-   M = gru->nb_inputs;
-   N = gru->nb_neurons;
-   stride = 3*N;
-   /* Compute update gate. */
-   for (i=0;i<N;i++)
-      z[i] = gru->bias[i];
-   if (gru->reset_after)
-   {
-      for (i=0;i<N;i++)
-         z[i] += gru->bias[3*N + i];
-   }
-   sgemv_accum(z, gru->input_weights, N, M, stride, input);
-   sgemv_accum(z, gru->recurrent_weights, N, N, stride, state);
-   compute_activation(z, z, N, ACTIVATION_SIGMOID);
-
-   /* Compute reset gate. */
-   for (i=0;i<N;i++)
-      r[i] = gru->bias[N + i];
-   if (gru->reset_after)
-   {
-      for (i=0;i<N;i++)
-         r[i] += gru->bias[4*N + i];
-   }
-   sgemv_accum(r, &gru->input_weights[N], N, M, stride, input);
-   sgemv_accum(r, &gru->recurrent_weights[N], N, N, stride, state);
-   compute_activation(r, r, N, ACTIVATION_SIGMOID);
-
-   /* Compute output. */
-   for (i=0;i<N;i++)
-      h[i] = gru->bias[2*N + i];
-   if (gru->reset_after)
-   {
-      for (i=0;i<N;i++)
-         tmp[i] = gru->bias[5*N + i];
-      sgemv_accum(tmp, &gru->recurrent_weights[2*N], N, N, stride, state);
-      for (i=0;i<N;i++)
-         h[i] += tmp[i] * r[i];
-      sgemv_accum(h, &gru->input_weights[2*N], N, M, stride, input);
-   } else {
-      for (i=0;i<N;i++)
-         tmp[i] = state[i] * r[i];
-      sgemv_accum(h, &gru->input_weights[2*N], N, M, stride, input);
-      sgemv_accum(h, &gru->recurrent_weights[2*N], N, N, stride, tmp);
-   }
-   compute_activation(h, h, N, gru->activation);
-   for (i=0;i<N;i++)
-      h[i] = z[i]*state[i] + (1-z[i])*h[i];
-   for (i=0;i<N;i++)
-      state[i] = h[i];
-}
-
-void compute_gru2(const GRULayer *gru, float *state, const float *input)
-{
-   int i;
-   int N, M;
-   int stride;
-   float zrh[3*MAX_RNN_NEURONS];
-   float recur[3*MAX_RNN_NEURONS];
-   float *z;
-   float *r;
-   float *h;
-   M = gru->nb_inputs;
-   N = gru->nb_neurons;
-   z = zrh;
-   r = &zrh[N];
-   h = &zrh[2*N];
-   celt_assert(gru->nb_neurons <= MAX_RNN_NEURONS);
-   celt_assert(input != state);
-   celt_assert(gru->reset_after);
-   stride = 3*N;
-   /* Compute update gate. */
-   for (i=0;i<3*N;i++)
-      zrh[i] = gru->bias[i];
-   sgemv_accum(zrh, gru->input_weights, 3*N, M, stride, input);
-   for (i=0;i<3*N;i++)
-      recur[i] = gru->bias[3*N + i];
-   sgemv_accum(recur, gru->recurrent_weights, 3*N, N, stride, state);
-   for (i=0;i<2*N;i++)
-      zrh[i] += recur[i];
-   compute_activation(zrh, zrh, 2*N, ACTIVATION_SIGMOID);
-   for (i=0;i<N;i++)
-      h[i] += recur[2*N+i]*r[i];
-   compute_activation(h, h, N, gru->activation);
-   for (i=0;i<N;i++)
-      h[i] = z[i]*state[i] + (1-z[i])*h[i];
-   for (i=0;i<N;i++)
-      state[i] = h[i];
 }
 
 //PLT_Sep20
@@ -432,7 +335,7 @@ void compute_sparse_gru(const SparseGRULayer *gru, float *state, const float *in
 }
 
 //PLT_Sep20
-void compute_conv1d_mwdlp(const Conv1DLayer *layer, float *output, float *mem, const float *input)
+void compute_conv1d_linear(const Conv1DLayer *layer, float *output, float *mem, const float *input)
 {
    int i;
    int N, M, state_size;
@@ -482,6 +385,24 @@ int sample_from_pdf_mwdlp(const float *pdf, int N)
         if (r >= cdf[i]) return i; //largest cdf that is less/equal than r
     }
     return 0;
+}
+
+//PLT_Dec20
+void compute_normalize(const NormStats *norm_stats, float *input_output)
+{
+  for (int i=0;i<norm_stats->n_dim;i++)
+  {
+    input_output[i] = (input_output[i] - norm_stats->mean[i]) / norm_stats->std[i]
+  }
+}
+
+//PLT_Dec20
+void compute_denormalize(const NormStats *norm_stats, float *input_output)
+{
+  for (int i=0;i<norm_stats->n_dim;i++)
+  {
+    input_output[i] = input_output[i] * norm_stats->std[i] + norm_stats->mean[i]
+  }
 }
 
 //PLT_Dec20
@@ -624,3 +545,13 @@ void compute_gru_post(const GRULayer *gru, float *state, const float *input)
       state[i] = h[i];
 }
 
+//PLT_Dec20
+void compute_sampling_laplace(float *res, const float *loc, const float *scale, int dim)
+{
+    float r;
+    for (int i=0;i<dim;i++) {
+        r = ((float) rand() - HALF_RAND_MAX) / HALF_RAND_MAX_FLT_MIN; //r ~ (-1,1)
+        if (r > 0) res[i] = loc[i] - scale[i] * log(1-r);
+        else res[i] = loc[i] + scale[i] * log(1-r);
+    }
+}

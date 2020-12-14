@@ -51,7 +51,7 @@
 #define BUFFER_LENGTH (WINDOW_LENGTH - FRAME_SHIFT) //store samples for proceeding frame
 
 #define HPASS_FILT_TAPS 1023 //order+1, has to be odd because high-pass filter passes nyq. freq.
-#define HPASS_FILT_TAPS_1 (HPASS_FILT_TAPS - 1)  //order+1, has to be odd because high-pass filter passes nyq. freq.
+#define HPASS_FILT_TAPS_1 (HPASS_FILT_TAPS - 1)
 
 #define MAGSP_DIM (FFT_LENGTH / 2 + 1)
 #define MEL_DIM 80

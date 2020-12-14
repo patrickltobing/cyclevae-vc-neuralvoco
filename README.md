@@ -10,7 +10,7 @@
     * Development of mel-cepstrum based (WORLD) is suspended to focus on mel-spectrogram systems
     * Contents will be merged with v2.1 and master when confirmed
 * In progress
-    * Publish code of Multiband WaveRNN real-time in C (AVX/FMA/Neon) ~ 0.3 - 0.5 RT
+    * Publish code of Multiband WaveRNN real-time in C (AVX2/FMA/Neon) ~ 0.3 - 0.5 RT
     * VC real-time in C following WaveRNN code
     * Pretrained models
     * CycleVQVAE

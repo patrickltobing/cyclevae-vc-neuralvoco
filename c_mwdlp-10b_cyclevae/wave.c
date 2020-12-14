@@ -21,8 +21,6 @@
 //#define SAMPLING_RATE 44100
 //#define SAMPLING_RATE 48000
 
-// WAVE header structure
-
 //char* seconds_to_time(float seconds);
 
 
@@ -32,6 +30,7 @@ int main(int argc, char **argv) {
 
     FILE *ptr;
     char *filename;
+    // WAVE header structure
     struct HEADER header;
 
     filename = (char*) malloc(sizeof(char) * 1024);
@@ -210,7 +209,7 @@ int main(int argc, char **argv) {
            }
     
            if (size_is_correct) { 
-                       // the valid amplitude range for values based on the bits per sample
+               // the valid amplitude range for values based on the bits per sample
                long low_limit = 0l;
                long high_limit = 0l;
     

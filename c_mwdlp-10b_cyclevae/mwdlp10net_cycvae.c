@@ -33,6 +33,7 @@
 #include <math.h>
 #include <stdio.h>
 #include "nnet_data.h"
+#include "nnet_cv_data.h"
 #include "nnet.h"
 #include "common.h"
 #include "arch.h"
@@ -55,7 +56,7 @@ static void print_vector(float *x, int N)
 
 //PLT_Dec20
 static void run_frame_network_cyclevae_post_melsp_excit_spk(CycleVAEPostMelspExcitSpkNNetState *net,
-    const float *melsp_in, float *spk_code_aux, float *melsp_cv)
+    const float *melsp_in, float *spk_code_aux, float *melsp_cv, short first_frame_flag)
 {
     int i;
     float in[FEATURES_DIM];
@@ -107,7 +108,7 @@ static void run_frame_network_cyclevae_post_melsp_excit_spk(CycleVAEPostMelspExc
     //compute excit input here [concate spk-code,spk-code-aux,lat_excit]
     RNN_COPY(spk_code_aux_lat_excit, spk_code_aux, FEATURE_N_SPK_2);
     RNN_COPY(&spk_code_aux_lat_excit[FEATURE_N_SPK_2], lat_excit, FEATURE_LAT_DIM_EXCIT);
-    if (net->frame_count == 0) { //pad_first
+    if (first_frame_flag) { //pad_first
         float *mem_dec_excit = net->feature_dec_excit_conv_state; //mem of stored input frames
         for (i=0;i<net->kernel_size_dec_excit-1;i++) //store first input with replicate padding kernel_size-1
             RNN_COPY(&mem_dec_excit[i*net->nb_in_dec_excit], spk_code_aux_lat_excit, net->nb_in_dec_excit);
@@ -137,7 +138,7 @@ static void run_frame_network_cyclevae_post_melsp_excit_spk(CycleVAEPostMelspExc
     RNN_COPY(spk_code_aux_f0_lat_excit_melsp, spk_code_aux, FEATURE_N_SPK_2);
     RNN_COPY(&spk_code_aux_f0_lat_excit_melsp[FEATURE_N_SPK_2], uvf0_f0, 2);
     RNN_COPY(&spk_code_aux_f0_lat_excit_melsp[FEATURE_N_SPK_2_2], lat_excit_melsp, FEATURE_LAT_DIM_EXCIT_MELSP);
-    if (net->frame_count == 0) //pad_first
+    if (first_frame_flag) //pad_first
         float *mem_dec_melsp = net->feature_dec_melsp_conv_state; //mem of stored input frames
         for (i=0;i<net->kernel_size_dec_melsp-1;i++) //store first input with replicate padding kernel_size-1
             RNN_COPY(&mem_dec_melsp[i*net->nb_in_dec_melsp], spk_code_aux_f0_lat_excit_melsp, net->nb_in_dec_melsp);
@@ -150,7 +151,7 @@ static void run_frame_network_cyclevae_post_melsp_excit_spk(CycleVAEPostMelspExc
     RNN_COPY(spk_code_aux_excit_melsp, spk_code_aux_f0_lat_excit_melsp, FEATURE_N_SPK_2_2);
     RNN_COPY(&spk_code_aux_excit_melsp[FEATURE_N_SPK_2_2], uvcap_cap, FEATURE_UV_CAP_DIM);
     RNN_COPY(&spk_code_aux_excit_melsp[FEATURE_N_SPK_2_EXCIT], melsp_cv, FEATURE_DIM_MELSP);
-    if (net->frame_count == 0) { //pad_first
+    if (first_frame_flag) { //pad_first
         float *mem_post = net->feature_post_conv_state; //mem of stored input frames
         for (i=0;i<net->kernel_size_post-1;i++) //store first input with replicate padding kernel_size-1
             RNN_COPY(&mem_post[i*net->nb_in_post], spk_code_aux_excit_melsp, net->nb_in_post);
@@ -168,13 +169,11 @@ static void run_frame_network_cyclevae_post_melsp_excit_spk(CycleVAEPostMelspExc
     compute_sampling_laplace(melsp_res, melsp_loc, melsp_scale, FEATURE_DIM_MELSP);
     for (i=0;i<FEATURE_DIM_MELSP;i++)
         melsp_cv[i] += melsp_res[i];
-
-    net->frame_count += 1
 }
 
 
 //PLT_Dec20
-static void run_frame_network_mwdlp10(MWDLP16NNetState *net, float *gru_a_condition, float *gru_b_condition, 
+static void run_frame_network_mwdlp10(MWDLP10NNetState *net, float *gru_a_condition, float *gru_b_condition, 
     float *gru_c_condition, const float *features, int flag_last_frame)
 {
     float in[FEATURES_DIM];
@@ -367,7 +366,7 @@ MWDLP10NET_CYCLEVAE_EXPORT void cyclevae_post_melsp_excit_spk_convert_mwdlp10net
         }
         //cyclevae delay is reached, handle stored input frames for wavernn
         float *mem = nnet->feature_conv_state; //mem of stored input frames
-        run_frame_network_cyclevae_post_melsp_excit_spk(cv_nnet, features, spk_code, melsp_cv) //convert melsp
+        run_frame_network_cyclevae_post_melsp_excit_spk(cv_nnet, features, spk_code, melsp_cv, 1) //convert melsp
         compute_normalize(&feature_norm, melsp_cv); //feature normalization
         if (mwdlp10net->frame_count == 0) //pad_first
             for (i=0;i<IN_CONV_KERNEL_1;i++) //store first input with replicate padding kernel_size-1
@@ -382,7 +381,7 @@ MWDLP10NET_CYCLEVAE_EXPORT void cyclevae_post_melsp_excit_spk_convert_mwdlp10net
     }
     //cyclevae+wavernn delay is reached
     if (!flag_last_frame) { //not last frame [decided by the section handling input waveform]
-        run_frame_network_cyclevae_post_melsp_excit_spk(cv_nnet, features, spk_code, melsp_cv) //convert melsp
+        run_frame_network_cyclevae_post_melsp_excit_spk(cv_nnet, features, spk_code, melsp_cv, 0) //convert melsp
         run_frame_network_mwdlp10(nnet, gru_a_condition, gru_b_condition, gru_c_condition, melsp_cv, 0);
         for (i=0,m=0,*n_output=0;i<N_SAMPLE_BANDS;i++) {
             //coarse

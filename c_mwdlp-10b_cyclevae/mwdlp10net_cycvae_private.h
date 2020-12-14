@@ -4,12 +4,13 @@
 #include <stdio.h>
 #include "mwdlpnet10_cycvae.h"
 #include "nnet_data.h"
+#include "nnet_cv_data.h"
 
 //PLT_Dec20
 /*
     define followings on nnet_data.h:
     RNN_MAIN_NEURONS, RNN_SUB_NEURONS
-    N_QUANTIZE, SQRT_QUANTIZE
+    SQRT_QUANTIZE
     FEATURE_CONV_OUT_SIZE, N_MBANDS
     DLPC_ORDER, PQMF_ORDER
     N_SAMPLE_BANDS, FEATURES_DIM

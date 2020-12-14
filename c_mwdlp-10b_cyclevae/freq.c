@@ -68,7 +68,7 @@ DSPState *dspstate_create()
     dsp = (DSPState *) calloc(1,dspstate_get_size());
     if (dsp != NULL) {
         int i;
-        for (i=0;i<HPASS_FILT_TAPSi;i++)
+        for (i=0;i<HPASS_FILT_TAPS;i++)
             dsp->hpass_filt[i] = hpassfilt[i]
         for (i=0;i<LEFT_REFLECT;i++)
             dsp->half_window[i] = halfwin[i]

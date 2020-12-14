@@ -46,27 +46,24 @@ typedef struct {
   int activation;
 } DenseLayer;
 
+//PLT_Dec20
 typedef struct {
-  const float *bias;
-  const float *input_weights;
-  const float *factor;
-  int nb_inputs;
-  int nb_neurons;
-  int nb_channels;
-  int activation;
-} MDenseLayer;
+  const float *mean;
+  const float *std;
+  int n_dim;
+} NormLayer;
 
-//PLT_Sep20
+//PLT_Dec20
 typedef struct {
   const float *bias;
   const float *input_weights;
   const float *factor_signs;
   const float *factor_mags;
-  const float *factor_mids;
+  const float *factor_outs;
   int activation_signs;
   int activation_mags;
-  int activation_mids;
-} MDenseLayerMBDLP;
+  int activation_outs;
+} MDenseLayerMWDLP10;
 
 typedef struct {
   const float *bias;
@@ -110,26 +107,43 @@ void compute_activation(float *output, float *input, int N, int activation);
 
 void compute_dense(const DenseLayer *layer, float *output, const float *input);
 
-void compute_mdense(const MDenseLayer *layer, float *output, const float *input);
+//PLT_Dec20
+void compute_dense_linear(const DenseLayer *layer, float *output, const float *input);
 
-//PLT_Sep20
-void compute_mdense_mwdlp(const MDenseLayerMBDLP *layer, const DenseLayer *fc_layer, float *output,
+//PLT_Dec20
+void compute_mdense_mwdlp10(const MDenseLayerMBDLP *layer, const DenseLayer *fc_layer, float *output,
     const float *input, const int *last_output);
-
-void compute_gru(const GRULayer *gru, float *state, const float *input);
-
-void compute_gru2(const GRULayer *gru, float *state, const float *input);
 
 void compute_gru3(const GRULayer *gru, float *state, const float *input);
 
 void compute_sparse_gru(const SparseGRULayer *gru, float *state, const float *input);
 
-void compute_conv1d(const Conv1DLayer *layer, float *output, float *mem, const float *input);
-
-//PLT_Sep20
-void compute_conv1d_mwdlp(const Conv1DLayer *layer, float *output, float *mem, const float *input);
+//PLT_Dec20
+void compute_conv1d_linear(const Conv1DLayer *layer, float *output, float *mem, const float *input);
 
 //PLT_Sep20
 int sample_from_pdf_mwdlp(const float *pdf, int N);
+
+//PLT_Dec20
+void compute_normalize(const NormStats norm_stats, float *input_output)
+void compute_denormalize(const NormStats norm_stats, float *input_output)
+
+//PLT_Dec20
+void compute_gru_enc(const GRULayer *gru, float *state, const float *input)
+
+//PLT_Dec20
+void compute_gru_spk(const GRULayer *gru, float *state, const float *input)
+
+//PLT_Dec20
+void compute_gru_dec_excit(const GRULayer *gru, float *state, const float *input)
+
+//PLT_Dec20
+void compute_gru_dec_melsp(const GRULayer *gru, float *state, const float *input)
+
+//PLT_Dec20
+void compute_gru_post(const GRULayer *gru, float *state, const float *input)
+
+//PLT_Dec20
+void compute_sampling_laplace(float *res, const float *loc, const float *scale, int dim);
 
 #endif /* _MLP_H_ */
