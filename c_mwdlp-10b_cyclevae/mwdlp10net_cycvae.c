@@ -55,7 +55,7 @@ static void print_vector(float *x, int N)
 
 //PLT_Dec20
 static void run_frame_network_cyclevae_post_melsp_excit_spk(CycleVAEPostMelspExcitSpkNNetState *net,
-    const float *melsp_in, const float *spk_code, float *melsp_cv)
+    const float *melsp_in, float *spk_code_aux, float *melsp_cv)
 {
     int i;
     float in[FEATURES_DIM];
@@ -68,7 +68,6 @@ static void run_frame_network_cyclevae_post_melsp_excit_spk(CycleVAEPostMelspExc
     float lat_excit_melsp[FEATURE_LAT_DIM_EXCIT_MELSP];
     float spk_code_lat_excit_melsp[FEATURE_N_SPK_LAT_DIM_EXCIT_MELSP];
     float time_varying_spk_code[FEATURE_N_SPK];
-    float spk_code_aux[FEATURE_N_SPK_2];
     float spk_code_aux_lat_excit[FEATURE_N_SPK_2_LAT_DIM_EXCIT];
     float dec_excit_out[FEATURE_2_1_CAP_DIM];
     float uvf0[1];
@@ -85,25 +84,24 @@ static void run_frame_network_cyclevae_post_melsp_excit_spk(CycleVAEPostMelspExc
     //compute enc input here [segmental input conv.]
     //handle pad first before calling this function
     RNN_COPY(in, melsp_in, FEATURE_DIM_MELSP);
-    compute_normalize(&melsp_stats, in);
+    compute_normalize(&melsp_norm, in);
     compute_conv1d_linear(&feature_enc_melsp_conv, enc_melsp_input, net->feature_enc_melsp_conv_state, in);
     compute_conv1d_linear(&feature_enc_excit_conv, enc_excit_input, net->feature_enc_excit_conv_state, in);
     compute_dense_linear(&gru_enc_melsp_dense_feature, gru_enc_melsp_input, enc_melsp_input);
     compute_dense_linear(&gru_enc_excit_dense_feature, gru_enc_excit_input, enc_excit_input);
     compute_gru_enc(&gru_enc_melsp, net->gru_enc_melsp_state, gru_enc_melsp_input);
     compute_gru_enc(&gru_enc_excit, net->gru_enc_excit_state, gru_enc_excit_input);
-    compute_dense(&feature_enc_melsp_dense, lat_melsp, net->gru_enc_melsp_state);
-    compute_dense(&feature_enc_excit_dense, lat_excit, net->gru_enc_excit_state);
+    compute_dense_linear(&feature_enc_melsp_dense, lat_melsp, net->gru_enc_melsp_state);
+    compute_dense_linear(&feature_enc_excit_dense, lat_excit, net->gru_enc_excit_state);
     RNN_COPY(lat_excit_melsp, lat_excit, FEATURE_LAT_DIM_EXCIT);
     RNN_COPY(lat_excit_melsp[FEATURE_LAT_DIM_EXCIT], lat_melsp, FEATURE_LAT_DIM_MELSP);
 
     //compute spk input here [concate spk-code,lat_excit,lat_melsp]
-    RNN_COPY(spk_code_lat_excit_melsp, spk_code, FEATURE_N_SPK);
+    RNN_COPY(spk_code_lat_excit_melsp, spk_code_aux, FEATURE_N_SPK); //spk_code_aux=[1-hot-spk-code,time-vary-spk-code]
     RNN_COPY(&spk_code_lat_excit_melsp[FEATURE_N_SPK], lat_excit_melsp, FEATURE_LAT_DIM_EXCIT_MELSP);
     compute_dense_linear(&gru_spk_dense_feature, gru_spk_input, spk_code_lat_excit_melsp);
     compute_gru_spk(&gru_spk, net->gru_spk_state, gru_spk_input);
-    compute_dense(&feature_spk_dense, time_varying_spk_code, net->gru_spk_state);
-    RNN_COPY(spk_code_aux, spk_code, FEATURE_N_SPK);
+    compute_dense_linear(&feature_spk_dense, time_varying_spk_code, net->gru_spk_state);
     RNN_COPY(&spk_code_aux[FEATURE_N_SPK], time_varying_spk_code, FEATURE_N_SPK);
 
     //compute excit input here [concate spk-code,spk-code-aux,lat_excit]
@@ -123,13 +121,15 @@ static void run_frame_network_cyclevae_post_melsp_excit_spk(CycleVAEPostMelspExc
     RNN_COPY(uvcap, dec_excit_out[2], 1);
     RNN_COPY(cap, dec_excit_out[3], FEATURE_CAP_DIM);
     compute_activation(uvf0, uvf0, 1, ACTIVATION_SIGMOID);
-    compute_normalize(&uvf0_norm, uvf0);
+    compute_normalize(&uvf0_norm, uvf0); //normalize only uv because output f0 is normalized
     compute_activation(f0, f0, 1, ACTIVATION_TANHSHRINK);
     compute_activation(uvcap, uvcap, 1, ACTIVATION_SIGMOID);
-    compute_normalize(&uvcap_norm, uvcap);
+    compute_normalize(&uvcap_norm, uvcap); //normalize only uv because output cap is normalized
     compute_activation(cap, cap, FEATURE_CAP_DIM, ACTIVATION_TANHSHRINK);
+    //concate uvf0-f0
     RNN_COPY(uvf0_f0, uvf0, 1);
     RNN_COPY(&uvf0_f0[1], f0, 1);
+    //concate uvcap-cap
     RNN_COPY(uvcap_cap, uvcap, 1);
     RNN_COPY(&uvcap_cap[1], cap, FEATURE_CAP_DIM);
 
@@ -144,7 +144,7 @@ static void run_frame_network_cyclevae_post_melsp_excit_spk(CycleVAEPostMelspExc
     compute_conv1d_linear(&feature_dec_melsp_conv, dec_melsp_input, net->feature_dec_melsp_conv_state, spk_code_aux_f0_lat_excit_melsp);
     compute_dense_linear(&gru_melsp_dense_feature, gru_melsp_input, dec_melsp_input);
     compute_gru_dec_melsp(&gru_dec_melsp, net->gru_dec_melsp_state, gru_dec_melsp_input);
-    compute_dense(&feature_dec_melsp_dense, melsp_cv, net->gru_dec_melsp_state);
+    compute_dense_linear(&feature_dec_melsp_dense, melsp_cv, net->gru_dec_melsp_state);
 
     //compute post input here [concate spk-code,spk-code-aux,uv-f0,uv-codeap,melsp]
     RNN_COPY(spk_code_aux_excit_melsp, spk_code_aux_f0_lat_excit_melsp, FEATURE_N_SPK_2_2);
@@ -163,8 +163,8 @@ static void run_frame_network_cyclevae_post_melsp_excit_spk(CycleVAEPostMelspExc
     RNN_COPY(melsp_scale, melsp_pdf[FEATURE_DIM_MELSP], FEATURE_DIM_MELSP);
     compute_activation(melsp_loc, melsp_loc, FEATURE_DIM_MELSP, ACTIVATION_TANHSHRINK);
     compute_activation(melsp_scale, melsp_scale, FEATURE_DIM_MELSP, ACTIVATION_SIGMOID);
-    //compute_denormalize(&melsp_stats, melsp_cv, melsp_cv); [don't need to if using wavernn]
-    //actually, has to be denormalized, because the pdf is estimated in the original melsp domain
+    compute_denormalize(&melsp_norm, melsp_cv);
+    compute_denormalize(&melsp_norm, melsp_loc);
     compute_sampling_laplace(melsp_res, melsp_loc, melsp_scale, FEATURE_DIM_MELSP);
     for (i=0;i<FEATURE_DIM_MELSP;i++)
         melsp_cv[i] += melsp_res[i];
@@ -180,11 +180,9 @@ static void run_frame_network_mwdlp10(MWDLP16NNetState *net, float *gru_a_condit
     float in[FEATURES_DIM];
     float conv_out[FEATURE_CONV_OUT_SIZE];
     float condition[FEATURE_DENSE_OUT_SIZE];
-    //feature normalization if not last frame, replicate if last frame
-    if (!flag_last_frame) {
-        compute_dense(&feature_norm, in, features);
-    }
-    else RNN_COPY(in, features, FEATURES_DIM);
+    RNN_COPY(in, features, FEATURES_DIM);
+    //feature normalization if not last frame, just replicate if last frame
+    if (!flag_last_frame) compute_normalize(&feature_norm, in);
     //segmental input conv. and fc layer with relu
     compute_conv1d_linear(&feature_conv, conv_out, net->feature_conv_state, in);
     compute_dense(&feature_dense, condition, conv_out);
@@ -253,6 +251,40 @@ static void run_sample_network_mwdlp10_fine(MWDLP10NNetState *net, const Embeddi
 //PLT_Dec20
 MWDLP10NET_CYCLEVAE_EXPORT int mwdlp10net_get_size()
 {
+    return sizeof(MWDLP10CycleVAEPostMelspExcitSpkNetState);
+}
+
+
+//PLT_Dec20
+MWDLP10NET_CYCLEVAE_EXPORT MWDLP10CycleVAEPostMelspExcitSpkNetState *mwdlp10net_create()
+{
+    MWDLP10CycleVAEPostMelspExcitSpkNetState *mwdlp10net;
+    mwdlp10net = (MWDLP10NetState *) calloc(1,mwdlp10net_get_size());
+    if (mwdlp10net != NULL) {
+        if (FIRST_N_OUTPUT == 0) mwdlp10net->first_flag = 1;
+        int i, j, k;
+        for (i=0, k=0;i<DLPC_ORDER;i++)
+            for (j=0;j<N_MBANDS;j++,k++)
+                mwdlp10net->last_coarse[k] = INIT_LAST_SAMPLE;
+        return mwdlp10net;
+    } else {
+        printf("Cannot allocate and initialize memory for MWDLP10CycleVAEPostMelspExcitSpkNetState.\n");
+        exit(EXIT_FAILURE);
+    }
+}
+
+
+//PLT_Dec20
+MWDLP10NET_CYCLEVAE_EXPORT void mwdlp10net_destroy(MWDLP10CycleVAEPostMelspExcitSpkNetState *mwdlp10net)
+{
+    if (mwdlp10net != NULL) free(mwdlp10net);
+}
+
+
+
+//PLT_Dec20
+MWDLP10NET_CYCLEVAE_EXPORT int mwdlp10net_get_size()
+{
     return sizeof(MWDLP10NetState);
 }
 
@@ -265,15 +297,12 @@ MWDLP10NET_CYCLEVAE_EXPORT MWDLP10NetState *mwdlp10net_create()
     if (mwdlp10net != NULL) {
         if (FIRST_N_OUTPUT == 0) mwdlp10net->first_flag = 1;
         int i, j, k;
-        for (i=0, k=0;i<DLPC_ORDER;i++) {
-            for (j=0;j<N_MBANDS;j++,k++) {
+        for (i=0, k=0;i<DLPC_ORDER;i++)
+            for (j=0;j<N_MBANDS;j++,k++)
                 mwdlp10net->last_coarse[k] = INIT_LAST_SAMPLE;
-                mwdlp10net->last_fine[k] = 0;
-            }
-        }
         return mwdlp10net;
     } else {
-        printf("Cannot allocate and initialize memory for MWDLP10Net.\n");
+        printf("Cannot allocate and initialize memory for MWDLP10NetState.\n");
         exit(EXIT_FAILURE);
     }
 }
@@ -287,9 +316,9 @@ MWDLP10NET_CYCLEVAE_EXPORT void mwdlp10net_destroy(MWDLP10NetState *mwdlp10net)
 
 
 //PLT_Dec20
-MWDLP10NET_CYCLEVAE_EXPORT void cyclevae_post_melsp_excit_spk_convert_mwdlp10net_synthesize(MWDLP10NetState *mwdlp10net,
-    CycleVAEPostMelspExcitSpkNetState *cyclevaenet, const float *features, const float *spk_code,
-        short *output, int *n_output, int flag_last_frame)
+MWDLP10NET_CYCLEVAE_EXPORT void cyclevae_post_melsp_excit_spk_convert_mwdlp10net_synthesize(
+    MWDLP10CycleVAEPostMelspExcitSpkNetState *mwdlp10net, const float *features,
+        const float *spk_code, short *output, int *n_output, int flag_last_frame)
 {
     int i, j, k, l, m;
     int coarse[N_MBANDS];
@@ -303,7 +332,7 @@ MWDLP10NET_CYCLEVAE_EXPORT void cyclevae_post_melsp_excit_spk_convert_mwdlp10net
     const EmbeddingLayer *a_embed_fine = &gru_a_embed_fine;
     const EmbeddingLayer *c_embed_coarse = &gru_c_embed_coarse;
     MWDLP10NNetState *nnet = &mwdlp10net->nnet;
-    CycleVAEPostMelspExcitSpkNNetState *cv_nnet = &cyclevaenet->nnet;
+    CycleVAEPostMelspExcitSpkNNetState *cv_nnet = &mwdlp10net->cv_nnet;
     int *last_coarse_mb_pt = &mwdlp10net->last_coarse[N_MBANDS];
     int *last_coarse_0_pt = &mwdlp10net->last_coarse[0];
     int *last_fine_mb_pt = &mwdlp10net->last_fine[N_MBANDS];
@@ -314,38 +343,38 @@ MWDLP10NET_CYCLEVAE_EXPORT void cyclevae_post_melsp_excit_spk_convert_mwdlp10net
     float *pqmf_state_ordmb_pt = &mwdlp10net->pqmf_state[PQMF_ORDER_MBANDS];
     const float *pqmf_synth_filter = (&pqmf_synthesis)->input_weights;
     if (mwdlp10net->frame_count < FEATURE_ALL_CONV_DELAY) { //stored input frames not yet reach delay (cyclevae+wvrnn)
-        if (cyclevaenet->frame_count < FEATURE_VC_CONV_DELAY) { //stored input frames not yet reach delay (cyclevae)
+        if (mwdlp10net->cv_frame_count < FEATURE_VC_CONV_DELAY) { //stored input frames not yet reach delay (cyclevae)
             float *mem_enc_melsp = cv_nnet->feature_enc_melsp_conv_state; //mem of stored input frames
             float *mem_enc_excit = cv_nnet->feature_enc_excit_conv_state; //mem of stored input frames
-            compute_normalize(&melsp_stats, features); //feature normalization
-            if (cyclevaenet->frame_count == 0) //pad_first
+            float in_c[FEATURES_DIM];
+            RNN_COPY(in_c, features, FEATURE_DIM_MELSP);
+            compute_normalize(&melsp_norm, in_c); //feature normalization
+            if (mwdlp10net->cv_frame_count == 0) //pad_first
                 for (i=0;i<ENC_CONV_KERNEL_1;i++) { //store first input with replicate padding kernel_size-1
-                    RNN_COPY(&mem_enc_melsp[i*FEATURE_DIM_MELSP], features, FEATURE_DIM_MELSP);
-                    RNN_COPY(&mem_enc_excit[i*FEATURE_DIM_MELSP], features, FEATURE_DIM_MELSP);
+                    RNN_COPY(&mem_enc_melsp[i*FEATURE_DIM_MELSP], in_c, FEATURE_DIM_MELSP);
+                    RNN_COPY(&mem_enc_excit[i*FEATURE_DIM_MELSP], in_c, FEATURE_DIM_MELSP);
                 }
             else {
-                float tmp_c[FEATURE_DIM_MELSP_CONV_SEG_SIZE];
-                RNN_COPY(tmp_c, mem_enc_melsp, FEATURE_DIM_MELSP_CONV_STATE_SIZE); //store previous input kernel_size-1
-                RNN_COPY(&tmp_c[FEATURE_DIM_MELSP_CONV_STATE_SIZE], features, FEATURE_DIM_MELSP); //add new input
-                RNN_COPY(mem_enc_melsp, &tmp_c[FEATURE_DIM_MELSP], FEATURE_DIM_MELSP_CONV_STATE_SIZE); //move to mem_enc_melsp
-                RNN_COPY(mem_enc_excit, &tmp_c[FEATURE_DIM_MELSP], FEATURE_DIM_MELSP_CONV_STATE_SIZE); //move to mem_enc_excit
+                float tmp_c[FEATURE_DIM_MELSP_CONV_STATE_SIZE];
+                RNN_COPY(tmp_c, &mem_enc_melsp[FEATURE_DIM_MELSP], FEATURE_DIM_MELSP_CONV_STATE_SIZE_1); //store previous input kernel_size-2
+                RNN_COPY(&tmp_c[FEATURE_DIM_MELSP_CONV_STATE_SIZE_1], in_c, FEATURE_DIM_MELSP); //add new input
+                RNN_COPY(mem_enc_melsp, tmp_c, FEATURE_DIM_MELSP_CONV_STATE_SIZE); //move to mem_enc_melsp
+                RNN_COPY(mem_enc_excit, tmp_c, FEATURE_DIM_MELSP_CONV_STATE_SIZE); //move to mem_enc_excit
             }
-            cyclevaenet->frame_count++;
+            mwdlp10bet->cv_frame_count++;
             *n_output = 0;
             return ;
         }
-        //cyclevae delay is reached
+        //cyclevae delay is reached, handle stored input frames for wavernn
         float *mem = nnet->feature_conv_state; //mem of stored input frames
         run_frame_network_cyclevae_post_melsp_excit_spk(cv_nnet, features, spk_code, melsp_cv) //convert melsp
-        //compute_normalize(&feature_norm, melsp_cv); //feature normalization [don't need to, cycvae output is normalized]
+        compute_normalize(&feature_norm, melsp_cv); //feature normalization
         if (mwdlp10net->frame_count == 0) //pad_first
             for (i=0;i<IN_CONV_KERNEL_1;i++) //store first input with replicate padding kernel_size-1
                 RNN_COPY(&mem[i*FEATURES_DIM], melsp_cv, FEATURES_DIM);
         else {
-            float tmp[FEATURE_CONV_SEG_SIZE];
-            RNN_COPY(tmp, mem, FEATURE_CONV_STATE_SIZE); //store previous input kernel_size-1
-            RNN_COPY(&tmp[FEATURE_CONV_STATE_SIZE], melsp_cv, FEATURES_DIM); //add new input
-            RNN_COPY(mem, &tmp[FEATURES_DIM], FEATURE_CONV_STATE_SIZE); //move to mem
+            RNN_MOVE(mem, mem[FEATURES_DIM], FEATURE_CONV_STATE_SIZE_1); //store previous input kernel_size-2
+            RNN_COPY(&mem[FEATURE_CONV_STATE_SIZE_1], melsp_cv, FEATURES_DIM); //add new input
         }
         mwdlp10net->frame_count++;
         *n_output = 0;
@@ -528,8 +557,8 @@ MWDLP10NET_CYCLEVAE_EXPORT void cyclevae_post_melsp_excit_spk_convert_mwdlp10net
 
 
 //PLT_Dec20
-MWDLP10NET_CYCLEVAE_EXPORT void mwdlp10net_synthesize(MWDLP10NetState *mwdlp10net, const float *features, short *output,
-    int *n_output, int flag_last_frame)
+MWDLP10NET_CYCLEVAE_EXPORT void mwdlp10net_synthesize(MWDLP10NetState *mwdlp10net, const float *features,
+    short *output, int *n_output, int flag_last_frame)
 {
     int i, j, k, l, m;
     int coarse[N_MBANDS];
@@ -554,15 +583,14 @@ MWDLP10NET_CYCLEVAE_EXPORT void mwdlp10net_synthesize(MWDLP10NetState *mwdlp10ne
     if (mwdlp10net->frame_count < FEATURE_CONV_DELAY) { //stored input frames not yet reach delay
         float *mem = nnet->feature_conv_state; //mem of stored input frames
         float in[FEATURES_DIM];
-        compute_dense(&feature_norm, in, features); //feature normalization
+        RNN_COPY(in, features, FEATURES_DIM);
+        compute_normalize(&feature_norm, in); //feature normalization
         if (mwdlp10net->frame_count == 0) //pad_first
             for (i=0;i<IN_CONV_KERNEL_1;i++) //store first input with replicate padding kernel_size-1
                 RNN_COPY(&mem[i*FEATURES_DIM], in, FEATURES_DIM);
         else {
-            float tmp[FEATURE_CONV_SEG_SIZE];
-            RNN_COPY(tmp, mem, FEATURE_CONV_STATE_SIZE); //store previous input kernel_size-1
-            RNN_COPY(&tmp[FEATURE_CONV_STATE_SIZE], in, FEATURES_DIM); //add new input
-            RNN_COPY(mem, &tmp[FEATURES_DIM], FEATURE_CONV_STATE_SIZE); //move to mem
+            RNN_MOVE(mem, mem[FEATURES_DIM], FEATURE_CONV_STATE_SIZE_1); //store previous input kernel_size-2
+            RNN_COPY(&mem[FEATURE_CONV_STATE_SIZE_1], in, FEATURES_DIM); //add new input
         }
         mwdlp10net->frame_count++;
         *n_output = 0;

@@ -26,6 +26,7 @@
 /* Modified by Patrick Lumban Tobing (Nagoya University) on Dec. 2020,
    marked by PLT_Dec20 */
 
+//PLT_Dec20
 #ifndef _MWDLP10NET_CYCVAE_H_
 #define _MWDLP10NET_CYCVAE_H_
 
@@ -45,27 +46,25 @@
 
 
 //PLT_Dec20
-typedef struct CycleVAEPostMelspExcitSpkNetState CycleVAEPostMelspExcitSpkNetState;
+typedef struct MWDLP10CycleVAEPostMelspExcitSpkNetState MWDLP10CycleVAEPostMelspExcitSpkNetState;
 
-//PLT_Dec20
 typedef struct MWDLP10NetState MWDLP10NetState;
 
-//PLT_Dec20
-MWDLP10NET_CYCVAE_EXPORT int mwdlp10net_get_size();
+MWDLP10NET_CYCVAE_EXPORT int mwdlp10cyclevaenet_get_size();
 
-//PLT_Dec20
+MWDLP10NET_CYCVAE_EXPORT MWDLP10CycleVAEPostMelspExcitSpkNetState *mwdlp10cyclevaenet_create();
+
+MWDLP10NET_CYCVAE_EXPORT int mwdlp10cyclevaenet_get_size();
+
 MWDLP10NET_CYCVAE_EXPORT MWDLP10NetState *mwdlp10net_create();
 
-//PLT_Dec20
 MWDLP10NET_CYCVAE_EXPORT void mwdlp10net_destroy(MWDLP10NetState *mwdlp10net);
 
-//PLT_Dec20
-MWDLP10NET_CYCVAE_EXPORT void cyclevae_post_melsp_excit_spk_convert_mwdlp10net_synthesize(MWDLP10NetState *st,
-    CycleVAEPostMelspExcitSpkNetState *cvst, const float *features, const float *spk_code,
+MWDLP10NET_CYCVAE_EXPORT void cyclevae_post_melsp_excit_spk_convert_mwdlp10net_synthesize(
+    MWDLP10CycleVAEPostMelspExcitSpkNetState *st, const float *features, const float *spk_code,
         short *output, int *n_output, int flag_last_frame)
 
-//PLT_Dec20
-MWDLP10NET_CYCVAE_EXPORT void mwdlp10net_synthesize(MWDLP10NetState *st, const float *features, short *output,
-    int *n_output, int flag_last_frame);
+MWDLP10NET_CYCVAE_EXPORT void mwdlp10net_synthesize(MWDLP10NetState *st, const float *features,
+    short *output, int *n_output, int flag_last_frame);
 
 #endif
