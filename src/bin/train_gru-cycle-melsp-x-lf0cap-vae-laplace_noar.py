@@ -2239,7 +2239,7 @@ def main():
                             eval_loss_uvcap_src_trg, eval_loss_uvcap_src_trg_std, eval_loss_cap_src_trg, eval_loss_cap_src_trg_std,
                             eval_loss_lat_dist_rmse, eval_loss_lat_dist_rmse_std, eval_loss_lat_dist_cossim, eval_loss_lat_dist_cossim_std)
                     else:
-                        text_log += "n/a (+- n/a) dB n/a (+- n/a) dB n/a (+- n/a) %% n/a (+- n/a) Hz n/a (+- n/a) %% n/a (+- n/a) dB n/a (+- n/a) n/a (+- n/a) ;; "
+                        text_log += "n/a (+- n/a) dB n/a (+- n/a) %% n/a (+- n/a) Hz n/a (+- n/a) %% n/a (+- n/a) dB n/a (+- n/a) n/a (+- n/a) ;; "
                 else:
                     text_log += "[%ld] %.6f (+- %.6f) ; %.6f (+- %.6f) %.6f (+- %.6f) %.6f (+- %.6f) %% %.6f (+- %.6f) , %.6f (+- %.6f) %.6f (+- %.6f) %% %.6f (+- %.6f) ; "\
                         "%.6f (+- %.6f) %.6f (+- %.6f) ; " \
@@ -2381,7 +2381,7 @@ def main():
                                 min_eval_loss_uvcap_src_trg, min_eval_loss_uvcap_src_trg_std, min_eval_loss_cap_src_trg, min_eval_loss_cap_src_trg_std,
                                 min_eval_loss_lat_dist_rmse, min_eval_loss_lat_dist_rmse_std, min_eval_loss_lat_dist_cossim, min_eval_loss_lat_dist_cossim_std)
                         else:
-                            text_log += "n/a (+- n/a) dB n/a (+- n/a) dB n/a (+- n/a) %% n/a (+- n/a) Hz n/a (+- n/a) %% n/a (+- n/a) dB n/a (+- n/a) n/a (+- n/a) ;; "
+                            text_log += "n/a (+- n/a) dB n/a (+- n/a) %% n/a (+- n/a) Hz n/a (+- n/a) %% n/a (+- n/a) dB n/a (+- n/a) n/a (+- n/a) ;; "
                     else:
                         text_log += "[%ld] %.6f (+- %.6f) ; %.6f (+- %.6f) %.6f (+- %.6f) %.6f (+- %.6f) %% %.6f (+- %.6f) , %.6f (+- %.6f) %.6f (+- %.6f) %% %.6f (+- %.6f) ; "\
                             "%.6f (+- %.6f) %.6f (+- %.6f) ; " \

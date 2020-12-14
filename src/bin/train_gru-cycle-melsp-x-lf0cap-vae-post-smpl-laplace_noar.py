@@ -2170,7 +2170,6 @@ def main():
                         eval_loss_magsp_post[i], eval_loss_magsp_post_std[i], eval_loss_magsp_cv_post[i//2], eval_loss_magsp_cv_post_std[i//2], eval_loss_magsp_dB_post[i], eval_loss_magsp_dB_post_std[i],
                         eval_loss_gv_src_src, eval_loss_gv_src_trg, eval_loss_gv_src_src_post, eval_loss_gv_src_trg_post)
                     if pair_exist:
-                        text_log += "n/a (+- n/a) dB n/a (+- n/a) n/a (+- n/a) ;; "
                         text_log += "%.6f (+- %.6f) dB %.6f (+- %.6f) dB %.6f (+- %.6f) %.6f (+- %.6f) ;; " % (
                             eval_loss_melsp_dB_src_trg, eval_loss_melsp_dB_src_trg_std, eval_loss_melsp_dB_src_trg_post, eval_loss_melsp_dB_src_trg_post_std,
                             eval_loss_lat_dist_rmse, eval_loss_lat_dist_rmse_std, eval_loss_lat_dist_cossim, eval_loss_lat_dist_cossim_std)
