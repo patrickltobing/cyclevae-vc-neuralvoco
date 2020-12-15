@@ -10,7 +10,7 @@
 /*
     define followings on nnet_data.h:
     RNN_MAIN_NEURONS, RNN_SUB_NEURONS
-    SQRT_QUANTIZE
+    MID_OUT, SQRT_QUANTIZE
     FEATURE_CONV_OUT_SIZE, N_MBANDS
     DLPC_ORDER, PQMF_ORDER
     N_SAMPLE_BANDS, FEATURES_DIM
@@ -29,14 +29,8 @@
 #define LPC_ORDER_MBANDS_4 LPC_ORDER_MBANDS_2 * 2
 #define LPC_ORDER_1_MBANDS (DLPC_ORDER - 1) * N_MBANDS
 
-/*
-10-bit mu-law coarse-fine model does not need mid-out,
-because the DualFC for small GRU-32 can directly outputs 32-level classification, i.e., of sqrt(1024).
-Hence, it is much faster than the 16-bit coarse-fine or even the 9-bit mu-law architectures,
-which needs one more last FC-layer for each samples that takes a lot of computational cost.
-*/
-//#define MID_OUT_MBANDS MID_OUT * N_MBANDS
-//#define MID_OUT_MBANDS_2 MID_OUT_MBANDS * 2
+#define MID_OUT_MBANDS MID_OUT * N_MBANDS
+#define MID_OUT_MBANDS_2 MID_OUT_MBANDS * 2
 
 /*
 PQMF_DELAY is actually the number of samples on each of the left/right side of the current sample

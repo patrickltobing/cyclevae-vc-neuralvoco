@@ -87,7 +87,7 @@ def decode_mu_law(y, mu=256):
     mu = mu - 1
     fx = y / mu * 2 - 1
     x = np.sign(fx) / mu * ((1 + mu) ** np.abs(fx) - 1)
-    return x
+    return np.clip(x, a_min=-1, a_max=0.999969482421875)
 
 
 def decode_mu_law_torch(y, mu=256):
@@ -104,7 +104,7 @@ def decode_mu_law_torch(y, mu=256):
     mu = mu - 1
     fx = y / mu * 2 - 1
     x = torch.sign(fx) / mu * ((1 + mu) ** torch.abs(fx) - 1)
-    return x
+    return torch.clamp(x, min=-1, max=0.999969482421875)
 
 
 class ConvTranspose2d(nn.ConvTranspose2d):
@@ -366,14 +366,14 @@ class DualFC_CF(nn.Module):
                     # B x T x n_bands x K*2 --> B x T x n_bands x K
                     return torch.sum((torch.tanh(conv[:,:,:self.lpc2bands])*fact_weight[:self.lpc2bands]).reshape(B,T,self.n_bands,2,-1), 3), \
                             torch.sum((torch.exp(conv[:,:,self.lpc2bands:self.lpc4bands])*fact_weight[self.lpc2bands:self.lpc4bands]).reshape(B,T,self.n_bands,2,-1), 3), \
-                                F.tanhshrink(self.out(torch.sum((F.relu(conv[:,:,self.lpc4bands:])\
+                                F.tanhshrink(self.out(torch.sum((F.relu(conv[:,:,self.lpc4bands:])
                                     *fact_weight[self.lpc4bands:]).reshape(B,T,self.n_bands,2,-1), 3).reshape(B,T*self.n_bands,-1).transpose(1,2))).transpose(1,2).reshape(B,T,self.n_bands,-1)
                     # B x T x n_bands x mid*2 --> B x (T x n_bands) x mid --> B x mid x (T x n_bands) --> B x T x n_bands x 256
                 else:
                     # B x T x n_bands x mid*2 --> B x (T x n_bands) x mid --> B x mid x (T x n_bands) --> B x T x n_bands x 256
                     B = x.shape[0]
                     T = x.shape[2]
-                    return F.tanhshrink(self.out(torch.sum((F.relu(self.conv(x).transpose(1,2))\
+                    return F.tanhshrink(self.out(torch.sum((F.relu(self.conv(x).transpose(1,2))
                                 *(0.5*torch.exp(self.fact.weight[0]))).reshape(B,T,self.n_bands,2,-1), 3).reshape(B,T*self.n_bands,-1).transpose(1,2))).transpose(1,2).reshape(B,T,self.n_bands,-1)
             else:
                 if self.lpc > 0:
@@ -460,14 +460,14 @@ class DualFC(nn.Module):
                     # B x T x n_bands x K*2 --> B x T x n_bands x K
                     return torch.sum((torch.tanh(conv[:,:,:self.lpc2bands])*fact_weight[:self.lpc2bands]).reshape(B,T,self.n_bands,2,-1), 3), \
                             torch.sum((torch.exp(conv[:,:,self.lpc2bands:self.lpc4bands])*fact_weight[self.lpc2bands:self.lpc4bands]).reshape(B,T,self.n_bands,2,-1), 3), \
-                                F.tanhshrink(self.out(torch.sum((F.relu(conv[:,:,self.lpc4bands:])\
+                                F.tanhshrink(self.out(torch.sum((F.relu(conv[:,:,self.lpc4bands:])
                                     *fact_weight[self.lpc4bands:]).reshape(B,T,self.n_bands,2,-1), 3).reshape(B,T*self.n_bands,-1).transpose(1,2))).transpose(1,2).reshape(B,T,self.n_bands,-1)
                     # B x T x n_bands x mid*2 --> B x (T x n_bands) x mid --> B x mid x (T x n_bands) --> B x T x n_bands x 256
                 else:
                     # B x T x n_bands x mid*2 --> B x (T x n_bands) x mid --> B x mid x (T x n_bands) --> B x T x n_bands x 256
                     B = x.shape[0]
                     T = x.shape[2]
-                    return F.tanhshrink(self.out(torch.sum((F.relu(self.conv(x).transpose(1,2))\
+                    return F.tanhshrink(self.out(torch.sum((F.relu(self.conv(x).transpose(1,2))
                                 *(0.5*torch.exp(self.fact.weight[0]))).reshape(B,T,self.n_bands,2,-1), 3).reshape(B,T*self.n_bands,-1).transpose(1,2))).transpose(1,2).reshape(B,T,self.n_bands,-1)
             else:
                 if self.lpc > 0:
@@ -645,7 +645,9 @@ def kl_categorical_categorical_logits(p, logits_p, logits_q):
 
 
 def sampling_laplace_wave(loc, scale):
-    eps = torch.empty_like(loc).uniform_(torch.finfo(loc.dtype).eps-1,1)
+    #eps = torch.empty_like(loc).uniform_(torch.finfo(loc.dtype).eps-1,1)
+    small_zero = torch.finfo(loc.dtype).eps
+    eps = torch.empty_like(loc).uniform_(small_zero-1,1-small_zero)
 
     return loc - scale * eps.sign() * torch.log1p(-eps.abs()) # scale
 
@@ -716,7 +718,9 @@ def sampling_laplace(param, log_scale=None):
         k = param.shape[-1]//2
         mu = param[:,:,:k]
         scale = torch.exp(param[:,:,k:])
-    eps = torch.empty_like(mu).uniform_(torch.finfo(mu.dtype).eps-1,1)
+    small_zero = torch.finfo(mu.dtype).eps
+    #eps = torch.empty_like(mu).uniform_(torch.finfo(mu.dtype).eps-1,1)
+    eps = torch.empty_like(mu).uniform_(small_zero-1,1-small_zero)
 
     return mu - scale * eps.sign() * torch.log1p(-eps.abs()) # scale
  
@@ -1765,14 +1769,16 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
         self.feat_dim = feat_dim
         self.in_dim = self.feat_dim
         self.n_quantize = n_quantize
-        self.cf_dim = int(np.sqrt(self.n_quantize))
-        #if self.cf_dim > 64:
-        #    self.cf_dim_in = 64
-        #else:
-        #    self.cf_dim_in = self.cf_dim
-        #self.cf_dim_in = 64
-        self.out_dim = self.n_quantize
         self.n_bands = n_bands
+        self.cf_dim = int(np.sqrt(self.n_quantize))
+        if self.cf_dim > 64:
+            self.cf_dim_in = 64
+        else:
+            if self.n_bands > 5:
+                self.cf_dim_in = self.cf_dim
+            else:
+                self.cf_dim_in = 64
+        self.out_dim = self.n_quantize
         self.upsampling_factor = upsampling_factor // self.n_bands
         self.hidden_units = hidden_units
         self.hidden_units_2 = hidden_units_2
@@ -1781,7 +1787,7 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
         self.do_prob = do_prob
         self.causal_conv = causal_conv
         self.s_dim = 320
-        #self.wav_dim = self.s_dim // self.n_bands
+        self.wav_dim = self.s_dim // self.n_bands
         self.wav_dim = self.cf_dim_in
         self.wav_dim_bands = self.wav_dim * self.n_bands
         self.use_weight_norm = use_weight_norm
@@ -1791,7 +1797,10 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
         self.pad_first = pad_first
         self.mid_out_flag = mid_out_flag
         if self.mid_out_flag:
-            self.mid_out = self.cf_dim_in // 2
+            if self.cf_dim_in > 32:
+                self.mid_out = self.cf_dim_in // 2
+            else:
+                self.mid_out = self.cf_dim_in
         else:
             self.mid_out = None
 

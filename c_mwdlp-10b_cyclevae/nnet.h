@@ -59,10 +59,10 @@ typedef struct {
   const float *input_weights;
   const float *factor_signs;
   const float *factor_mags;
-  const float *factor_outs;
+  const float *factor_mids;
   int activation_signs;
   int activation_mags;
-  int activation_outs;
+  int activation_mids;
 } MDenseLayerMWDLP10;
 
 typedef struct {

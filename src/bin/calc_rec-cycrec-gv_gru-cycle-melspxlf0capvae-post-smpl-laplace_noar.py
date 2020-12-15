@@ -16,7 +16,7 @@ import numpy as np
 import torch
 import torch.multiprocessing as mp
 
-from vcneuvoco import GRU_VAE_ENCODER, GRU_SPEC_DECODER, GRU_SPK
+from vcneuvoco import GRU_VAE_ENCODER, GRU_SPEC_DECODER
 from vcneuvoco import GRU_EXCIT_DECODER, SPKID_TRANSFORM_LAYER, GRU_POST_NET
 from utils import find_files, read_hdf5, read_txt, write_hdf5, check_hdf5
 
@@ -149,26 +149,11 @@ def main():
                     pad_first=True,
                     right_size=config.right_size_enc)
                 logging.info(model_encoder_melsp)
-                model_decoder_melsp_fix = GRU_SPEC_DECODER(
-                    feat_dim=config.lat_dim+config.lat_dim_e,
-                    excit_dim=config.excit_dim,
-                    out_dim=config.mel_dim,
-                    n_spk=n_spk,
-                    aux_dim=n_spk,
-                    hidden_layers=config.hidden_layers_dec,
-                    hidden_units=config.hidden_units_dec,
-                    kernel_size=config.kernel_size_dec,
-                    dilation_size=config.dilation_size_dec,
-                    causal_conv=config.causal_conv_dec,
-                    pad_first=True,
-                    right_size=config.right_size_dec)
-                logging.info(model_decoder_melsp_fix)
                 model_decoder_melsp = GRU_SPEC_DECODER(
                     feat_dim=config.lat_dim+config.lat_dim_e,
                     excit_dim=config.excit_dim,
                     out_dim=config.mel_dim,
                     n_spk=n_spk,
-                    aux_dim=n_spk,
                     hidden_layers=config.hidden_layers_dec,
                     hidden_units=config.hidden_units_dec,
                     kernel_size=config.kernel_size_dec,
@@ -193,7 +178,6 @@ def main():
                     feat_dim=config.lat_dim_e,
                     cap_dim=config.cap_dim,
                     n_spk=n_spk,
-                    aux_dim=n_spk,
                     hidden_layers=config.hidden_layers_lf0,
                     hidden_units=config.hidden_units_lf0,
                     kernel_size=config.kernel_size_lf0,
@@ -207,16 +191,10 @@ def main():
                         n_spk=n_spk,
                         spkidtr_dim=config.spkidtr_dim)
                     logging.info(model_spkidtr)
-                model_spk = GRU_SPK(
-                    n_spk=n_spk,
-                    feat_dim=config.lat_dim+config.lat_dim_e,
-                    hidden_units=32)
-                logging.info(model_spk)
                 model_post = GRU_POST_NET(
                     spec_dim=config.mel_dim,
                     excit_dim=config.excit_dim+config.cap_dim+1,
                     n_spk=n_spk,
-                    aux_dim=n_spk,
                     hidden_layers=config.hidden_layers_post,
                     hidden_units=config.hidden_units_post,
                     kernel_size=config.kernel_size_post,
@@ -228,43 +206,33 @@ def main():
                     laplace=True)
                 logging.info(model_post)
                 model_encoder_melsp.load_state_dict(torch.load(args.model)["model_encoder_melsp"])
-                model_decoder_melsp_fix.load_state_dict(torch.load(args.model)["model_decoder_melsp_fix"])
                 model_decoder_melsp.load_state_dict(torch.load(args.model)["model_decoder_melsp"])
                 model_encoder_excit.load_state_dict(torch.load(args.model)["model_encoder_excit"])
                 model_decoder_excit.load_state_dict(torch.load(args.model)["model_decoder_excit"])
                 if (config.spkidtr_dim > 0):
                     model_spkidtr.load_state_dict(torch.load(args.model)["model_spkidtr"])
-                model_spk.load_state_dict(torch.load(args.model)["model_spk"])
                 model_post.load_state_dict(torch.load(args.model)["model_post"])
                 model_encoder_melsp.cuda()
-                model_decoder_melsp_fix.cuda()
                 model_decoder_melsp.cuda()
                 model_encoder_excit.cuda()
                 model_decoder_excit.cuda()
-                model_spk.cuda()
                 model_post.cuda()
                 if (config.spkidtr_dim > 0):
                     model_spkidtr.cuda()
                 model_encoder_melsp.eval()
-                model_decoder_melsp_fix.eval()
                 model_decoder_melsp.eval()
                 model_encoder_excit.eval()
                 model_decoder_excit.eval()
-                model_spk.eval()
                 model_post.eval()
                 if (config.spkidtr_dim > 0):
                     model_spkidtr.eval()
                 for param in model_encoder_melsp.parameters():
-                    param.requires_grad = False
-                for param in model_decoder_melsp_fix.parameters():
                     param.requires_grad = False
                 for param in model_decoder_melsp.parameters():
                     param.requires_grad = False
                 for param in model_encoder_excit.parameters():
                     param.requires_grad = False
                 for param in model_decoder_excit.parameters():
-                    param.requires_grad = False
-                for param in model_spk.parameters():
                     param.requires_grad = False
                 for param in model_post.parameters():
                     param.requires_grad = False
@@ -321,32 +289,26 @@ def main():
                     else:
                         src_code = (torch.ones((1, lat_src_e.shape[1]))*spk_idx).cuda().long()
                     lat_cat = torch.cat((lat_src_e, lat_src), 2)
-                    trj_src_code, _ = model_spk(src_code, z=lat_cat)
-                    cvlf0_src, _ = model_decoder_excit(lat_src_e, y=src_code, aux=trj_src_code)
+                    cvlf0_src, _ = model_decoder_excit(lat_src_e, y=src_code)
 
                     if model_decoder_excit.pad_right > 0:
                         lat_cat = lat_cat[:,model_decoder_excit.pad_left:-model_decoder_excit.pad_right]
                         src_code = src_code[:,model_decoder_excit.pad_left:-model_decoder_excit.pad_right]
-                        trj_src_code = trj_src_code[:,model_decoder_excit.pad_left:-model_decoder_excit.pad_right]
                     else:
                         lat_cat = lat_cat[:,model_decoder_excit.pad_left:]
                         src_code = src_code[:,model_decoder_excit.pad_left:]
-                        trj_src_code = trj_src_code[:,model_decoder_excit.pad_left:]
-                    cvmelsp_src, _ = model_decoder_melsp(lat_cat, y=src_code, aux=trj_src_code, e=cvlf0_src[:,:,:config.excit_dim])
+                    cvmelsp_src, _ = model_decoder_melsp(lat_cat, y=src_code, e=cvlf0_src[:,:,:config.excit_dim])
 
                     if model_decoder_melsp.pad_right > 0:
                         e_post = cvlf0_src[:,model_decoder_melsp.pad_left:-model_decoder_melsp.pad_right]
                         src_code_ = src_code[:,model_decoder_melsp.pad_left:-model_decoder_melsp.pad_right]
-                        trj_src_code_ = trj_src_code[:,model_decoder_melsp.pad_left:-model_decoder_melsp.pad_right]
                     else:
                         e_post = cvlf0_src[:,model_decoder_melsp.pad_left:]
                         src_code_ = src_code[:,model_decoder_melsp.pad_left:]
-                        trj_src_code_ = trj_src_code[:,model_decoder_melsp.pad_left:]
-                    pdf, cvmelsp_src_post, _ = model_post(cvmelsp_src, y=src_code_, aux=trj_src_code_, e=e_post)
+                    pdf, cvmelsp_src_post, _ = model_post(cvmelsp_src, y=src_code_, e=e_post)
                     #cvmelsp_src_post = pdf[:,:,:config.mel_dim]
 
-                    # cyclic flow using fixed decoder for 1st rec./conv.
-                    cvmelsp_src, _ = model_decoder_melsp_fix(lat_cat, y=src_code, aux=trj_src_code, e=cvlf0_src[:,:,:config.excit_dim])
+                    cvmelsp_src, _ = model_decoder_melsp(lat_cat, y=src_code, e=cvlf0_src[:,:,:config.excit_dim])
                     if model_post.pad_right > 0:
                         cvmelsp_src = cvmelsp_src[:,model_post.pad_left:-model_post.pad_right]
                     else:
@@ -369,28 +331,23 @@ def main():
                     else:
                         src_code = (torch.ones((1, lat_rec_e.shape[1]))*spk_idx).cuda().long()
                     lat_cat = torch.cat((lat_rec_e, lat_rec), 2)
-                    trj_src_code, _ = model_spk(src_code, z=lat_cat)
-                    cvlf0_cyc, _ = model_decoder_excit(lat_rec_e, y=src_code, aux=trj_src_code)
+                    cvlf0_cyc, _ = model_decoder_excit(lat_rec_e, y=src_code)
 
                     if model_decoder_excit.pad_right > 0:
                         lat_cat = lat_cat[:,model_decoder_excit.pad_left:-model_decoder_excit.pad_right]
                         src_code = src_code[:,model_decoder_excit.pad_left:-model_decoder_excit.pad_right]
-                        trj_src_code = trj_src_code[:,model_decoder_excit.pad_left:-model_decoder_excit.pad_right]
                     else:
                         lat_cat = lat_cat[:,model_decoder_excit.pad_left:]
                         src_code = src_code[:,model_decoder_excit.pad_left:]
-                        trj_src_code = trj_src_code[:,model_decoder_excit.pad_left:]
-                    cvmelsp_cyc, _ = model_decoder_melsp(lat_cat, y=src_code, aux=trj_src_code, e=cvlf0_cyc[:,:,:config.excit_dim])
+                    cvmelsp_cyc, _ = model_decoder_melsp(lat_cat, y=src_code, e=cvlf0_cyc[:,:,:config.excit_dim])
                     
                     if model_decoder_melsp.pad_right > 0:
                         e_post = cvlf0_cyc[:,model_decoder_melsp.pad_left:-model_decoder_melsp.pad_right]
                         src_code = src_code[:,model_decoder_melsp.pad_left:-model_decoder_melsp.pad_right]
-                        trj_src_code = trj_src_code[:,model_decoder_melsp.pad_left:-model_decoder_melsp.pad_right]
                     else:
                         e_post = cvlf0_cyc[:,model_decoder_melsp.pad_left:]
                         src_code = src_code[:,model_decoder_melsp.pad_left:]
-                        trj_src_code = trj_src_code[:,model_decoder_melsp.pad_left:]
-                    pdf, cvmelsp_cyc_post, _ = model_post(cvmelsp_cyc, y=src_code, aux=trj_src_code, e=e_post)
+                    pdf, cvmelsp_cyc_post, _ = model_post(cvmelsp_cyc, y=src_code, e=e_post)
                     #cvmelsp_cyc_post = pdf[:,:,:config.mel_dim]
 
                     if outpad_rights[1] > 0:

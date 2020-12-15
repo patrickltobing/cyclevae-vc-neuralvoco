@@ -29,7 +29,7 @@ from utils import write_hdf5
 
 import soundfile as sf
 
-from vcneuvoco import GRU_VAE_ENCODER, GRU_SPEC_DECODER, GRU_SPK, GRU_POST_NET
+from vcneuvoco import GRU_VAE_ENCODER, GRU_SPEC_DECODER, GRU_POST_NET
 from vcneuvoco import GRU_EXCIT_DECODER, SPKID_TRANSFORM_LAYER
 from feature_extract import convert_f0
 from dtw_c import dtw_c as dtw
@@ -204,7 +204,6 @@ def main():
                     excit_dim=config.excit_dim,
                     out_dim=config.mel_dim,
                     n_spk=n_spk,
-                    aux_dim=n_spk,
                     hidden_layers=config.hidden_layers_dec,
                     hidden_units=config.hidden_units_dec,
                     kernel_size=config.kernel_size_dec,
@@ -229,7 +228,6 @@ def main():
                     feat_dim=config.lat_dim_e,
                     cap_dim=config.cap_dim,
                     n_spk=n_spk,
-                    aux_dim=n_spk,
                     hidden_layers=config.hidden_layers_lf0,
                     hidden_units=config.hidden_units_lf0,
                     kernel_size=config.kernel_size_lf0,
@@ -243,16 +241,10 @@ def main():
                         n_spk=n_spk,
                         spkidtr_dim=config.spkidtr_dim)
                     logging.info(model_spkidtr)
-                model_spk = GRU_SPK(
-                    n_spk=n_spk,
-                    feat_dim=config.lat_dim+config.lat_dim_e,
-                    hidden_units=32)
-                logging.info(model_spk)
                 model_post = GRU_POST_NET(
                     spec_dim=config.mel_dim,
                     excit_dim=config.excit_dim+config.cap_dim+1,
                     n_spk=n_spk,
-                    aux_dim=n_spk,
                     hidden_layers=config.hidden_layers_post,
                     hidden_units=config.hidden_units_post,
                     kernel_size=config.kernel_size_post,
@@ -269,7 +261,6 @@ def main():
                 model_decoder_excit.load_state_dict(torch.load(args.model)["model_decoder_excit"])
                 if (config.spkidtr_dim > 0):
                     model_spkidtr.load_state_dict(torch.load(args.model)["model_spkidtr"])
-                model_spk.load_state_dict(torch.load(args.model)["model_spk"])
                 model_post.load_state_dict(torch.load(args.model)["model_post"])
                 model_encoder_melsp.cuda()
                 model_decoder_melsp.cuda()
@@ -277,7 +268,6 @@ def main():
                 model_decoder_excit.cuda()
                 if (config.spkidtr_dim > 0):
                     model_spkidtr.cuda()
-                model_spk.cuda()
                 model_post.cuda()
                 model_encoder_melsp.eval()
                 model_decoder_melsp.eval()
@@ -285,7 +275,6 @@ def main():
                 model_decoder_excit.eval()
                 if (config.spkidtr_dim > 0):
                     model_spkidtr.eval()
-                model_spk.eval()
                 model_post.eval()
                 for param in model_encoder_melsp.parameters():
                     param.requires_grad = False
@@ -298,8 +287,6 @@ def main():
                 if (config.spkidtr_dim > 0):
                     for param in model_spkidtr.parameters():
                         param.requires_grad = False
-                for param in model_spk.parameters():
-                    param.requires_grad = False
                 for param in model_post.parameters():
                     param.requires_grad = False
             # interpolated spk-code
@@ -402,47 +389,37 @@ def main():
                         else:
                             trg_code = (torch.ones((1, lat_src_e.shape[1]))*trg_idx).cuda().long()
                         lat_cat = torch.cat((lat_src_e, lat_src), 2)
-                        trj_src_code, _ = model_spk(src_code, z=lat_cat)
-                        trj_trg_code, _ = model_spk(trg_code, z=lat_cat)
-                        cvlf0_src, _ = model_decoder_excit(lat_src_e, y=src_code, aux=trj_src_code)
-                        cvlf0, _ = model_decoder_excit(lat_src_e, y=trg_code, aux=trj_trg_code)
+                        cvlf0_src, _ = model_decoder_excit(lat_src_e, y=src_code)
+                        cvlf0, _ = model_decoder_excit(lat_src_e, y=trg_code)
 
                         # reconstruction and conversion using updated decoder-melsp and postnet
                         if model_decoder_excit.pad_right > 0:
                             lat_cat = lat_cat[:,model_decoder_excit.pad_left:-model_decoder_excit.pad_right]
                             src_code = src_code[:,model_decoder_excit.pad_left:-model_decoder_excit.pad_right]
                             trg_code = trg_code[:,model_decoder_excit.pad_left:-model_decoder_excit.pad_right]
-                            trj_src_code = trj_src_code[:,model_decoder_excit.pad_left:-model_decoder_excit.pad_right]
-                            trj_trg_code = trj_trg_code[:,model_decoder_excit.pad_left:-model_decoder_excit.pad_right]
                         else:
                             lat_cat = lat_cat[:,model_decoder_excit.pad_left:]
                             src_code = src_code[:,model_decoder_excit.pad_left:]
                             trg_code = trg_code[:,model_decoder_excit.pad_left:]
-                            trj_src_code = trj_src_code[:,model_decoder_excit.pad_left:]
-                            trj_trg_code = trj_trg_code[:,model_decoder_excit.pad_left:]
-                        cvmelsp_src, _ = model_decoder_melsp(lat_cat, y=src_code, aux=trj_src_code, e=cvlf0_src[:,:,:config.excit_dim])
-                        cvmelsp, _ = model_decoder_melsp(lat_cat, y=trg_code, aux=trj_trg_code, e=cvlf0[:,:,:config.excit_dim])
+                        cvmelsp_src, _ = model_decoder_melsp(lat_cat, y=src_code, e=cvlf0_src[:,:,:config.excit_dim])
+                        cvmelsp, _ = model_decoder_melsp(lat_cat, y=trg_code, e=cvlf0[:,:,:config.excit_dim])
 
                         if model_decoder_melsp.pad_right > 0:
                             e_post = cvlf0_src[:,model_decoder_melsp.pad_left:-model_decoder_melsp.pad_right]
                             e_cv_post = cvlf0[:,model_decoder_melsp.pad_left:-model_decoder_melsp.pad_right]
                             src_code_ = src_code[:,model_decoder_melsp.pad_left:-model_decoder_melsp.pad_right]
                             trg_code_ = trg_code[:,model_decoder_melsp.pad_left:-model_decoder_melsp.pad_right]
-                            trj_src_code_ = trj_src_code[:,model_decoder_melsp.pad_left:-model_decoder_melsp.pad_right]
-                            trj_trg_code_ = trj_trg_code[:,model_decoder_melsp.pad_left:-model_decoder_melsp.pad_right]
                         else:
                             e_post = cvlf0_src[:,model_decoder_melsp.pad_left:]
                             e_cv_post = cvlf0[:,model_decoder_melsp.pad_left:]
                             src_code_ = src_code[:,model_decoder_melsp.pad_left:]
                             trg_code_ = trg_code[:,model_decoder_melsp.pad_left:]
-                            trj_src_code_ = trj_src_code[:,model_decoder_melsp.pad_left:]
-                            trj_trg_code_ = trj_trg_code[:,model_decoder_melsp.pad_left:]
-                        pdf, cvmelsp_src_post, _ = model_post(cvmelsp_src, y=src_code_, aux=trj_src_code_, e=e_post)
-                        pdf_cv, cvmelsp_post, _ = model_post(cvmelsp, y=trg_code_, aux=trj_trg_code_, e=e_cv_post)
+                        pdf, cvmelsp_src_post, _ = model_post(cvmelsp_src, y=src_code_, e=e_post)
+                        pdf_cv, cvmelsp_post, _ = model_post(cvmelsp, y=trg_code_, e=e_cv_post)
                         #cvmelsp_src_post = pdf[:,:,:config.mel_dim]
                         #cvmelsp_post = pdf_cv[:,:,:config.mel_dim]
 
-                        cvmelsp_src, _ = model_decoder_melsp(lat_cat, y=src_code, aux=trj_src_code, e=cvlf0_src[:,:,:config.excit_dim])
+                        cvmelsp_src, _ = model_decoder_melsp(lat_cat, y=src_code, e=cvlf0_src[:,:,:config.excit_dim])
                         if model_post.pad_right > 0:
                             cvmelsp_src = cvmelsp_src[:,model_post.pad_left:-model_post.pad_right]
                         else:
@@ -460,7 +437,7 @@ def main():
                         else:
                             logging.info(torch.mean(F.softmax(spk_logits_e[:,outpad_lefts[4]:], dim=-1), 1))
 
-                        cvmelsp, _ = model_decoder_melsp(lat_cat, y=trg_code, aux=trj_trg_code, e=cvlf0[:,:,:config.excit_dim])
+                        cvmelsp, _ = model_decoder_melsp(lat_cat, y=trg_code, e=cvlf0[:,:,:config.excit_dim])
                         if model_post.pad_right > 0:
                             cvmelsp = cvmelsp[:,model_post.pad_left:-model_post.pad_right]
                         else:
@@ -483,28 +460,23 @@ def main():
                         else:
                             src_code = (torch.ones((1, lat_cv_e.shape[1]))*src_idx).cuda().long()
                         lat_cat = torch.cat((lat_cv_e, lat_cv), 2)
-                        trj_src_code, _ = model_spk(src_code, z=lat_cat)
-                        cvlf0_cyc, _ = model_decoder_excit(lat_cv_e, y=src_code, aux=trj_src_code)
+                        cvlf0_cyc, _ = model_decoder_excit(lat_cv_e, y=src_code)
 
                         if model_decoder_excit.pad_right > 0:
                             lat_cat = lat_cat[:,model_decoder_excit.pad_left:-model_decoder_excit.pad_right]
                             src_code = src_code[:,model_decoder_excit.pad_left:-model_decoder_excit.pad_right]
-                            trj_src_code = trj_src_code[:,model_decoder_excit.pad_left:-model_decoder_excit.pad_right]
                         else:
                             lat_cat = lat_cat[:,model_decoder_excit.pad_left:]
                             src_code = src_code[:,model_decoder_excit.pad_left:]
-                            trj_src_code = trj_src_code[:,model_decoder_excit.pad_left:]
-                        cvmelsp_cyc, _ = model_decoder_melsp(lat_cat, y=src_code, aux=trj_src_code, e=cvlf0_cyc[:,:,:config.excit_dim])
+                        cvmelsp_cyc, _ = model_decoder_melsp(lat_cat, y=src_code, e=cvlf0_cyc[:,:,:config.excit_dim])
                         
                         if model_decoder_melsp.pad_right > 0:
                             e_post = cvlf0_cyc[:,model_decoder_melsp.pad_left:-model_decoder_melsp.pad_right]
                             src_code = src_code[:,model_decoder_melsp.pad_left:-model_decoder_melsp.pad_right]
-                            trj_src_code = trj_src_code[:,model_decoder_melsp.pad_left:-model_decoder_melsp.pad_right]
                         else:
                             e_post = cvlf0_cyc[:,model_decoder_melsp.pad_left:]
                             src_code = src_code[:,model_decoder_melsp.pad_left:]
-                            trj_src_code = trj_src_code[:,model_decoder_melsp.pad_left:]
-                        pdf, cvmelsp_cyc_post, _ = model_post(cvmelsp_cyc, y=src_code, aux=trj_src_code, e=e_post)
+                        pdf, cvmelsp_cyc_post, _ = model_post(cvmelsp_cyc, y=src_code, e=e_post)
                         #cvmelsp_cyc_post = pdf[:,:,:config.mel_dim]
                     #else: # if using interpolated spk-code
                     #    z_interpolate = []

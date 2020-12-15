@@ -83,6 +83,7 @@ class PQMF(torch.nn.Module):
 
         # define filter coefficient
         h_proto = design_prototype_filter(self.taps, self.cutoff_ratio, self.beta)
+        # n_bands x (taps+1)
         h_analysis = np.zeros((self.subbands, len(h_proto)))
         h_synthesis = np.zeros((self.subbands, len(h_proto)))
         for k in range(self.subbands):
@@ -96,17 +97,19 @@ class PQMF(torch.nn.Module):
                 (-1) ** k * np.pi / 4)
 
         # convert to tensor
-        analysis_filter = torch.from_numpy(h_analysis).float().unsqueeze(1)
-        synthesis_filter = torch.from_numpy(h_synthesis).float().unsqueeze(0)
+        # out x in x kernel --> weight shape of Conv1d pytorch
+        analysis_filter = torch.from_numpy(h_analysis).float().unsqueeze(1) # n_bands x 1 x (taps+1)
+        synthesis_filter = torch.from_numpy(h_synthesis).float().unsqueeze(0) # 1 x n_bands x (taps+1)
 
         # register coefficients as beffer
         self.register_buffer("analysis_filter", analysis_filter)
         self.register_buffer("synthesis_filter", synthesis_filter)
 
         ## filter for downsampling & upsampling
+        # down/up-sampling filter is used in the multiband domain, hence out=in=n_bands
         updown_filter = torch.zeros((self.subbands, self.subbands, self.subbands)).float()
         for k in range(self.subbands):
-            updown_filter[k, k, 0] = 1.0
+            updown_filter[k, k, 0] = 1.0 #only the 1st kernel, i.e., zero to the other right samples
         self.register_buffer("updown_filter", updown_filter)
 
         # keep padding info
@@ -122,7 +125,9 @@ class PQMF(torch.nn.Module):
             Tensor: Output tensor (B, subbands, T // subbands).
 
         """
+        # B x 1 x T --> B x n_bands x T
         x = F.conv1d(self.pad_fn(x), self.analysis_filter)
+        # B x n_bands x T --> B x n_bands x (T//n_bands) [discard the 2nd-nth indices every n index]
         return F.conv1d(x, self.updown_filter, stride=self.subbands)
 
     def synthesis(self, x):
@@ -138,5 +143,8 @@ class PQMF(torch.nn.Module):
         # NOTE(kan-bayashi): Power will be dreased so here multipy by # subbands.
         #   Not sure this is the correct way, it is better to check again.
         # TODO(kan-bayashi): Understand the reconstruction procedure
+        # B x n_bands x (T//n_bands) --> B x n_bands x T 
+        # [zeroing the 2nd-nth indices every n index, and multiply by n_bands at each 1st index]
         x = F.conv_transpose1d(x, self.updown_filter * self.subbands, stride=self.subbands)
+        # B x n_bands x T --> B x 1 x T
         return F.conv1d(self.pad_fn(x), self.synthesis_filter)

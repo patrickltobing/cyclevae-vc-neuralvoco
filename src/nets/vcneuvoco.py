@@ -366,14 +366,14 @@ class DualFC_CF(nn.Module):
                     # B x T x n_bands x K*2 --> B x T x n_bands x K
                     return torch.sum((torch.tanh(conv[:,:,:self.lpc2bands])*fact_weight[:self.lpc2bands]).reshape(B,T,self.n_bands,2,-1), 3), \
                             torch.sum((torch.exp(conv[:,:,self.lpc2bands:self.lpc4bands])*fact_weight[self.lpc2bands:self.lpc4bands]).reshape(B,T,self.n_bands,2,-1), 3), \
-                                F.tanhshrink(self.out(torch.sum((F.relu(conv[:,:,self.lpc4bands:])\
+                                F.tanhshrink(self.out(torch.sum((F.relu(conv[:,:,self.lpc4bands:])
                                     *fact_weight[self.lpc4bands:]).reshape(B,T,self.n_bands,2,-1), 3).reshape(B,T*self.n_bands,-1).transpose(1,2))).transpose(1,2).reshape(B,T,self.n_bands,-1)
                     # B x T x n_bands x mid*2 --> B x (T x n_bands) x mid --> B x mid x (T x n_bands) --> B x T x n_bands x 256
                 else:
                     # B x T x n_bands x mid*2 --> B x (T x n_bands) x mid --> B x mid x (T x n_bands) --> B x T x n_bands x 256
                     B = x.shape[0]
                     T = x.shape[2]
-                    return F.tanhshrink(self.out(torch.sum((F.relu(self.conv(x).transpose(1,2))\
+                    return F.tanhshrink(self.out(torch.sum((F.relu(self.conv(x).transpose(1,2))
                                 *(0.5*torch.exp(self.fact.weight[0]))).reshape(B,T,self.n_bands,2,-1), 3).reshape(B,T*self.n_bands,-1).transpose(1,2))).transpose(1,2).reshape(B,T,self.n_bands,-1)
             else:
                 if self.lpc > 0:
@@ -460,14 +460,14 @@ class DualFC(nn.Module):
                     # B x T x n_bands x K*2 --> B x T x n_bands x K
                     return torch.sum((torch.tanh(conv[:,:,:self.lpc2bands])*fact_weight[:self.lpc2bands]).reshape(B,T,self.n_bands,2,-1), 3), \
                             torch.sum((torch.exp(conv[:,:,self.lpc2bands:self.lpc4bands])*fact_weight[self.lpc2bands:self.lpc4bands]).reshape(B,T,self.n_bands,2,-1), 3), \
-                                F.tanhshrink(self.out(torch.sum((F.relu(conv[:,:,self.lpc4bands:])\
+                                F.tanhshrink(self.out(torch.sum((F.relu(conv[:,:,self.lpc4bands:])
                                     *fact_weight[self.lpc4bands:]).reshape(B,T,self.n_bands,2,-1), 3).reshape(B,T*self.n_bands,-1).transpose(1,2))).transpose(1,2).reshape(B,T,self.n_bands,-1)
                     # B x T x n_bands x mid*2 --> B x (T x n_bands) x mid --> B x mid x (T x n_bands) --> B x T x n_bands x 256
                 else:
                     # B x T x n_bands x mid*2 --> B x (T x n_bands) x mid --> B x mid x (T x n_bands) --> B x T x n_bands x 256
                     B = x.shape[0]
                     T = x.shape[2]
-                    return F.tanhshrink(self.out(torch.sum((F.relu(self.conv(x).transpose(1,2))\
+                    return F.tanhshrink(self.out(torch.sum((F.relu(self.conv(x).transpose(1,2))
                                 *(0.5*torch.exp(self.fact.weight[0]))).reshape(B,T,self.n_bands,2,-1), 3).reshape(B,T*self.n_bands,-1).transpose(1,2))).transpose(1,2).reshape(B,T,self.n_bands,-1)
             else:
                 if self.lpc > 0:
@@ -1769,13 +1769,16 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
         self.feat_dim = feat_dim
         self.in_dim = self.feat_dim
         self.n_quantize = n_quantize
+        self.n_bands = n_bands
         self.cf_dim = int(np.sqrt(self.n_quantize))
         if self.cf_dim > 64:
             self.cf_dim_in = 64
         else:
-            self.cf_dim_in = self.cf_dim
+            if self.n_bands > 5:
+                self.cf_dim_in = self.cf_dim
+            else:
+                self.cf_dim_in = 64
         self.out_dim = self.n_quantize
-        self.n_bands = n_bands
         self.upsampling_factor = upsampling_factor // self.n_bands
         self.hidden_units = hidden_units
         self.hidden_units_2 = hidden_units_2
@@ -1794,7 +1797,10 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
         self.pad_first = pad_first
         self.mid_out_flag = mid_out_flag
         if self.mid_out_flag:
-            self.mid_out = self.cf_dim_in // 2
+            if self.cf_dim_in > 32:
+                self.mid_out = self.cf_dim_in // 2
+            else:
+                self.mid_out = self.cf_dim_in
         else:
             self.mid_out = None
 

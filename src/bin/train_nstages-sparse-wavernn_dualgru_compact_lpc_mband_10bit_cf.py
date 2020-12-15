@@ -401,7 +401,6 @@ def main():
         right_size=args.right_size,
         n_bands=args.n_bands,
         pad_first=True,
-        mid_out_flag=False,
         do_prob=args.do_prob)
     logging.info(model_waveform)
     criterion_ce = torch.nn.CrossEntropyLoss(reduction='none')

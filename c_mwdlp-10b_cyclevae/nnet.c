@@ -159,10 +159,8 @@ void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *f
     int n_lpcbands, n_c_lpcbands2;
     int n_logitsbands, n_c_logitsbands2;
     float tmp[MDENSE_OUT];
-    float signs[LPC_ORDER_MBANDS_2], mags[LPC_ORDER_MBANDS_2], outs[SQRT_QUANTIZE_MBANDS_2];
-    //float lpc[LPC_ORDER_MBANDS], res_mids[MID_OUT_MBANDS];
-    float lpc_signs[LPC_ORDER_MBANDS], lpc_mags[LPC_ORDER_MBANDS];
-    //float res_outs[SQRT_QUANTIZE_MBANDS];
+    float signs[LPC_ORDER_MBANDS_2], mags[LPC_ORDER_MBANDS_2], mids[MID_OUT_MBANDS_2];
+    float lpc_signs[LPC_ORDER_MBANDS], lpc_mags[LPC_ORDER_MBANDS], res_mids[MID_OUT_MBANDS];
     float *logits;
     //celt_assert(input != output);
     for (i=0;i<MDENSE_OUT;i++)
@@ -190,8 +188,8 @@ void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *f
     //}
     //exit(0);
     //mids, last 32*5*2
-    RNN_COPY(outs, &tmp[LPC_ORDER_MBANDS_4], SQRT_QUANTIZE_MBANDS_2);
-    compute_activation(outs, outs, SQRT_QUANTIZE_MBANDS_2, layer->activation_outs);
+    RNN_COPY(mids, &tmp[LPC_ORDER_MBANDS_4], MID_OUT_MBANDS_2);
+    compute_activation(mids, mids, MID_OUT_MBANDS_2, layer->activation_mids);
     //for (i=0;i<MID_OUT_MBANDS_2;i++) {
     //    printf("mids [%d] %f\n", i, mids[i]);
     //}
@@ -200,8 +198,8 @@ void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *f
         lpc_signs[i] = 0;
         lpc_mags[i] = 0;
     }
-    //for (i=0;i<SQRT_QUANTIZE_MBANDS;i++)
-    //    res_outs[i] = 0;
+    for (i=0;i<SQRT_QUANTIZE_MBANDS;i++)
+        res_mids[i] = 0;
     for (n=0;n<N_MBANDS;n++) { //n_bands x 2 x n_lpc or 32, loop order is n_bands --> 2 --> n_lpc/32
         //lpc: n_b x 2 x n_lpc
         for (c=0,n_lpcbands=n*DLPC_ORDER,n_c_lpcbands2=n_lpcbands*2;c<2;c++) {
@@ -212,24 +210,22 @@ void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *f
                 lpc_mags[n_lpcbands+i] += mags[n_c_lpcbands2]*layer->factor_mags[n_c_lpcbands2];
             }
         }
-        //outs: n_b x 32
-        logits = &output[n*SQRT_QUANTIZE];
+        //mids: n_b x 32
         for (c=0,n_logitsbands=n*SQRT_QUANTIZE,n_c_logitsbands2=n_logitsbands*2;c<2;c++) {
-            //factor of outs also band-dependent, indexing similar as above signs/mags with 32-dim
+            //factor of mids also band-dependent, indexing similar as above signs/mags with 32-dim
             for (i=0;i<SQRT_QUANTIZE;i++,n_c_logitsbands2++)
-                logits[n_logitsbands+i] += outs[n_c_logitsbands2]*layer->factor_outs[n_c_logitsbands2];
+                res_mids[n_logitsbands+i] += mids[n_c_logitsbands2]*layer->factor_mids[n_c_logitsbands2];
         }
-        //delete this part because sqrt(10-bit) mu-law does not need additional FC-layer to output 32-dim
-        ////logits: 32 x 256 [[o_1,...,o_256]_1,...,[o_1,...,o_256]_N]
-        //logits = &output[n*LAST_FC_OUT];
-        //for (i=0;i<LAST_FC_OUT;i++)
-        //    logits[i] = fc_layer->bias[i];
-        //sgemv_accum(logits, fc_layer->input_weights, LAST_FC_OUT, MID_OUT, LAST_FC_OUT, &res_mids[n_logitsbands]);
-        //compute_activation(logits, logits, LAST_FC_OUT, fc_layer->activation);
+        //logits: 32 x 32 [[o_1,...,o_256]_1,...,[o_1,...,o_256]_N]
+        logits = &output[n*SQRT_QUANTIZE];
+        for (i=0;i<SQRT_QUANTIZE;i++)
+            logits[i] = fc_layer->bias[i];
+        sgemv_accum(logits, fc_layer->input_weights, SQRT_QUANTIZE, MID_OUT, SQRT_QUANTIZE, &res_mids[n_logitsbands]);
+        compute_activation(logits, logits, SQRT_QUANTIZE, fc_layer->activation);
         //for (i=0;i<MID_OUT;i++) {
         //    printf("res_mids [%d][%d] %f\n", n, i, res_mids[n_logitsbands+i]);
         //}
-        //for (i=0;i<LAST_FC_OUT;i++) {
+        //for (i=0;i<SQRT_QUANTIZE;i++) {
         //    printf("logits_out [%d][%d] %f\n", n, i, logits[i]);
         //}
         //refine logits using linear prediction with one-hot basis of previous samples and data-driven lpc
@@ -241,7 +237,7 @@ void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *f
    //for (i=0;i<MID_OUT_MBANDS;i++) {
    //    printf("res_mids [%d] %f\n", i, res_mids[i]);
    //}
-   //for (i=0;i<LAST_FC_OUT_MBANDS;i++) {
+   //for (i=0;i<SQRT_QUANTIZE_MBANDS;i++) {
    //    printf("logits_outs [%d] %f\n", i, output[i]);
    //}
    //for (i=0;i<LPC_ORDER_MBANDS;i++) {
