@@ -250,7 +250,6 @@ def main():
                     right_size=config.right_size,
                     n_bands=config.n_bands,
                     pad_first=True,
-                    mid_out_flag=False,
                     lpc=config.lpc)
                 logging.info(model_waveform)
                 model_waveform.cuda()
