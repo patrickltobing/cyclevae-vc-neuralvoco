@@ -26,13 +26,18 @@
 /* Modified by Patrick Lumban Tobing (Nagoya University) on Dec. 2020,
    marked by PLT_Dec20 */
 
+#include "freq_conf.h"
 #include "kiss_fft.h"
 
 //PLT_Dec20
-#define SAMPLING_FREQUENCY 16000 //fs
-#define FRAME_SHIFT 80 //int((fs/1000)*shiftms); shiftms = 5 ms
-#define WINDOW_LENGTH 440 //int((fs/1000)*winms); winms = 27.5 ms
-#define FFT_LENGTH 1024 //fs=8kHz-16kHz: 1024; 22.05kHz-24kHz: 2048; 44.1kHz-48kHz: 4096
+/*
+Define these on freq_conf.h
+SAMPLING_FREQUENCY 16000 //fs
+FRAME_SHIFT 80 //int((fs/1000)*shiftms); shiftms = 5 ms
+WINDOW_LENGTH 440 //int((fs/1000)*winms); winms = 27.5 ms
+FFT_LENGTH 1024 //fs=8kHz-16kHz: 1024; 22.05kHz-24kHz: 2048; 44.1kHz-48kHz: 4096
+HPASS_FILT_TAPS 1023 //order+1, has to be odd because high-pass filter passes nyq. freq.
+*/
 
 #define WINDOW_LENGTH_1 (WINDOW_LENGTH - 1)
 #define MOD_WINDOW_LENGTH (WINDOW_LENGTH % 2)
@@ -50,7 +55,6 @@
 
 #define BUFFER_LENGTH (WINDOW_LENGTH - FRAME_SHIFT) //store samples for proceeding frame
 
-#define HPASS_FILT_TAPS 1023 //order+1, has to be odd because high-pass filter passes nyq. freq.
 #define HPASS_FILT_TAPS_1 (HPASS_FILT_TAPS - 1)
 
 #define MAGSP_DIM (FFT_LENGTH / 2 + 1)

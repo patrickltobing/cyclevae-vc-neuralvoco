@@ -125,25 +125,20 @@ void compute_conv1d_linear(const Conv1DLayer *layer, float *output, float *mem, 
 int sample_from_pdf_mwdlp(const float *pdf, int N);
 
 //PLT_Dec20
-void compute_normalize(const NormStats norm_stats, float *input_output)
-void compute_denormalize(const NormStats norm_stats, float *input_output)
+void compute_normalize(const NormStats norm_stats, float *input_output);
+void compute_denormalize(const NormStats norm_stats, float *input_output);
 
-//PLT_Dec20
-void compute_gru_enc(const GRULayer *gru, float *state, const float *input)
+void compute_gru_enc_melsp(const GRULayer *gru, float *state, const float *input);
+void compute_gru_enc_excit(const GRULayer *gru, float *state, const float *input);
 
-//PLT_Dec20
-void compute_gru_spk(const GRULayer *gru, float *state, const float *input)
+void compute_gru_spk(const GRULayer *gru, float *state, const float *input);
 
-//PLT_Dec20
-void compute_gru_dec_excit(const GRULayer *gru, float *state, const float *input)
+void compute_gru_dec_excit(const GRULayer *gru, float *state, const float *input);
 
-//PLT_Dec20
-void compute_gru_dec_melsp(const GRULayer *gru, float *state, const float *input)
+void compute_gru_dec_melsp(const GRULayer *gru, float *state, const float *input);
 
-//PLT_Dec20
-void compute_gru_post(const GRULayer *gru, float *state, const float *input)
+void compute_gru_post(const GRULayer *gru, float *state, const float *input);
 
-//PLT_Dec20
-void compute_sampling_laplace(float *res, const float *loc, const float *scale, int dim);
+void compute_sampling_laplace(float *loc, const float *scale, int dim);
 
 #endif /* _MLP_H_ */

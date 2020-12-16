@@ -307,10 +307,8 @@ void compute_sparse_gru(const SparseGRULayer *gru, float *state, const float *in
    for (i=0;i<RNN_MAIN_NEURONS_3;i++)
       recur[i] = gru->bias[i];
    for (k=0;k<3;k++)
-   {
       for (i=0;i<RNN_MAIN_NEURONS;i++)
          recur[k*RNN_MAIN_NEURONS + i] += gru->diag_weights[k*RNN_MAIN_NEURONS + i]*state[i];
-   }
    sparse_sgemv_accum16(recur, gru->recurrent_weights, RNN_MAIN_NEURONS_3, gru->idx, state);
    //for (i=0;i<RNN_MAIN_NEURONS;i++)
    //     printf("is[%d] %f\n", i, state[i]);
@@ -362,24 +360,20 @@ int sample_from_pdf_mwdlp(const float *pdf, int N)
     int i;
     float r;
     float tmp[SQRT_QUANTIZE], cdf[SQRT_QUANTIZE], sum, norm;
-    for (i=0;i<N;i++) {
+    for (i=0;i<N;i++)
         tmp[i] = pdf[i];
-    }
     softmax(tmp, tmp, N);
-    for (i=0,sum=0;i<N;i++) {
+    for (i=0,sum=0;i<N;i++)
         sum += tmp[i];
-    }
     norm = 1.f/sum;
     /* Convert tmp to a CDF (sum of all previous probs., init. with 0) */
     cdf[0] = 0;
-    for (i=1;i<N;i++) {
+    for (i=1;i<N;i++)
         cdf[i] = cdf[i-1] + norm*tmp[i-1];
-    }
     /* Do the sampling (from the cdf). */
     r = (float) rand() / RAND_MAX; //r ~ [0,1]
-    for (i=N-1;i>0;i--) {
+    for (i=N-1;i>0;i--)
         if (r >= cdf[i]) return i; //largest cdf that is less/equal than r
-    }
     return 0;
 }
 
@@ -387,45 +381,81 @@ int sample_from_pdf_mwdlp(const float *pdf, int N)
 void compute_normalize(const NormStats *norm_stats, float *input_output)
 {
   for (int i=0;i<norm_stats->n_dim;i++)
-  {
     input_output[i] = (input_output[i] - norm_stats->mean[i]) / norm_stats->std[i]
-  }
 }
 
 //PLT_Dec20
 void compute_denormalize(const NormStats *norm_stats, float *input_output)
 {
   for (int i=0;i<norm_stats->n_dim;i++)
-  {
     input_output[i] = input_output[i] * norm_stats->std[i] + norm_stats->mean[i]
-  }
 }
 
 //PLT_Dec20
-void compute_gru_enc(const GRULayer *gru, float *state, const float *input)
+void compute_gru_enc_melsp(const GRULayer *gru, float *state, const float *input)
 {
    int i;
-   float zrh[RNN_ENC_NEURONS_3];
-   float recur[RNN_ENC_NEURONS_3];
+   float zrh[RNN_ENC_MELSP_NEURONS_3];
+   float recur[RNN_ENC_MELSP_NEURONS_3];
    float *z;
    float *r;
    float *h;
+
    z = zrh; //swap with r, pytorch rzh, keras zrh
-   r = &zrh[RNN_ENC_NEURONS];
-   h = &zrh[RNN_ENC_NEURONS_2];
-   RNN_COPY(zrh, input, RNN_ENC_NEURONS_3);
-   for (i=0;i<RNN_ENC_NEURONS_3;i++)
+   r = &zrh[RNN_ENC_MELSP_NEURONS];
+   h = &zrh[RNN_ENC_MELSP_NEURONS_2];
+
+   for (i=0;i<RNN_ENC_MELSP_NEURONS_3;i++)
       recur[i] = gru->bias[i];
-   sgemv_accum(recur, gru->recurrent_weights, RNN_ENC_NEURONS_3, RNN_ENC_NEURONS, RNN_ENC_NEURONS_3, state);
-   for (i=0;i<RNN_ENC_NEURONS_2;i++)
+   sgemv_accum(recur, gru->recurrent_weights, RNN_ENC_MELSP_NEURONS_3, RNN_ENC_MELSP_NEURONS, RNN_ENC_MELSP_NEURONS_3, state);
+
+   compute_dense_linear(gru->weights, gru_input, input);
+
+   for (i=0;i<RNN_ENC_MELSP_NEURONS_2;i++)
       zrh[i] += recur[i]; //z_t and r_t computed in a similar way : sigmoid(in_t + W_z*h_{t-1})
-   compute_activation(zrh, zrh, RNN_ENC_NEURONS_2, ACTIVATION_SIGMOID);
-   for (i=0;i<RNN_ENC_NEURONS;i++)
-      h[i] += recur[RNN_ENC_NEURONS_2+i]*z[i]; //n_t = tanh(in_t + r_t o W_n*h_{t-1})
-   compute_activation(h, h, RNN_ENC_NEURONS, gru->activation);
-   for (i=0;i<RNN_ENC_NEURONS;i++)
+   compute_activation(zrh, zrh, RNN_ENC_MELSP_NEURONS_2, ACTIVATION_SIGMOID);
+
+   for (i=0;i<RNN_ENC_MELSP_NEURONS;i++)
+      h[i] += recur[RNN_ENC_MELSP_NEURONS_2+i]*z[i]; //n_t = tanh(in_t + r_t o W_n*h_{t-1})
+   compute_activation(h, h, RNN_ENC_MELSP_NEURONS, gru->activation);
+
+   for (i=0;i<RNN_ENC_MELSP_NEURONS;i++)
       h[i] = r[i]*state[i] + (1-r[i])*h[i]; //h_t = z_t o h_{t-1} + (1-z_t) o n_t
-   for (i=0;i<RNN_ENC_NEURONS;i++)
+   for (i=0;i<RNN_ENC_MELSP_NEURONS;i++)
+      state[i] = h[i];
+}
+
+//PLT_Dec20
+void compute_gru_enc_excit(const GRULayer *gru, float *state, const float *input)
+{
+   int i;
+   float zrh[RNN_ENC_EXCIT_NEURONS_3];
+   float recur[RNN_ENC_EXCIT_NEURONS_3];
+   float *z;
+   float *r;
+   float *h;
+
+   z = zrh; //swap with r, pytorch rzh, keras zrh
+   r = &zrh[RNN_ENC_EXCIT_NEURONS];
+   h = &zrh[RNN_ENC_EXCIT_NEURONS_2];
+
+   for (i=0;i<RNN_ENC_EXCIT_NEURONS_3;i++)
+      recur[i] = gru->bias[i];
+   sgemv_accum(recur, gru->recurrent_weights, RNN_ENC_EXCIT_NEURONS_3, RNN_ENC_EXCIT_NEURONS, RNN_ENC_EXCIT_NEURONS_3, state);
+
+   compute_dense_linear(gru->weights, zrh, input);
+
+   for (i=0;i<RNN_ENC_EXCIT_NEURONS_2;i++)
+      zrh[i] += recur[i]; //z_t and r_t computed in a similar way : sigmoid(in_t + W_z*h_{t-1})
+   compute_activation(zrh, zrh, RNN_ENC_EXCIT_NEURONS_2, ACTIVATION_SIGMOID);
+
+   for (i=0;i<RNN_ENC_EXCIT_NEURONS;i++)
+      h[i] += recur[RNN_ENC_EXCIT_NEURONS_2+i]*z[i]; //n_t = tanh(in_t + r_t o W_n*h_{t-1})
+   compute_activation(h, h, RNN_ENC_EXCIT_NEURONS, gru->activation);
+
+   for (i=0;i<RNN_ENC_EXCIT_NEURONS;i++)
+      h[i] = r[i]*state[i] + (1-r[i])*h[i]; //h_t = z_t o h_{t-1} + (1-z_t) o n_t
+   for (i=0;i<RNN_ENC_EXCIT_NEURONS;i++)
       state[i] = h[i];
 }
 
@@ -438,19 +468,27 @@ void compute_gru_spk(const GRULayer *gru, float *state, const float *input)
    float *z;
    float *r;
    float *h;
+
    z = zrh; //swap with r, pytorch rzh, keras zrh
    r = &zrh[RNN_SPK_NEURONS];
    h = &zrh[RNN_SPK_NEURONS_2];
+
    RNN_COPY(zrh, input, RNN_SPK_NEURONS_3);
+
    for (i=0;i<RNN_SPK_NEURONS_3;i++)
       recur[i] = gru->bias[i];
    sgemv_accum(recur, gru->recurrent_weights, RNN_SPK_NEURONS_3, RNN_SPK_NEURONS, RNN_SPK_NEURONS_3, state);
+
+   compute_dense_linear(gru->weights, zrh, input);
+
    for (i=0;i<RNN_SPK_NEURONS_2;i++)
       zrh[i] += recur[i]; //z_t and r_t computed in a similar way : sigmoid(in_t + W_z*h_{t-1})
    compute_activation(zrh, zrh, RNN_SPK_NEURONS_2, ACTIVATION_SIGMOID);
+
    for (i=0;i<RNN_SPK_NEURONS;i++)
       h[i] += recur[RNN_SPK_NEURONS_2+i]*z[i]; //n_t = tanh(in_t + r_t o W_n*h_{t-1})
    compute_activation(h, h, RNN_SPK_NEURONS, gru->activation);
+
    for (i=0;i<RNN_SPK_NEURONS;i++)
       h[i] = r[i]*state[i] + (1-r[i])*h[i]; //h_t = z_t o h_{t-1} + (1-z_t) o n_t
    for (i=0;i<RNN_SPK_NEURONS;i++)
@@ -466,19 +504,25 @@ void compute_gru_dec_excit(const GRULayer *gru, float *state, const float *input
    float *z;
    float *r;
    float *h;
+
    z = zrh; //swap with r, pytorch rzh, keras zrh
    r = &zrh[RNN_DEC_EXCIT_NEURONS];
    h = &zrh[RNN_DEC_EXCIT_NEURONS_2];
-   RNN_COPY(zrh, input, RNN_DEC_EXCIT_NEURONS_3);
+
    for (i=0;i<RNN_DEC_EXCIT_NEURONS_3;i++)
       recur[i] = gru->bias[i];
    sgemv_accum(recur, gru->recurrent_weights, RNN_DEC_EXCIT_NEURONS_3, RNN_DEC_EXCIT_NEURONS, RNN_DEC_EXCIT_NEURONS_3, state);
+
+   compute_dense_linear(gru->weights, zrh, input);
+
    for (i=0;i<RNN_DEC_EXCIT_NEURONS_2;i++)
       zrh[i] += recur[i]; //z_t and r_t computed in a similar way : sigmoid(in_t + W_z*h_{t-1})
    compute_activation(zrh, zrh, RNN_DEC_EXCIT_NEURONS_2, ACTIVATION_SIGMOID);
+
    for (i=0;i<RNN_DEC_EXCIT_NEURONS;i++)
       h[i] += recur[RNN_DEC_EXCIT_NEURONS_2+i]*z[i]; //n_t = tanh(in_t + r_t o W_n*h_{t-1})
    compute_activation(h, h, RNN_DEC_EXCIT_NEURONS, gru->activation);
+
    for (i=0;i<RNN_DEC_EXCIT_NEURONS;i++)
       h[i] = r[i]*state[i] + (1-r[i])*h[i]; //h_t = z_t o h_{t-1} + (1-z_t) o n_t
    for (i=0;i<RNN_DEC_EXCIT_NEURONS;i++)
@@ -494,19 +538,25 @@ void compute_gru_dec_melsp(const GRULayer *gru, float *state, const float *input
    float *z;
    float *r;
    float *h;
+
    z = zrh; //swap with r, pytorch rzh, keras zrh
    r = &zrh[RNN_DEC_MELSP_NEURONS];
    h = &zrh[RNN_DEC_MELSP_NEURONS_2];
-   RNN_COPY(zrh, input, RNN_DEC_MELSP_NEURONS_3);
+
    for (i=0;i<RNN_DEC_MELSP_NEURONS_3;i++)
       recur[i] = gru->bias[i];
    sgemv_accum(recur, gru->recurrent_weights, RNN_DEC_MELSP_NEURONS_3, RNN_DEC_MELSP_NEURONS, RNN_DEC_MELSP_NEURONS_3, state);
+
+   compute_dense_linear(gru->weights, zrh, input);
+
    for (i=0;i<RNN_DEC_MELSP_NEURONS_2;i++)
       zrh[i] += recur[i]; //z_t and r_t computed in a similar way : sigmoid(in_t + W_z*h_{t-1})
    compute_activation(zrh, zrh, RNN_DEC_MELSP_NEURONS_2, ACTIVATION_SIGMOID);
+
    for (i=0;i<RNN_DEC_MELSP_NEURONS;i++)
       h[i] += recur[RNN_DEC_MELSP_NEURONS_2+i]*z[i]; //n_t = tanh(in_t + r_t o W_n*h_{t-1})
    compute_activation(h, h, RNN_DEC_MELSP_NEURONS, gru->activation);
+
    for (i=0;i<RNN_DEC_MELSP_NEURONS;i++)
       h[i] = r[i]*state[i] + (1-r[i])*h[i]; //h_t = z_t o h_{t-1} + (1-z_t) o n_t
    for (i=0;i<RNN_DEC_MELSP_NEURONS;i++)
@@ -522,19 +572,25 @@ void compute_gru_post(const GRULayer *gru, float *state, const float *input)
    float *z;
    float *r;
    float *h;
+
    z = zrh; //swap with r, pytorch rzh, keras zrh
    r = &zrh[RNN_POST_NEURONS];
    h = &zrh[RNN_POST_NEURONS_2];
-   RNN_COPY(zrh, input, RNN_POST_NEURONS_3);
+
    for (i=0;i<RNN_POST_NEURONS_3;i++)
       recur[i] = gru->bias[i];
    sgemv_accum(recur, gru->recurrent_weights, RNN_POST_NEURONS_3, RNN_POST_NEURONS, RNN_POST_NEURONS_3, state);
+
+   compute_dense_linear(gru->weights, zrh, input);
+
    for (i=0;i<RNN_POST_NEURONS_2;i++)
       zrh[i] += recur[i]; //z_t and r_t computed in a similar way : sigmoid(in_t + W_z*h_{t-1})
    compute_activation(zrh, zrh, RNN_POST_NEURONS_2, ACTIVATION_SIGMOID);
+
    for (i=0;i<RNN_POST_NEURONS;i++)
       h[i] += recur[RNN_POST_NEURONS_2+i]*z[i]; //n_t = tanh(in_t + r_t o W_n*h_{t-1})
    compute_activation(h, h, RNN_POST_NEURONS, gru->activation);
+
    for (i=0;i<RNN_POST_NEURONS;i++)
       h[i] = r[i]*state[i] + (1-r[i])*h[i]; //h_t = z_t o h_{t-1} + (1-z_t) o n_t
    for (i=0;i<RNN_POST_NEURONS;i++)
@@ -542,12 +598,12 @@ void compute_gru_post(const GRULayer *gru, float *state, const float *input)
 }
 
 //PLT_Dec20
-void compute_sampling_laplace(float *res, const float *loc, const float *scale, int dim)
+void compute_sampling_laplace(float *loc, const float *scale, int dim)
 {
     float r;
     for (int i=0;i<dim;i++) {
         r = ((float) rand() - HALF_RAND_MAX) / HALF_RAND_MAX_FLT_MIN; //r ~ (-1,1)
-        if (r > 0) res[i] = loc[i] - scale[i] * log(1-r);
-        else res[i] = loc[i] + scale[i] * log(1-r);
+        if (r > 0) loc[i] -= scale[i] * log(1-r);
+        else loc[i] += scale[i] * log(1-r);
     }
 }

@@ -38,7 +38,17 @@ import torch
 from mwdlpnet import GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF
 from pqmf import PQMF
 
+from scipy.signal import firwin
+from scipy.signal import windows
+
+from librosa import filters
+
 import numpy as np
+
+SHIFTMS 5
+WINMS 27.5
+HIGHPASS_CUTOFF 65
+HPASS_FILTER_TAPS 1023
 
 #import h5py
 #import re
@@ -382,6 +392,7 @@ def main():
     hf.write('extern const DenseLayer {};\n\n'.format(name));
   
     #PyTorch = (out,in,ks) / (out,in)
+    #to
     #Keras = (ks,in,out) / (in,out)
 
     #dump scale_in
@@ -499,9 +510,6 @@ def main():
     ## Previous implementation (as in ICASSP 2021) uses shared factors between bands for signs and mags [for data-driven LPC],
     ## though the mid-output uses band-dependent factors.
     ## These factors should be made band-dependent for all signs, mags, and mid-output for proper modeling as current implementation.
-    ## Further, with 10-bit mu-law coarse-fine output, there is no need to use mid-output because
-    ## this layer can directly generates the band-dependent 32-dim (sqrt(1024)) logits outputs
-    ## instead of 256-dim (16-bit coarse-fine) or 512-dim (9-bit mu-law) which needs smaller mid-output for reducing computational cost.
     printVector(f, factors[:model.out.lpc2bands], name + '_factor_signs')
     printVector(f, factors[model.out.lpc2bands:model.out.lpc4bands], name + '_factor_mags')
     printVector(f, factors[model.out.lpc4bands:], name + '_factor_mids')
@@ -533,9 +541,6 @@ def main():
     ## Previous implementation (as in ICASSP 2021) uses shared factors between bands for signs and mags [for data-driven LPC],
     ## though the mid-output uses band-dependent factors.
     ## These factors should be made band-dependent for all signs, mags, and mid-output for proper modeling as current implementation.
-    ## Further, with 10-bit mu-law coarse-fine output, there is no need to use mid-output because
-    ## this layer can directly generates the band-dependent 32-dim (sqrt(1024)) logits outputs
-    ## instead of 256-dim (16-bit coarse-fine) or 512-dim (9-bit mu-law) which needs smaller mid-output for reducing computational cost.
     printVector(f, factors[:model.out_f.lpc2bands], name + '_factor_signs')
     printVector(f, factors[model.out_f.lpc2bands:model.out_f.lpc4bands], name + '_factor_mags')
     printVector(f, factors[model.out_f.lpc4bands:], name + '_factor_mids')
@@ -573,7 +578,7 @@ def main():
     hf.write('#define {}_DELAY {}\n'.format(name.upper(), pqmf_delay))
     hf.write('extern const Conv1DLayer {};\n\n'.format(name));
 
-    hf.write('#define MAX_RNN_NEURONS {}\n\n'.format(max_rnn_neurons))
+    #hf.write('#define MAX_RNN_NEURONS {}\n\n'.format(max_rnn_neurons))
     hf.write('#define RNN_MAIN_NEURONS {}\n\n'.format(model.hidden_units))
     hf.write('#define RNN_SUB_NEURONS {}\n\n'.format(model.hidden_units_2))
     hf.write('#define N_MBANDS {}\n\n'.format(model.n_bands))
@@ -582,6 +587,7 @@ def main():
     hf.write('#define MID_OUT {}\n\n'.format(model.mid_out))
     hf.write('#define SQRT_QUANTIZE {}\n\n'.format(model.cf_dim))
     hf.write('#define N_SAMPLE_BANDS {}\n\n'.format(model.upsampling_factor))
+    hf.write('#define CONV_KERNEL_1 {}\n\n'.format(model.kernel_size-1))
     hf.write('#define FEATURES_DIM {}\n\n'.format(model.in_dim))
 
     hf.write('typedef struct {\n')
@@ -664,6 +670,7 @@ def main():
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[2]))
     hf.write('#define {}_STATE_SIZE ({}*{})\n'.format(name.upper(), weights.shape[1],
         model_encoder_melsp.pad_left+1+model_encoder_melsp.pad_right-1))
+    enc_melsp_state_size = weights.shape[1]*(model_encoder_melsp.pad_left+1+model_encoder_melsp.pad_right-1)
     hf.write('#define {}_DELAY {}\n'.format(name.upper(), model_encoder_melsp.pad_right))
     hf.write('extern const Conv1DLayer {};\n\n'.format(name));
 
@@ -685,8 +692,15 @@ def main():
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[2]))
     hf.write('#define {}_STATE_SIZE ({}*{})\n'.format(name.upper(), weights.shape[1],
         model_encoder_excit.pad_left+1+model_encoder_excit.pad_right-1))
+    enc_excit_state_size = weights.shape[1]*(model_encoder_excit.pad_left+1+model_encoder_xcit.pad_right-1)
     hf.write('#define {}_DELAY {}\n'.format(name.upper(), model_encoder_excit.pad_right))
     hf.write('extern const Conv1DLayer {};\n\n'.format(name));
+
+    ## Same delay for melsp and excit encoders
+    assert(model_encoder_melsp.pad_right == model_encoder_excit.pad_right)
+
+    ## Same conv out size for melsp and excit encoders
+    assert(enc_melsp_state_size == dec_melsp_state_size)
 
     ## Dump conv_in dec_excit
     name = "feature_conv_dec_excit"
@@ -754,7 +768,7 @@ def main():
     #dump dense_gru_enc_melsp
     name = "gru_enc_melsp"
     print("printing layer " + name + " of type " + model_encoder_melsp.gru.__class__.__name__)
-    weights_ih = model_encoder_melsp.gru.weight_ih_l0.transpose(0,1)[cond_size:].numpy()
+    weights_ih = model_encoder_melsp.gru.weight_ih_l0.transpose(0,1).numpy()
     weights_hh = model_encoder_melsp.gru.weight_hh_l0.transpose(0,1).numpy()
     bias = model_encoder_melsp.gru.bias_hh_l0
     printVector(f, weights_ih, name + '_weights')
@@ -774,7 +788,7 @@ def main():
     #dump dense_gru_enc_excit
     name = "gru_enc_excit"
     print("printing layer " + name + " of type " + model_encoder_excit.gru.__class__.__name__)
-    weights_ih = model_encoder_excit.gru.weight_ih_l0.transpose(0,1)[cond_size:].numpy()
+    weights_ih = model_encoder_excit.gru.weight_ih_l0.transpose(0,1).numpy()
     weights_hh = model_encoder_excit.gru.weight_hh_l0.transpose(0,1).numpy()
     bias = model_encoder_excit.gru.bias_hh_l0
     printVector(f, weights_ih, name + '_weights')
@@ -794,7 +808,7 @@ def main():
     #dump dense_gru_spk
     name = "gru_spk"
     print("printing layer " + name + " of type " + model_spk.gru.__class__.__name__)
-    weights_ih = model_spk.gru.weight_ih_l0.transpose(0,1)[cond_size:].numpy()
+    weights_ih = model_spk.gru.weight_ih_l0.transpose(0,1).numpy()
     weights_hh = model_spk.gru.weight_hh_l0.transpose(0,1).numpy()
     bias = model_spk.gru.bias_hh_l0
     printVector(f, weights_ih, name + '_weights')
@@ -814,7 +828,7 @@ def main():
     #dump dense_gru_dec_excit
     name = "gru_dec_excit"
     print("printing layer " + name + " of type " + model_decoder_excit.gru.__class__.__name__)
-    weights_ih = model_decoder_excit.gru.weight_ih_l0.transpose(0,1)[cond_size:].numpy()
+    weights_ih = model_decoder_excit.gru.weight_ih_l0.transpose(0,1).numpy()
     weights_hh = model_decoder_excit.gru.weight_hh_l0.transpose(0,1).numpy()
     bias = model_decoder_excit.gru.bias_hh_l0
     printVector(f, weights_ih, name + '_weights')
@@ -834,7 +848,7 @@ def main():
     #dump dense_gru_dec_melsp
     name = "gru_dec_melsp"
     print("printing layer " + name + " of type " + model_decoder_melsp.gru.__class__.__name__)
-    weights_ih = model_decoder_melsp.gru.weight_ih_l0.transpose(0,1)[cond_size:].numpy()
+    weights_ih = model_decoder_melsp.gru.weight_ih_l0.transpose(0,1).numpy()
     weights_hh = model_decoder_melsp.gru.weight_hh_l0.transpose(0,1).numpy()
     bias = model_decoder_melsp.gru.bias_hh_l0
     printVector(f, weights_ih, name + '_weights')
@@ -854,7 +868,7 @@ def main():
     #dump dense_gru_post
     name = "gru_post"
     print("printing layer " + name + " of type " + model_post.gru.__class__.__name__)
-    weights_ih = model_post.gru.weight_ih_l0.transpose(0,1)[cond_size:].numpy()
+    weights_ih = model_post.gru.weight_ih_l0.transpose(0,1).numpy()
     weights_hh = model_post.gru.weight_hh_l0.transpose(0,1).numpy()
     bias = model_post.gru.bias_hh_l0
     printVector(f, weights_ih, name + '_weights')
@@ -872,6 +886,7 @@ def main():
     hf.write('extern const GRULayer {};\n\n'.format(name));
 
     #PyTorch = (out,in,ks) / (out,in)
+    #to
     #Keras = (ks,in,out) / (in,out)
 
     #dump fc_out_enc_melsp
@@ -948,6 +963,27 @@ def main():
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
     hf.write('extern const DenseLayer {};\n\n'.format(name));
 
+    hf.write('#define RNN_ENC_MELSP_NEURONS {}\n\n'.format(model_encoder_melsp.hidden_units))
+    hf.write('#define RNN_ENC_EXCIT_NEURONS {}\n\n'.format(model_encoder_excit.hidden_units))
+    hf.write('#define RNN_SPK_NEURONS {}\n\n'.format(model_spk.hidden_units))
+    hf.write('#define RNN_DEC_MELSP_NEURONS {}\n\n'.format(model_decoder_melsp.hidden_units))
+    hf.write('#define RNN_DEC_EXCIT_NEURONS {}\n\n'.format(model_decoder_excit.hidden_units))
+    hf.write('#define RNN_POST_NEURONS {}\n\n'.format(model_post.hidden_units))
+    hf.write('#define FEATURE_DIM_MELSP {}\n\n'.format(model_decoder_melsp.spec_dim))
+    hf.write('#define FEATURE_LAT_DIM_MELSP {}\n\n'.format(model_encoder_melsp.lat_dim))
+    hf.write('#define FEATURE_LAT_DIM_EXCIT {}\n\n'.format(model_encoder_excit.lat_dim))
+    hf.write('#define FEATURE_N_SPK {}\n\n'.format(model_decoder_melsp.n_spk))
+    hf.write('#define FEATURE_CAP_DIM {}\n\n'.format(model_decoder_excit.cap_dim))
+    hf.write('#define FEATURE_CONV_ENC_STATE_SIZE {}\n\n'.format(enc_melsp_state_size))
+    hf.write('#define FEATURE_CONV_VC_DELAY {}\n\n'.format(model_encoder_melsp.pad_right+model_decoder_excit.pad_right+model_decoder_melsp.pad_right+model_post.pad_right))
+    hf.write('#define ENC_CONV_KERNEL_1 {}\n\n'.format(model_encoder_melsp.kernel_size-1))
+    hf.write('#define DEC_EXCIT_CONV_KERNEL_1 {}\n\n'.format(model_decoder_excit.kernel_size-1))
+    hf.write('#define DEC_MELSP_CONV_KERNEL_1 {}\n\n'.format(model_decoder_melsp.kernel_size-1))
+    hf.write('#define POST_CONV_KERNEL_1 {}\n\n'.format(model_post.kernel_size-1))
+    hf.write('#define NB_IN_DEC_EXCIT {}\n\n'.format(model_decoder_excit.in_dim*model_decoder_excit.conv.rec_field))
+    hf.write('#define NB_IN_DEC_MELSP {}\n\n'.format(model_decoder_melsp.in_dim*model_decoder_melsp.conv.rec_field))
+    hf.write('#define NB_IN_POST {}\n\n'.format(model_post.in_dim*model_post.conv.rec_field))
+
     hf.write('typedef struct {\n')
     hf.write('  float feature_conv_enc_melsp_state[FEATURE_CONV_ENC_MELSP_STATE_SIZE];\n')
     hf.write('  float feature_conv_enc_excit_state[FEATURE_CONV_ENC_EXCIT_STATE_SIZE];\n')
@@ -960,12 +996,6 @@ def main():
     hf.write('  float gru_dec_excit_state[GRU_DEC_EXCIT_STATE_SIZE];\n')
     hf.write('  float gru_dec_melsp_state[GRU_DEC_MELSP_STATE_SIZE];\n')
     hf.write('  float gru_post_state[GRU_POST_STATE_SIZE];\n')
-    hf.write('  short kernel_size_dec_excit KERNEL_SIZE_DEC_EXCIT;\n')
-    hf.write('  short kernel_size_dec_melsp KERNEL_SIZE_DEC_MELSP;\n')
-    hf.write('  short kernel_size_post KERNEL_SIZE_POST;\n')
-    hf.write('  short nb_in_dec_excit NB_IN_DEC_EXCIT;\n')
-    hf.write('  short nb_in_dec_melsp NB_IN_DEC_MELSP;\n')
-    hf.write('  short nb_in_post NB_IN_POST;\n')
     hf.write('} CycleVAEPostMelspExcitSpkNNetState;\n')
 
     hf.write('\n\n#endif\n')
@@ -975,6 +1005,71 @@ def main():
 
     ## Dump high-pass filter coeffs, half hanning-window coeffs, and mel-filterbank here
     ## hpassfilt.h, halfwin.h, melfb.h
+    fs = config_cycvae.fs
+    fftl = config_cycvae.fftl
+    shiftms = SHIFTMS
+    winms = WINMS
+    print(f'{fs} {fftl} {shiftms} {winms}')
+
+    hop_length = int((fs/1000)*shiftms)
+    win_length = int((fs/1000)*winms)
+    print(f'{hop_length} {win_length}')
+
+    cutoff = HIGHPASS_CUTOFF
+    nyq = fs // 2
+    norm_cutoff = cutoff / nyq
+    taps = HPASS_FILTER_TAPS
+    print(f'{cutoff} {nyq} {norm_cutoff} {taps}')
+
+    mel_dim = config_cycvae.mel_dim
+    print(f'{mel_dim}')
+
+    cfile = "freq_conf.h"
+    hf = open(cfile, 'w')
+    hf.write('/*This file is automatically generated from model configuration*/\n\n')
+    hf.write('#ifndef FREQ_CONF_H\n#define FREQ_CONF_H\n\n')
+    hf.write('#define SAMPLING_FREQUENCY {}\n\n'.format(fs))
+    hf.write('#define FRAME_SHIFT {}\n\n'.format(hop_length))
+    hf.write('#define WINDOW_LENGTH {}\n\n'.format(win_length))
+    hf.write('#define FFT_LENGTH {}\n\n'.format(fftl))
+    hf.write('#define HPASS_FILT_TAPS {}\n\n'.format(taps))
+    hf.write('#define MEL_DIM {}\n\n'.format(mel_dim))
+    hf.write('\n\n#endif\n')
+    hf.close()
+
+    #periodic hanning window, starts with 0, even N-length
+    ## [0,1st,2nd,...,(N/2-1)-th,1,(N/2-1)-th,...,2nd,1st]
+    #take only coefficients 1st until (N/2-1)th because 0th is 0 and (N/2)-th is 1
+    #the (N/2-1) right side is reflected for (N/2-1)th until 1st
+    #so the total length is (N/2-1)*2 [left--right=reflect] + 1 [0th=0] + 1 [(N-2)th=1] = N [win_length]
+    half_hann_win = windows.hann(win_length, sym=False)[1:(win_length//2)] #N/2-1
+    cfile = "halfwin.h"
+    hf = open(cfile, 'w')
+    hf.write('/*This file is automatically generated from scipy function*/\n\n')
+    hf.write('#ifndef HALF_WIN_H\n#define HALF_WIN_H\n\n')
+    printVector(hf, half_hann_win, "halfwin")
+    hf.write('\n\n#endif\n')
+    hf.close()
+    
+    # high-pass filter
+    fil = firwin(taps, norm_cutoff, pass_zero=False) #taps
+    cfile = "hpassfilt.h"
+    hf = open(cfile, 'w')
+    hf.write('/*This file is automatically generated from scipy function*/\n\n')
+    hf.write('#ifndef HPASS_FILT_H\n#define HPASS_FILT_H\n\n')
+    printVector(hf, filt, "hpassfilt")
+    hf.write('\n\n#endif\n')
+    hf.close()
+
+    # mel-filterbank
+    melfb = filters.mel(fs, fftl, n_mels=mel_dim) #mel_dimx(n_fft//2+1)
+    cfile = "melfb.h"
+    hf = open(cfile, 'w')
+    hf.write('/*This file is automatically generated from librosa function*/\n\n')
+    hf.write('#ifndef MEL_FB_H\n#define MEL_FB_H\n\n')
+    printVector(hf, melfb, "melfb")
+    hf.write('\n\n#endif\n')
+    hf.close()
 
 
 if __name__ == "__main__":
