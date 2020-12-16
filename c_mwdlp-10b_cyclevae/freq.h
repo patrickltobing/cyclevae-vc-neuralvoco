@@ -31,12 +31,12 @@
 
 //PLT_Dec20
 /*
-Define these on freq_conf.h
-SAMPLING_FREQUENCY 16000 //fs
-FRAME_SHIFT 80 //int((fs/1000)*shiftms); shiftms = 5 ms
-WINDOW_LENGTH 440 //int((fs/1000)*winms); winms = 27.5 ms
-FFT_LENGTH 1024 //fs=8kHz-16kHz: 1024; 22.05kHz-24kHz: 2048; 44.1kHz-48kHz: 4096
-HPASS_FILT_TAPS 1023 //order+1, has to be odd because high-pass filter passes nyq. freq.
+    Define these on freq_conf.h
+    SAMPLING_FREQUENCY 16000 //fs
+    FRAME_SHIFT 80 //int((fs/1000)*shiftms); shiftms = 5 ms
+    WINDOW_LENGTH 440 //int((fs/1000)*winms); winms = 27.5 ms
+    FFT_LENGTH 1024 //fs=8kHz-16kHz: 1024; 22.05kHz-24kHz: 2048; 44.1kHz-48kHz: 4096
+    HPASS_FILT_TAPS 1023 //order+1, has to be odd because high-pass filter passes nyq. freq.
 */
 
 #define WINDOW_LENGTH_1 (WINDOW_LENGTH - 1)
@@ -88,4 +88,3 @@ void apply_window(DSPState *dsp);
 void shift_apply_window(DSPState *dsp, const float *x);
 
 void mel_spec_extract(DSPState *dsp, float *melsp);
-

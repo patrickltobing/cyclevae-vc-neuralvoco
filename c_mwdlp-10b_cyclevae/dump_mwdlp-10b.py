@@ -35,7 +35,7 @@ import os
 import sys
 
 import torch
-from mwdlpnet import GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF
+from vcneuvoco import GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF, decode_mu_law
 from pqmf import PQMF
 
 from scipy.signal import firwin
@@ -55,7 +55,7 @@ HPASS_FILTER_TAPS 1023
 
 
 def printVector(f, vector, name, dtype='float'):
-    v = np.reshape(vector, (-1));
+    v = np.reshape(vector, (-1))
     #print('static const float ', name, '[', len(v), '] = \n', file=f)
     f.write('static const {} {}[{}] = {{\n   '.format(dtype, name, len(v)))
     for i in range(0, len(v)):
@@ -303,7 +303,7 @@ def main():
     f.write('const EmbeddingLayer {} = {{\n   {}_weights,\n   {}, {}\n}};\n\n'
             .format(name, name, weights.shape[0], weights.shape[1]))
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
-    hf.write('extern const EmbeddingLayer {};\n\n'.format(name));
+    hf.write('extern const EmbeddingLayer {};\n\n'.format(name))
     #dump coarse_fine pre-computed input_weight contribution for all classes
     name = 'gru_a_embed_fine'
     print("printing layer " + name)
@@ -316,7 +316,7 @@ def main():
     f.write('const EmbeddingLayer {} = {{\n   {}_weights,\n   {}, {}\n}};\n\n'
             .format(name, name, weights.shape[0], weights.shape[1]))
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
-    hf.write('extern const EmbeddingLayer {};\n\n'.format(name));
+    hf.write('extern const EmbeddingLayer {};\n\n'.format(name))
     #dump input cond-part weight and input bias
     name = 'gru_a_dense_feature'
     print("printing layer " + name)
@@ -327,7 +327,7 @@ def main():
     f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_LINEAR\n}};\n\n'
             .format(name, name, name, weights.shape[0], weights.shape[1]))
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
-    hf.write('extern const DenseLayer {};\n\n'.format(name));
+    hf.write('extern const DenseLayer {};\n\n'.format(name))
 
     #dump gru_coarse input weight cond-part and input bias
     name = 'gru_b_dense_feature'
@@ -340,7 +340,7 @@ def main():
     f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_LINEAR\n}};\n\n'
             .format(name, name, name, weights.shape[0], weights.shape[1]))
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
-    hf.write('extern const DenseLayer {};\n\n'.format(name));
+    hf.write('extern const DenseLayer {};\n\n'.format(name))
     #dump gru_coarse input weight state-part
     name = 'gru_b_dense_feature_state'
     print("printing layer " + name)
@@ -351,7 +351,7 @@ def main():
     f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_LINEAR\n}};\n\n'
             .format(name, name, name, weights.shape[0], weights.shape[1]))
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
-    hf.write('extern const DenseLayer {};\n\n'.format(name));
+    hf.write('extern const DenseLayer {};\n\n'.format(name))
 
     #gru_fine weight_input
     W = model.gru_f.weight_ih_l0.permute(1,0).numpy()
@@ -367,7 +367,7 @@ def main():
     f.write('const EmbeddingLayer {} = {{\n   {}_weights,\n   {}, {}\n}};\n\n'
             .format(name, name, weights.shape[0], weights.shape[1]))
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
-    hf.write('extern const EmbeddingLayer {};\n\n'.format(name));
+    hf.write('extern const EmbeddingLayer {};\n\n'.format(name))
     #dump input cond-part weight and input bias
     name = 'gru_c_dense_feature'
     print("printing layer " + name)
@@ -378,7 +378,7 @@ def main():
     f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_LINEAR\n}};\n\n'
             .format(name, name, name, weights.shape[0], weights.shape[1]))
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
-    hf.write('extern const DenseLayer {};\n\n'.format(name));
+    hf.write('extern const DenseLayer {};\n\n'.format(name))
     #dump input state-part weight
     name = 'gru_c_dense_feature_state'
     print("printing layer " + name)
@@ -389,7 +389,7 @@ def main():
     f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_LINEAR\n}};\n\n'
             .format(name, name, name, weights.shape[0], weights.shape[1]))
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
-    hf.write('extern const DenseLayer {};\n\n'.format(name));
+    hf.write('extern const DenseLayer {};\n\n'.format(name))
   
     #PyTorch = (out,in,ks) / (out,in)
     #to
@@ -406,7 +406,7 @@ def main():
     printVector(f, std, name + '_std')
     f.write('const DenseLayer {} = {{\n   {}_mean,\n   {}_std,\n   {}\n}};\n\n'
             .format(name, name, name, bias.shape[0]))
-    hf.write('extern const NormLayer {};\n\n'.format(name));
+    hf.write('extern const NormStats {};\n\n'.format(name))
 
     #dump segmental_conv
     name = "feature_conv"
@@ -427,7 +427,7 @@ def main():
     hf.write('#define {}_STATE_SIZE ({}*{})\n'.format(name.upper(), weights.shape[1],
         model.pad_left+1+model.pad_right-1))
     hf.write('#define {}_DELAY {}\n'.format(name.upper(), model.pad_right))
-    hf.write('extern const Conv1DLayer {};\n\n'.format(name));
+    hf.write('extern const Conv1DLayer {};\n\n'.format(name))
 
     #dump dense_relu
     name = 'feature_dense'
@@ -439,7 +439,7 @@ def main():
     f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_RELU\n}};\n\n'
             .format(name, name, name, weights.shape[0], weights.shape[1]))
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
-    hf.write('extern const DenseLayer {};\n\n'.format(name));
+    hf.write('extern const DenseLayer {};\n\n'.format(name))
 
     #dump sparse_main_gru
     name = 'sparse_gru_a'
@@ -457,7 +457,7 @@ def main():
             weights.shape[1]//3, activation, reset_after))
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]//3))
     hf.write('#define {}_STATE_SIZE {}\n'.format(name.upper(), weights.shape[1]//3))
-    hf.write('extern const SparseGRULayer {};\n\n'.format(name));
+    hf.write('extern const SparseGRULayer {};\n\n'.format(name))
 
     #dump dense_gru_coarse
     name = "gru_b"
@@ -477,7 +477,7 @@ def main():
             activation, reset_after))
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights_hh.shape[1]//3))
     hf.write('#define {}_STATE_SIZE {}\n'.format(name.upper(), weights_hh.shape[1]//3))
-    hf.write('extern const GRULayer {};\n\n'.format(name));
+    hf.write('extern const GRULayer {};\n\n'.format(name))
 
     #dump dense_gru_fine
     name = "gru_c"
@@ -497,7 +497,7 @@ def main():
             activation, reset_after))
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights_hh.shape[1]//3))
     hf.write('#define {}_STATE_SIZE {}\n'.format(name.upper(), weights_hh.shape[1]//3))
-    hf.write('extern const GRULayer {};\n\n'.format(name));
+    hf.write('extern const GRULayer {};\n\n'.format(name))
 
     #dump dual_fc_coarse
     name = "dual_fc_coarse"
@@ -516,7 +516,7 @@ def main():
     f.write('const MDenseLayerMWDLP10 {} = {{\n   {}_bias,\n   {}_weights,\n   {}_factor_signs,\n   {}_factor_mags,\n   '\
         '{}_factor_mids,\n   ACTIVATION_TANH, ACTIVATION_EXP, ACTIVATION_RELU\n}};\n\n'.format(name, name, name,
             name, name, name))
-    hf.write('extern const MDenseLayerMWDLP10 {};\n\n'.format(name));
+    hf.write('extern const MDenseLayerMWDLP10 {};\n\n'.format(name))
 
     #dump dense_fc_out_coarse
     name = 'fc_out_coarse'
@@ -528,7 +528,7 @@ def main():
     f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_TANHSHRINK\n}};\n\n'
             .format(name, name, name, weights.shape[0], weights.shape[1]))
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
-    hf.write('extern const DenseLayer {};\n\n'.format(name));
+    hf.write('extern const DenseLayer {};\n\n'.format(name))
 
     #dump dual_fc_fine
     name = "dual_fc_fine"
@@ -547,7 +547,7 @@ def main():
     f.write('const MDenseLayerMWDLP10 {} = {{\n   {}_bias,\n   {}_weights,\n   {}_factor_signs,\n   {}_factor_mags,\n   '\
         '{}_factor_mids,\n   ACTIVATION_TANH, ACTIVATION_EXP, ACTIVATION_RELU\n}};\n\n'.format(name, name, name,
             name, name, name))
-    hf.write('extern const MDenseLayerMWDLP10 {};\n\n'.format(name));
+    hf.write('extern const MDenseLayerMWDLP10 {};\n\n'.format(name))
 
     #dump dense_fc_out_fine
     name = 'fc_out_fine'
@@ -559,7 +559,7 @@ def main():
     f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_TANHSHRINK\n}};\n\n'
             .format(name, name, name, weights.shape[0], weights.shape[1]))
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
-    hf.write('extern const DenseLayer {};\n\n'.format(name));
+    hf.write('extern const DenseLayer {};\n\n'.format(name))
 
     #dump pqmf_synthesis filt
     name = "pqmf_synthesis"
@@ -576,7 +576,7 @@ def main():
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[2]))
     hf.write('#define {}_STATE_SIZE ({}*{})\n'.format(name.upper(), weights.shape[1], pqmf_delay+1))
     hf.write('#define {}_DELAY {}\n'.format(name.upper(), pqmf_delay))
-    hf.write('extern const Conv1DLayer {};\n\n'.format(name));
+    hf.write('extern const Conv1DLayer {};\n\n'.format(name))
 
     #hf.write('#define MAX_RNN_NEURONS {}\n\n'.format(max_rnn_neurons))
     hf.write('#define RNN_MAIN_NEURONS {}\n\n'.format(model.hidden_units))
@@ -626,7 +626,7 @@ def main():
     printVector(f, std, name + '_std')
     f.write('const DenseLayer {} = {{\n   {}_mean,\n   {}_std,\n   {}\n}};\n\n'
             .format(name, name, name, bias.shape[0]))
-    hf.write('extern const NormLayer {};\n\n'.format(name));
+    hf.write('extern const NormStats {};\n\n'.format(name))
 
     ## Dump uvf0_norm
     name = 'uvf0_norm'
@@ -639,7 +639,7 @@ def main():
     printVector(f, std, name + '_std')
     f.write('const DenseLayer {} = {{\n   {}_mean,\n   {}_std,\n   {}\n}};\n\n'
             .format(name, name, name, mean.shape[0]))
-    hf.write('extern const NormLayer {};\n\n'.format(name));
+    hf.write('extern const NormStats {};\n\n'.format(name))
 
     ## Dump uvcap_norm
     name = 'uvcap_norm'
@@ -650,7 +650,7 @@ def main():
     printVector(f, std, name + '_std')
     f.write('const DenseLayer {} = {{\n   {}_mean,\n   {}_std,\n   {}\n}};\n\n'
             .format(name, name, name, mean.shape[0]))
-    hf.write('extern const NormLayer {};\n\n'.format(name));
+    hf.write('extern const NormStats {};\n\n'.format(name))
 
     ## Dump conv_in enc_melsp
     name = "feature_conv_enc_melsp"
@@ -672,7 +672,7 @@ def main():
         model_encoder_melsp.pad_left+1+model_encoder_melsp.pad_right-1))
     enc_melsp_state_size = weights.shape[1]*(model_encoder_melsp.pad_left+1+model_encoder_melsp.pad_right-1)
     hf.write('#define {}_DELAY {}\n'.format(name.upper(), model_encoder_melsp.pad_right))
-    hf.write('extern const Conv1DLayer {};\n\n'.format(name));
+    hf.write('extern const Conv1DLayer {};\n\n'.format(name))
 
     ## Dump conv_in enc_excit
     name = "feature_conv_enc_excit"
@@ -694,7 +694,7 @@ def main():
         model_encoder_excit.pad_left+1+model_encoder_excit.pad_right-1))
     enc_excit_state_size = weights.shape[1]*(model_encoder_excit.pad_left+1+model_encoder_xcit.pad_right-1)
     hf.write('#define {}_DELAY {}\n'.format(name.upper(), model_encoder_excit.pad_right))
-    hf.write('extern const Conv1DLayer {};\n\n'.format(name));
+    hf.write('extern const Conv1DLayer {};\n\n'.format(name))
 
     ## Same delay for melsp and excit encoders
     assert(model_encoder_melsp.pad_right == model_encoder_excit.pad_right)
@@ -721,7 +721,7 @@ def main():
     hf.write('#define {}_STATE_SIZE ({}*{})\n'.format(name.upper(), weights.shape[1],
         model_decoder_excit.pad_left+1+model_decoder_excit.pad_right-1))
     hf.write('#define {}_DELAY {}\n'.format(name.upper(), model_decoder_excit.pad_right))
-    hf.write('extern const Conv1DLayer {};\n\n'.format(name));
+    hf.write('extern const Conv1DLayer {};\n\n'.format(name))
 
     ## Dump conv_in dec_melsp
     name = "feature_conv_dec_melsp"
@@ -742,7 +742,7 @@ def main():
     hf.write('#define {}_STATE_SIZE ({}*{})\n'.format(name.upper(), weights.shape[1],
         model_decoder_melsp.pad_left+1+model_decoder_melsp.pad_right-1))
     hf.write('#define {}_DELAY {}\n'.format(name.upper(), model_decoder_melsp.pad_right))
-    hf.write('extern const Conv1DLayer {};\n\n'.format(name));
+    hf.write('extern const Conv1DLayer {};\n\n'.format(name))
 
     ## Dump conv_in dec_post
     name = "feature_conv_dec_post"
@@ -763,7 +763,7 @@ def main():
     hf.write('#define {}_STATE_SIZE ({}*{})\n'.format(name.upper(), weights.shape[1],
         model_decoder_post.pad_left+1+model_decoder_post.pad_right-1))
     hf.write('#define {}_DELAY {}\n'.format(name.upper(), model_decoder_post.pad_right))
-    hf.write('extern const Conv1DLayer {};\n\n'.format(name));
+    hf.write('extern const Conv1DLayer {};\n\n'.format(name))
 
     #dump dense_gru_enc_melsp
     name = "gru_enc_melsp"
@@ -783,7 +783,7 @@ def main():
             activation, reset_after))
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights_hh.shape[1]//3))
     hf.write('#define {}_STATE_SIZE {}\n'.format(name.upper(), weights_hh.shape[1]//3))
-    hf.write('extern const GRULayer {};\n\n'.format(name));
+    hf.write('extern const GRULayer {};\n\n'.format(name))
 
     #dump dense_gru_enc_excit
     name = "gru_enc_excit"
@@ -803,7 +803,7 @@ def main():
             activation, reset_after))
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights_hh.shape[1]//3))
     hf.write('#define {}_STATE_SIZE {}\n'.format(name.upper(), weights_hh.shape[1]//3))
-    hf.write('extern const GRULayer {};\n\n'.format(name));
+    hf.write('extern const GRULayer {};\n\n'.format(name))
 
     #dump dense_gru_spk
     name = "gru_spk"
@@ -823,7 +823,7 @@ def main():
             activation, reset_after))
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights_hh.shape[1]//3))
     hf.write('#define {}_STATE_SIZE {}\n'.format(name.upper(), weights_hh.shape[1]//3))
-    hf.write('extern const GRULayer {};\n\n'.format(name));
+    hf.write('extern const GRULayer {};\n\n'.format(name))
 
     #dump dense_gru_dec_excit
     name = "gru_dec_excit"
@@ -843,7 +843,7 @@ def main():
             activation, reset_after))
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights_hh.shape[1]//3))
     hf.write('#define {}_STATE_SIZE {}\n'.format(name.upper(), weights_hh.shape[1]//3))
-    hf.write('extern const GRULayer {};\n\n'.format(name));
+    hf.write('extern const GRULayer {};\n\n'.format(name))
 
     #dump dense_gru_dec_melsp
     name = "gru_dec_melsp"
@@ -863,7 +863,7 @@ def main():
             activation, reset_after))
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights_hh.shape[1]//3))
     hf.write('#define {}_STATE_SIZE {}\n'.format(name.upper(), weights_hh.shape[1]//3))
-    hf.write('extern const GRULayer {};\n\n'.format(name));
+    hf.write('extern const GRULayer {};\n\n'.format(name))
 
     #dump dense_gru_post
     name = "gru_post"
@@ -883,7 +883,7 @@ def main():
             activation, reset_after))
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights_hh.shape[1]//3))
     hf.write('#define {}_STATE_SIZE {}\n'.format(name.upper(), weights_hh.shape[1]//3))
-    hf.write('extern const GRULayer {};\n\n'.format(name));
+    hf.write('extern const GRULayer {};\n\n'.format(name))
 
     #PyTorch = (out,in,ks) / (out,in)
     #to
@@ -893,75 +893,100 @@ def main():
     name = 'fc_out_enc_melsp'
     print("printing layer " + name)
     #take only mean-part output [latent without sampling, i.e., MAP estimate]
-    weights = model_encoder_melsp.out.out.weight[:model_encoder_melsp.lat_dim].permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
-    bias = model_encoder_melsp.out.out.bias[:model_encoder_melsp.lat_dim].numpy()
+    weights = model_encoder_melsp.out.weight[:model_encoder_melsp.lat_dim].permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
+    bias = model_encoder_melsp.out.bias[:model_encoder_melsp.lat_dim].numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
     f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_LINEAR\n}};\n\n'
             .format(name, name, name, weights.shape[0], weights.shape[1]))
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
-    hf.write('extern const DenseLayer {};\n\n'.format(name));
+    hf.write('extern const DenseLayer {};\n\n'.format(name))
 
     #dump fc_out_enc_excit
     name = 'fc_out_enc_excit'
     print("printing layer " + name)
     #take only mean-part output [latent without sampling, i.e., MAP estimate]
-    weights = model_encoder_excit.out.out.weight[:model_encoder_excit.lat_dim].permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
-    bias = model_encoder_excit.out.out.bias[:model_encoder_excit.lat_dim].numpy()
+    weights = model_encoder_excit.out.weight[:model_encoder_excit.lat_dim].permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
+    bias = model_encoder_excit.out.bias[:model_encoder_excit.lat_dim].numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
     f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_LINEAR\n}};\n\n'
             .format(name, name, name, weights.shape[0], weights.shape[1]))
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
-    hf.write('extern const DenseLayer {};\n\n'.format(name));
+    hf.write('extern const DenseLayer {};\n\n'.format(name))
 
     #dump fc_out_spk
     name = 'fc_out_spk'
     print("printing layer " + name)
-    weights = model_spk.out.out.weight.permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
-    bias = model_spk.out.out.bias.numpy()
+    weights = model_spk.out.weight.permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
+    bias = model_spk.out.bias.numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
     f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_LINEAR\n}};\n\n'
             .format(name, name, name, weights.shape[0], weights.shape[1]))
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
-    hf.write('extern const DenseLayer {};\n\n'.format(name));
+    hf.write('extern const DenseLayer {};\n\n'.format(name))
 
     #dump fc_out_dec_excit
     name = 'fc_out_dec_excit'
     print("printing layer " + name)
-    weights = model_decoder_excit.out.out.weight.permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
-    bias = model_decoder_excit.out.out.bias.numpy()
+    weights = model_decoder_excit.out.weight.permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
+    bias = model_decoder_excit.out.bias.numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
     f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_LINEAR\n}};\n\n'
             .format(name, name, name, weights.shape[0], weights.shape[1]))
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
-    hf.write('extern const DenseLayer {};\n\n'.format(name));
+    hf.write('extern const DenseLayer {};\n\n'.format(name))
 
     #dump fc_out_dec_melsp
     name = 'fc_out_dec_melsp'
     print("printing layer " + name)
-    weights = model_decoder_melsp.out.out.weight.permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
-    bias = model_decoder_melsp.out.out.bias.numpy()
+    weights = model_decoder_melsp.out.weight.permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
+    bias = model_decoder_melsp.out.bias.numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
     f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_LINEAR\n}};\n\n'
             .format(name, name, name, weights.shape[0], weights.shape[1]))
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
-    hf.write('extern const DenseLayer {};\n\n'.format(name));
+    hf.write('extern const DenseLayer {};\n\n'.format(name))
 
     #dump fc_out_post
     name = 'fc_out_post'
     print("printing layer " + name)
-    weights = model_post.out.out.weight.permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
-    bias = model_post.out.out.bias.numpy()
+    weights = model_post.out.weight.permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
+    bias = model_post.out.bias.numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
     f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_LINEAR\n}};\n\n'
             .format(name, name, name, weights.shape[0], weights.shape[1]))
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
-    hf.write('extern const DenseLayer {};\n\n'.format(name));
+    hf.write('extern const DenseLayer {};\n\n'.format(name))
+
+    #dump spk-code_transform
+    if (config_cycvae.spkidtr_dim > 0):
+        name = 'fc_in_spk_code_transform'
+        print("printing layer " + name)
+        weights = model_spkidtr.conv.weight.permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
+        bias = model_spkidtr.conv.bias.numpy()
+        printVector(f, weights, name + '_weights')
+        printVector(f, bias, name + '_bias')
+        f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_LINEAR\n}};\n\n'
+                .format(name, name, name, weights.shape[0], weights.shape[1]))
+        hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
+        hf.write('extern const DenseLayer {};\n\n'.format(name))
+
+        name = 'fc_out_spk_code_transform'
+        print("printing layer " + name)
+        #defined as sequential with relu activation
+        weights = model_spkidtr.deconv[0].weight.permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
+        bias = model_spkidtr.deconv[0].bias.numpy()
+        printVector(f, weights, name + '_weights')
+        printVector(f, bias, name + '_bias')
+        f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_RELU\n}};\n\n'
+                .format(name, name, name, weights.shape[0], weights.shape[1]))
+        hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
+        hf.write('extern const DenseLayer {};\n\n'.format(name))
 
     hf.write('#define RNN_ENC_MELSP_NEURONS {}\n\n'.format(model_encoder_melsp.hidden_units))
     hf.write('#define RNN_ENC_EXCIT_NEURONS {}\n\n'.format(model_encoder_excit.hidden_units))
@@ -1003,8 +1028,8 @@ def main():
     f.close()
     hf.close()
 
-    ## Dump high-pass filter coeffs, half hanning-window coeffs, and mel-filterbank here
-    ## hpassfilt.h, halfwin.h, melfb.h
+    ## Dump high-pass filter coeffs, half hanning-window coeffs, mel-filterbank, and mu-law 10 table here
+    ## hpassfilt.h, halfwin.h, melfb.h, mu_law_10_table.h
     fs = config_cycvae.fs
     fftl = config_cycvae.fftl
     shiftms = SHIFTMS
@@ -1068,6 +1093,16 @@ def main():
     hf.write('/*This file is automatically generated from librosa function*/\n\n')
     hf.write('#ifndef MEL_FB_H\n#define MEL_FB_H\n\n')
     printVector(hf, melfb, "melfb")
+    hf.write('\n\n#endif\n')
+    hf.close()
+
+    # mu-law 10-bit table
+    mu_law_10_table = np.array([decode_mu_law(x) for x in range(config.n_quantize)])
+    cfile = "mu_law_10_table.h"
+    hf = open(cfile, 'w')
+    hf.write('/*This file is automatically generated from numpy function*/\n\n')
+    hf.write('#ifndef MU_LAW_10_TABLE_H\n#define MU_LAW_10_TABLE_H\n\n')
+    printVector(hf, mu_law_10_table, "mu_law_10_table")
     hf.write('\n\n#endif\n')
     hf.close()
 

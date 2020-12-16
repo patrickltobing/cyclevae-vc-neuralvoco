@@ -51,7 +51,7 @@ typedef struct {
   const float *mean;
   const float *std;
   int n_dim;
-} NormLayer;
+} NormStats;
 
 //PLT_Dec20
 typedef struct {
@@ -134,7 +134,6 @@ void compute_gru_enc_excit(const GRULayer *gru, float *state, const float *input
 void compute_gru_spk(const GRULayer *gru, float *state, const float *input);
 
 void compute_gru_dec_excit(const GRULayer *gru, float *state, const float *input);
-
 void compute_gru_dec_melsp(const GRULayer *gru, float *state, const float *input);
 
 void compute_gru_post(const GRULayer *gru, float *state, const float *input);

@@ -63,7 +63,6 @@ static OPUS_INLINE float relu(float x)
 }
 
 
-//static void sgemv_accum(float *out, const float *weights, int rows, int cols, int col_stride, const float *x)
 void sgemv_accum(float *out, const float *weights, int rows, int cols, int col_stride, const float *x)
 {
    int i, j;
@@ -603,7 +602,8 @@ void compute_sampling_laplace(float *loc, const float *scale, int dim)
     float r;
     for (int i=0;i<dim;i++) {
         r = ((float) rand() - HALF_RAND_MAX) / HALF_RAND_MAX_FLT_MIN; //r ~ (-1,1)
+        // loc - sign(r)*scale*log(1-2|r/2|)
         if (r > 0) loc[i] -= scale[i] * log(1-r);
-        else loc[i] += scale[i] * log(1-r);
+        else loc[i] += scale[i] * log(1+r);
     }
 }

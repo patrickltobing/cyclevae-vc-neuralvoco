@@ -39,4 +39,3 @@ struct HEADER {
     It is important to note that the WAV  format uses little-endian [LSB in smallest address] format to store bytes,
     so you need to convert the bytes to big-endian [MSB in smallest address] in code for the values to make sense.
 */
-

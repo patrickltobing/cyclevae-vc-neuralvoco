@@ -243,17 +243,17 @@ MWDLP10NET_CYCLEVAE_EXPORT int mwdlp10net_get_size()
 
 
 //PLT_Dec20
-MWDLP10NET_CYCLEVAE_EXPORT MWDLP10CycleVAEPostMelspExcitSpkNetState *mwdlp10net_create()
+MWDLP10NET_CYCLEVAE_EXPORT MWDLP10CycleVAEPostMelspExcitSpkNetState *mwdlp10cyclevaenet_create()
 {
-    MWDLP10CycleVAEPostMelspExcitSpkNetState *mwdlp10net;
-    mwdlp10net = (MWDLP10NetState *) calloc(1,mwdlp10net_get_size());
+    MWDLP10CycleVAEPostMelspExcitSpkNetState *mwdlp10cyclevaenet;
+    mwdlp10cyclevaenet = (MWDLP10CycleVAEPostMelspExcitSpkNetState *) calloc(1,mwdlp10cyclevaenet_get_size());
     if (mwdlp10net != NULL) {
-        if (FIRST_N_OUTPUT == 0) mwdlp10net->first_flag = 1;
+        if (FIRST_N_OUTPUT == 0) mwdlp10cyclevaenet->first_flag = 1;
         int i, j, k;
         for (i=0, k=0;i<DLPC_ORDER;i++)
             for (j=0;j<N_MBANDS;j++,k++)
-                mwdlp10net->last_coarse[k] = INIT_LAST_SAMPLE;
-        return mwdlp10net;
+                mwdlp10cyclevaenet->last_coarse[k] = INIT_LAST_SAMPLE;
+        return mwdlp10cyclevaenet;
     } else {
         printf("Cannot allocate and initialize memory for MWDLP10CycleVAEPostMelspExcitSpkNetState.\n");
         exit(EXIT_FAILURE);
@@ -262,11 +262,10 @@ MWDLP10NET_CYCLEVAE_EXPORT MWDLP10CycleVAEPostMelspExcitSpkNetState *mwdlp10net_
 
 
 //PLT_Dec20
-MWDLP10NET_CYCLEVAE_EXPORT void mwdlp10net_destroy(MWDLP10CycleVAEPostMelspExcitSpkNetState *mwdlp10net)
+MWDLP10NET_CYCLEVAE_EXPORT void mwdlp10net_destroy(MWDLP10CycleVAEPostMelspExcitSpkNetState *mwdlp10cyclevaenet)
 {
-    if (mwdlp10net != NULL) free(mwdlp10net);
+    if (mwdlp10cyclevaenet != NULL) free(mwdlp10cyclevaenet);
 }
-
 
 
 //PLT_Dec20
@@ -470,7 +469,7 @@ MWDLP10NET_CYCLEVAE_EXPORT void cyclevae_post_melsp_excit_spk_convert_mwdlp10net
         //synthesis n=pqmf_delay samples + (n_sample_bands x feature_pad_right) samples [replicate pad_right]
         //replicate_pad_right segmental_conv
         float *last_frame = &nnet->feature_conv_state[FEATURE_CONV_STATE_SIZE_1]; //for replicate pad_right
-        for (l=0,m=0,*n_output=0;l<FEATURE_ALL_CONV_DELAY;l++) { //note that delay includes cyclevae+wavernn, if only neural vocoder discard cyclevae delay
+        for (l=0,m=0,*n_output=0;l<FEATURE_CONV_ALL_DELAY;l++) { //note that delay includes cyclevae+wavernn, if only neural vocoder discard cyclevae delay
             run_frame_network_mwdlp10(nnet, gru_a_condition, gru_b_condition, gru_c_condition, last_frame, 1);
             for (i=0;i<N_SAMPLE_BANDS;i++) {
                 //coarse

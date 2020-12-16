@@ -142,4 +142,3 @@ void mel_spec_extract(DSPState *dsp, float *melsp)
                 melsp[i] += dsp->magsp[j]*dsp->melfb[i];
     }
 }
-
