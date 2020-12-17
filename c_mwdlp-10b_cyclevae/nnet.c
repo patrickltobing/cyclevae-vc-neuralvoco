@@ -607,3 +607,36 @@ void compute_sampling_laplace(float *loc, const float *scale, int dim)
         else loc[i] += scale[i] * log(1+r);
     }
 }
+
+//PLT_Dec20
+void compute_spkidtr(const DenseLayer *in_layer, const DenseLayer *out_layer, float *output, const float *input)
+{
+   int i, N;
+   //int N, M;
+   //int stride;
+   //M = layer->nb_inputs;
+   N = layer->nb_neurons;
+   //stride = N;
+   //celt_assert(input != output);
+   for (i=0;i<N;i++)
+      output[i] = layer->bias[i];
+   // sgemv_accum(output, layer->input_weights, N, M, stride, input);
+   sgemv_accum(output, layer->input_weights, N, layer->nb_inputs, N, input);
+}
+
+//PLT_Dec20
+void compute_spkidtr_coord(const DenseLayer *out_layer, float *output, const float *input)
+{
+   int i, N;
+   //int N, M;
+   //int stride;
+   //M = layer->nb_inputs;
+   N = layer->nb_neurons;
+   //stride = N;
+   //celt_assert(input != output);
+   for (i=0;i<N;i++)
+      output[i] = layer->bias[i];
+   // sgemv_accum(output, layer->input_weights, N, M, stride, input);
+   sgemv_accum(output, layer->input_weights, N, layer->nb_inputs, N, input);
+
+}

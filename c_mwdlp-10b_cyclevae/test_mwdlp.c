@@ -33,6 +33,7 @@
 #include <time.h>
 #include "mwdlp10net_cycvae.h"
 #include "freq.h"
+#include "nnet.h"
 #include "nnet_data.h"
 #include "nnet_cv_data.h"
 #include "mwdlp10net_cycvae_private.h"
@@ -48,26 +49,31 @@ int main(int argc, char **argv) {
         srand (time(NULL));
         FILE *fin, *fout;
         if (argc == 4) { //exact point spk-code location
+            short spk_idx = (short) argv[1];
+            if (spk_id > FEATURE_N_SPK) {
+	            fprintf(stderr, "Speaker id %d is more than n_spk %d\n", spk_idx, FEATURE_N_SPK);
+	            exit(1);
+            }
             fin = fopen(argv[2], "rb");
             if (fin == NULL) {
-	            fprintf(stderr, "Can't open %s\n", argv[1]);
+	            fprintf(stderr, "Can't open %s\n", argv[2]);
 	            exit(1);
             }
             fout = fopen(argv[3], "wb");
             if (fout == NULL) {
-	            fprintf(stderr, "Can't open %s\n", argv[2]);
+	            fprintf(stderr, "Can't open %s\n", argv[3]);
 	            fclose(fin)
 	            exit(1);
             }
         } else { //interpolated spk-code location
             fin = fopen(argv[3], "rb");
             if (fin == NULL) {
-	            fprintf(stderr, "Can't open %s\n", argv[1]);
+	            fprintf(stderr, "Can't open %s\n", argv[3]);
 	            exit(1);
             }
             fout = fopen(argv[4], "wb");
             if (fout == NULL) {
-	            fprintf(stderr, "Can't open %s\n", argv[2]);
+	            fprintf(stderr, "Can't open %s\n", argv[4]);
 	            fclose(fin)
 	            exit(1);
             }
@@ -235,7 +241,6 @@ int main(int argc, char **argv) {
         // calculate duration of file
         float duration_in_seconds = (float) header.overall_size / header.byterate;
         printf("Approx.Duration in seconds= %f\n", duration_in_seconds);
-        //printf("Approx.Duration in h:m:s=%s\n", seconds_to_time(duration_in_seconds));
         
         // read each sample from data chunk if PCM
         if (header.format_type == 1 && header.channels == 1) { // PCM and mono
@@ -294,6 +299,20 @@ int main(int argc, char **argv) {
             printf("nn.Valid range for data values : %ld to %ld \n", low_limit, high_limit);
 
             // set spk-code here
+            float spk_code_aux[FEATURE_N_SPK*2]; //if use gru-spk
+            //float spk_code_aux[FEATURE_N_SPK]; //if without gru-spk
+            if (argc == 4) //exact point spk-code location
+                float one_hot_code[FEATURE_N_SPK] = {0};
+                one_hot_code[spk_idx] = 1;
+                //N-dim 1-hot --> 2-dim --> N-dim [N_SPK]
+                compute_spkidtr(&fc_in_spk_code_transform, &fc_out_spk_code_transform, spk_code_aux, one_hot_code);
+            else { //interpolated spk-code location
+                float spk_coord;
+                spk_coord[0] = argv[1];
+                spk_coord[1] = argv[2];
+                //2-dim --> N-dim [N_SPK]
+                compute_spkidtr_coord(&fc_out_spk_code_transform, spk_code_aux, spk_coord);
+            }
 
             for (i = 0, j = 0; i < num_samples; i++) {
                 //printf("==========Sample %ld / %ld=============\n", i, num_samples);
