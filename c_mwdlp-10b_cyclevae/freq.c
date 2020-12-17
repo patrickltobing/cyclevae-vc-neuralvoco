@@ -70,7 +70,7 @@ DSPState *dspstate_create()
         int i;
         for (i=0;i<HPASS_FILT_TAPS;i++)
             dsp->hpass_filt[i] = hpassfilt[i]
-        for (i=0;i<LEFT_REFLECT;i++)
+        for (i=0;i<HALF_WINDOW_LENGTH_1;i++)
             dsp->half_window[i] = halfwin[i]
         for (i=0;i<MEL_DIM;i++)
             dsp->melfb[i] = melfb[i]
@@ -99,13 +99,13 @@ void shift_apply_hpassfilt(DSPState *dsp, float *x)
 
 void apply_window(DSPState *dsp)
 {
-    for (int i=0;i<LEFT_REFLECT;i++) { //window [symmetric] centered on FFT length
+    for (int i=0;i<HALF_WINDOW_LENGTH_1;i++) { //window [symmetric] centered on FFT length
         //zero pad left
         dsp->in_fft[i+WIN_PAD_LEFT_IDX].r = dsp->samples_win[i]*dsp->half_window[i];
         //zero pad right [mirrored of left]
-        dsp->in_fft[WIN_RIGHT_IDX-i].r = dsp->samples_win[WINDOW_LENGTH_1-i]*dsp->half_window[i];
+        dsp->in_fft[WIN_RIGHT_IDX-i].r = dsp->samples_win[WINDOW_LENGTH_2-i]*dsp->half_window[i];
     }
-    if (MOD_WINDOW_LENGTH > 0) //window length is odd, exists 1 centered sample
+    if (MOD_WINDOW_LENGTH_1 > 0) //window length is even, exists coefficient 1 on ((N-1)/2+(N-1)%2)th bin because of periodic window
         dsp->in_fft[i] = dsp->samples_win[i];
 }
 
@@ -113,14 +113,15 @@ void apply_window(DSPState *dsp)
 void shift_apply_window(DSPState *dsp, const float *x)
 {
     RNN_MOVE(dsp->samples_win, dsp->samples_win, BUFFER_LENGTH); //shift buffer to the left
-    RNN_COPY(&(dsp->samples_win[BUFFER_LENGTH]), x, FRAME_SHIFT); //add new samples to the right
-    for (int i=0;i<LEFT_REFLECT;i++) { //window [symmetric] centered on FFT length
+    //pointer "->" precedes reference "&", no need bracket after &
+    RNN_COPY(&dsp->samples_win[BUFFER_LENGTH], x, FRAME_SHIFT); //add new samples to the right
+    for (int i=0;i<HALF_WINDOW_LENGTH_1;i++) { //window [symmetric] centered on FFT length
         //zero pad left
         dsp->in_fft[i+WIN_PAD_LEFT_IDX].r = dsp->samples_win[i]*dsp->half_window[i];
         //zero pad right [mirrored of left]
-        dsp->in_fft[WIN_RIGHT_IDX-i].r = dsp->samples_win[WINDOW_LENGTH_1-i]*dsp->half_window[i];
+        dsp->in_fft[WIN_RIGHT_IDX-i].r = dsp->samples_win[WINDOW_LENGTH_2-i]*dsp->half_window[i];
     }
-    if (MOD_WINDOW_LENGTH > 0) //window length is odd, exists 1 centered sample
+    if (MOD_WINDOW_LENGTH_1 > 0) //window length is even, exists coefficient 1 on ((N-1)/2+(N-1)%2)th bin because of periodic window
         dsp->in_fft[i] = dsp->samples_win[i];
 }
 
@@ -132,13 +133,17 @@ void mel_spec_extract(DSPState *dsp, float *melsp)
     //cplx -> mag
     for (i=0;i<MAGSP_DIM;i++)
         dsp->magsp[i] = sqrt((dsp->out_fft[i].r)**2 + (dsp->out_fft[i].i)**2)
-    //mag -> mel
-    if (MEL_DIM_16_BLOCK) //compute melfb*magsp matmul in a block of 16
-       sgemv_accum16(melsp, dsp->melfb, MEL_DIM, MAGSP_DIM, MEL_DIM, dsp->magsp);
-    else {
-        int j;
+    //mag -> mel --> log(1+10000*mel)
+    if (MEL_DIM_16_BLOCK) { //compute melfb*magsp matmul in a block of 16
+        sgemv_accum16(melsp, dsp->melfb, MEL_DIM, MAGSP_DIM, MEL_DIM, dsp->magsp);
         for (i=0;i<MEL_DIM;i++)
+            melsp[i] = log(1+10000*melsp[i]);
+    } else {
+        int j;
+        for (i=0;i<MEL_DIM;i++) {
             for (j=0,melsp[i]=0;j<MAGSP_DIM;j++)
                 melsp[i] += dsp->magsp[j]*dsp->melfb[i];
+            melsp[i] = log(1+10000*melsp[i]);
+        }
     }
 }

@@ -40,24 +40,33 @@
 */
 
 #define WINDOW_LENGTH_1 (WINDOW_LENGTH - 1)
-#define MOD_WINDOW_LENGTH (WINDOW_LENGTH % 2)
+#define WINDOW_LENGTH_2 (WINDOW_LENGTH_1 - 1) //for indexing right side window buffer
+
+#define MOD_WINDOW_LENGTH_1 (WINDOW_LENGTH_1 % 2) //exists coefficient 1 if length is even because of periodic window
+#define HALF_WINDOW_LENGTH_1 (WINDOW_LENGTH_1 / 2) //does not include 1st [0] and (1+((N-1)/2)+((N-1)%2))th [1] if (N-1)%2 == 1
 
 #define WIN_PAD (FFT_LENGTH - WINDOW_LENGTH) //window is centered on total FFT length
+
 #define WIN_PAD_LEFT (WIN_PAD / 2)
 #define WIN_PAD_RIGHT (WIN_PAD_LEFT + (WIN_PAD % 2)) //right pad is more than 1 if total pad is odd
 
-#define LEFT_REFLECT (WINDOW_LENGTH / 2) //centered-position at t [0..T-1] -> t*frame_shift
-#define RIGHT_REFLECT (LEFT_REFLECT - FRAME_SHIFT + (WINDOW_LENGTH % 2)) //add 1 more if win_length odd
-#define FIRST_SAMPLES_DELAY (WINDOW_LENGTH - LEFT_REFLECT) //first minimum samples to receive [delay]
+#define HALF_FFT_LENGTH (FFT_LENGTH / 2)
 
-#define WIN_LEFT_IDX WIN_PAD_LEFT //0->439, index of centered 1st in total FFT-length
-#define WIN_RIGHT_IDX (WIN_LEFT_IDX + WINDOW_LENGTH - 1) //0->439, index of centered 440th in total FFT-length
+#define LEFT_SAMPLES (HALF_FFT_LENGTH - WIN_PAD_LEFT) //samples at left-side window / reflected samples at the left edge
+#define RIGHT_SAMPLES (HALF_FFT_LENGTH - WIN_PAD_RIGHT) //samples at right-side window / reflected samples at the right edge
 
-#define BUFFER_LENGTH (WINDOW_LENGTH - FRAME_SHIFT) //store samples for proceeding frame
+#define HALF_FFT_LENGTH_1 (HALF_FFT_LENGTH - 1) //for indexing first frame samples
+#define LEFT_SAMPLES_1 (LEFT_SAMPLES - 1) //for indexing first frame reflected samples
+#define RIGHT_SAMPLES_1 (RIGHT_SAMPLES - 1) //for indexing first frame samples
+
+#define WIN_LEFT_IDX (WIN_PAD_LEFT + 1) //0->439, index of centered 1st in total FFT-length, exclude first sample (+1) [0 coefficient]
+#define WIN_RIGHT_IDX (WIN_LEFT_IDX - 1 + WINDOW_LENGTH - 1) //0->439, index of centered 440th in total FFT-length
+
+#define BUFFER_LENGTH (WINDOW_LENGTH_1 - FRAME_SHIFT) //store samples for proceeding frame
 
 #define HPASS_FILT_TAPS_1 (HPASS_FILT_TAPS - 1)
 
-#define MAGSP_DIM (FFT_LENGTH / 2 + 1)
+#define MAGSP_DIM (HALF_FFT_LENGTH + 1)
 #define MEL_DIM 80
 #define MEL_DIM_16_BLOCK ((MEL_DIM % 16) == 0)
 
@@ -66,9 +75,9 @@
 typedef struct {
     kiss_fft_state *kfft;
     float hpass_filt[HPASS_FILT_TAPS];
-    float half_window[LEFT_REFLECT];
+    float half_window[HALF_WINDOW_LENGTH_1];
     float samples_hpass[HPASS_FILT_TAPS];
-    float samples_win[WINDOW_LENGTH];
+    float samples_win[WINDOW_LENGTH_1]; //exclude first sample because of coefficient 0
     kiss_fft_cpx in_fft[FFT_LENGTH]; //initialized with zeros, fill in only centered window_length
     kiss_fft_cpx out_fft[FFT_LENGTH];
     float magsp[MAGSP_DIM];
