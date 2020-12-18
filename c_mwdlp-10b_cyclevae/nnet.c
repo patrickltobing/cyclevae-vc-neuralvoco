@@ -612,31 +612,26 @@ void compute_sampling_laplace(float *loc, const float *scale, int dim)
 void compute_spkidtr(const DenseLayer *in_layer, const DenseLayer *out_layer, float *output, const float *input)
 {
    int i, N;
-   //int N, M;
-   //int stride;
-   //M = layer->nb_inputs;
-   N = layer->nb_neurons;
-   //stride = N;
-   //celt_assert(input != output);
+   //transform to 2-dim
+   N = in_layer->nb_neurons;
+   float tmp[N];
    for (i=0;i<N;i++)
-      output[i] = layer->bias[i];
-   // sgemv_accum(output, layer->input_weights, N, M, stride, input);
-   sgemv_accum(output, layer->input_weights, N, layer->nb_inputs, N, input);
+      tmp[i] = in_layer->bias[i];
+   sgemv_accum(tmp, in_layer->input_weights, N, in_layer->nb_inputs, N, input);
+   //transform to N_SPK-dim
+   N = out_layer->nb_neurons;
+   for (i=0;i<N;i++)
+      output[i] = out_layer->bias[i];
+   sgemv_accum(output, out_layer->input_weights, N, out_layer->nb_inputs, N, tmp);
 }
 
 //PLT_Dec20
 void compute_spkidtr_coord(const DenseLayer *out_layer, float *output, const float *input)
 {
    int i, N;
-   //int N, M;
-   //int stride;
-   //M = layer->nb_inputs;
+   //transform to N_SPK-dim [from input 2-dim]
    N = layer->nb_neurons;
-   //stride = N;
-   //celt_assert(input != output);
    for (i=0;i<N;i++)
       output[i] = layer->bias[i];
-   // sgemv_accum(output, layer->input_weights, N, M, stride, input);
    sgemv_accum(output, layer->input_weights, N, layer->nb_inputs, N, input);
-
 }

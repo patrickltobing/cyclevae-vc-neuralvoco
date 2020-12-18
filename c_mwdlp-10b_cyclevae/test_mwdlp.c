@@ -23,9 +23,9 @@
    NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
    SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-/* Based on test_lpcnet.c.
+/* Based on test_lpcnet.c
    Modified by Patrick Lumban Tobing (Nagoya University) on Sept.-Dec. 2020
-   wav file read based on http://truelogic.org/wordpress/2015/09/04/parsing-a-wav-file-in-c
+   WAV file read based on http://truelogic.org/wordpress/2015/09/04/parsing-a-wav-file-in-c
 */
 
 #include <math.h>
@@ -48,7 +48,7 @@ int main(int argc, char **argv) {
     } else {
         srand (time(NULL));
         FILE *fin, *fout;
-        if (argc == 4) { //exact point spk-code location
+        if (argc == 4) { //exact point target spk-code location
             short spk_idx = (short) argv[1];
             if (spk_id > FEATURE_N_SPK) {
 	            fprintf(stderr, "Speaker id %d is more than n_spk %d\n", spk_idx, FEATURE_N_SPK);
@@ -65,7 +65,7 @@ int main(int argc, char **argv) {
 	            fclose(fin)
 	            exit(1);
             }
-        } else { //interpolated spk-code location
+        } else { //interpolated 2-dimensional target spk-code location
             fin = fopen(argv[3], "rb");
             if (fin == NULL) {
 	            fprintf(stderr, "Can't open %s\n", argv[3]);
@@ -303,7 +303,7 @@ int main(int argc, char **argv) {
             //float spk_code_aux[FEATURE_N_SPK]; //if without gru-spk
             if (argc == 4) //exact point spk-code location
                 float one_hot_code[FEATURE_N_SPK] = {0};
-                one_hot_code[spk_idx] = 1;
+                one_hot_code[spk_idx-1] = 1;
                 //N-dim 1-hot --> 2-dim --> N-dim [N_SPK]
                 compute_spkidtr(&fc_in_spk_code_transform, &fc_out_spk_code_transform, spk_code_aux, one_hot_code);
             else { //interpolated spk-code location
@@ -358,7 +358,7 @@ int main(int argc, char **argv) {
                         //    printf("**value out of range\n");
             
                         //printf("\n");
-                        if (n_output > 0)  {
+                        if (n_output > 0)  { //delay is reached, samples are generated
                             fwrite(pcm, sizeof(pcm[0]), n_output, fout);
                             samples += n_output;
                         }

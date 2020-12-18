@@ -42,7 +42,6 @@
 #define WINDOW_LENGTH_1 (WINDOW_LENGTH - 1)
 #define WINDOW_LENGTH_2 (WINDOW_LENGTH_1 - 1) //for indexing right side window buffer
 
-#define MOD_WINDOW_LENGTH_1 (WINDOW_LENGTH_1 % 2) //exists coefficient 1 if length is even because of periodic window
 #define HALF_WINDOW_LENGTH_1 (WINDOW_LENGTH_1 / 2) //does not include 1st [0] and (1+((N-1)/2)+((N-1)%2))th [1] if (N-1)%2 == 1
 
 #define WIN_PAD (FFT_LENGTH - WINDOW_LENGTH) //window is centered on total FFT length

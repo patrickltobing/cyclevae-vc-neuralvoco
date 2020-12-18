@@ -1901,10 +1901,6 @@ def main():
                         batch_loss_px_sum += batch_loss_uvcap_.sum() + batch_loss_cap_.sum()
 
                         batch_loss_melsp_ = torch.mean(torch.sum(criterion_l1(melsp_est, melsp), -1), -1)
-                        #batch_loss_melsp_ = torch.mean(torch.sum(criterion_l1(melsp_est, melsp), -1), -1) \
-                        #                        + torch.sqrt(torch.mean(torch.sum(criterion_l2(melsp_est, melsp), -1), -1)) \
-                        #                    + torch.mean(torch.mean(criterion_l1(melsp_est, melsp), -1), -1) \
-                        #                        + torch.sqrt(torch.mean(torch.mean(criterion_l2(melsp_est, melsp), -1), -1))
                         batch_loss_px_sum += batch_loss_melsp_.sum()
                         batch_loss_melsp[i] = batch_loss_melsp_.mean()
                         batch_loss_px[i] += batch_loss_melsp[i]
@@ -1928,10 +1924,6 @@ def main():
                             batch_loss_uvcap_cv[i//2] = torch.mean(torch.mean(100*criterion_l1(uvcap_cv, uvcap), -1))
                             batch_loss_cap_cv[i//2] = torch.mean(torch.sqrt(torch.mean(torch.sum(criterion_l2(cap_cv, cap), -1), -1)))
                             batch_loss_melsp_cv[i//2] = torch.mean(torch.sum(criterion_l1(melsp_cv, melsp), -1))
-                            #batch_loss_melsp_cv[i//2] = torch.mean(torch.sum(criterion_l1(melsp_cv, melsp), -1)) \
-                            #                                + torch.sqrt(torch.mean(torch.sum(criterion_l2(melsp_cv, melsp), -1))) \
-                            #                            + torch.mean(criterion_l1(melsp_cv, melsp)) \
-                            #                                + torch.sqrt(torch.mean(criterion_l2(melsp_cv, melsp)))
 
                         # KL-div lat., CE and error-percentage spk.
                         batch_sc_cv_ = batch_sc_cv[i//2].reshape(-1)
@@ -2975,18 +2967,12 @@ def main():
 
                         ## U/V, lf0, codeap, melsp acc.
                         if flens_utt > 1:
-                            #batch_loss_px_select += torch.mean(torch.sum(criterion_l1(melsp_est, melsp), -1)) \
-                            #                        + torch.sqrt(torch.mean(torch.sum(criterion_l2(melsp_est, melsp), -1))) \
-                            #                            + torch.mean(criterion_l1(melsp_est, melsp)) \
-                            #                        + torch.sqrt(torch.mean(criterion_l2(melsp_est, melsp))) \
                             batch_loss_px_select += torch.mean(torch.sum(criterion_l1(melsp_est, melsp), -1)) \
                                                         + torch.mean(100*criterion_l1(uv_est, uv)) \
                                                             + torch.sqrt(torch.mean(criterion_l2(f0_est, f0))) \
                                                         + torch.mean(100*criterion_l1(uvcap_est, uvcap_select)) \
                                                             + torch.mean(torch.sum(criterion_l1(cap_est, cap), -1))
                         else:
-                            #batch_loss_px_select += torch.mean(torch.sum(criterion_l1(melsp_est, melsp), -1)) \
-                            #                            + torch.mean(criterion_l1(melsp_est, melsp)) \
                             batch_loss_px_select += torch.mean(torch.sum(criterion_l1(melsp_est, melsp), -1)) \
                                                         + torch.mean(100*criterion_l1(uv_est, uv)) \
                                                             + torch.mean(criterion_l1(f0_est, f0)) \
@@ -3142,10 +3128,6 @@ def main():
                 batch_loss_px_sum += batch_loss_uvcap_.sum() + batch_loss_cap_.sum()
 
                 batch_loss_melsp_ = torch.mean(torch.sum(criterion_l1(melsp_est, melsp), -1), -1)
-                #batch_loss_melsp_ = torch.mean(torch.sum(criterion_l1(melsp_est, melsp), -1), -1) \
-                #                        + torch.sqrt(torch.mean(torch.sum(criterion_l2(melsp_est, melsp), -1), -1)) \
-                #                    + torch.mean(torch.mean(criterion_l1(melsp_est, melsp), -1), -1) \
-                #                        + torch.sqrt(torch.mean(torch.mean(criterion_l2(melsp_est, melsp), -1), -1))
                 batch_loss_px_sum += batch_loss_melsp_.sum()
                 batch_loss_melsp[i] = batch_loss_melsp_.mean()
                 batch_loss_px[i] += batch_loss_melsp[i]
@@ -3172,10 +3154,6 @@ def main():
                     batch_loss_uvcap_cv[i//2] = torch.mean(torch.mean(100*criterion_l1(uvcap_cv, uvcap), -1))
                     batch_loss_cap_cv[i//2] = torch.mean(torch.sqrt(torch.mean(torch.sum(criterion_l2(cap_cv, cap), -1), -1)))
                     batch_loss_melsp_cv[i//2] = torch.mean(torch.sum(criterion_l1(melsp_cv, melsp), -1))
-                    #batch_loss_melsp_cv[i//2] = torch.mean(torch.sum(criterion_l1(melsp_cv, melsp), -1)) \
-                    #                                + torch.sqrt(torch.mean(torch.sum(criterion_l2(melsp_cv, melsp), -1))) \
-                    #                            + torch.mean(criterion_l1(melsp_cv, melsp)) \
-                    #                                + torch.sqrt(torch.mean(criterion_l2(melsp_cv, melsp)))
 
                 # KL-div lat., CE and error-percentage spk.
                 batch_sc_cv_ = batch_sc_cv[i//2].reshape(-1)

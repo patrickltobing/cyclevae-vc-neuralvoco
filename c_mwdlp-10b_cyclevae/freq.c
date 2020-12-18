@@ -42,7 +42,7 @@
 
 //PLT_Dec20
 #include "hpassfilt.h" //get high-pass filter coefficients w/ numpy from dump script
-#include "halfwin.h" //get half hanning window coefficients [because of symmetry] w/ numpy from dump script
+#include "halfwin.h" //get ((N-1)/2) hanning window coefficients [because of periodic symmetry] w/ numpy from dump script
 #include "melfb.h" //get mel-filterbank w/ numpy from dump script
 
 #ifdef __AVX__
@@ -105,8 +105,8 @@ void apply_window(DSPState *dsp)
         //zero pad right [mirrored of left]
         dsp->in_fft[WIN_RIGHT_IDX-i].r = dsp->samples_win[WINDOW_LENGTH_2-i]*dsp->half_window[i];
     }
-    if (MOD_WINDOW_LENGTH_1 > 0) //window length is even, exists coefficient 1 on ((N-1)/2+(N-1)%2)th bin because of periodic window
-        dsp->in_fft[i] = dsp->samples_win[i];
+    //window length is even, exists coefficient 1 on ((N-1)/2+(N-1)%2)th bin because of periodic window
+    dsp->in_fft[i] = dsp->samples_win[i];
 }
 
 
@@ -121,8 +121,8 @@ void shift_apply_window(DSPState *dsp, const float *x)
         //zero pad right [mirrored of left]
         dsp->in_fft[WIN_RIGHT_IDX-i].r = dsp->samples_win[WINDOW_LENGTH_2-i]*dsp->half_window[i];
     }
-    if (MOD_WINDOW_LENGTH_1 > 0) //window length is even, exists coefficient 1 on ((N-1)/2+(N-1)%2)th bin because of periodic window
-        dsp->in_fft[i] = dsp->samples_win[i];
+    //window length is even, exists coefficient 1 on ((N-1)/2+(N-1)%2)th bin because of periodic window
+    dsp->in_fft[i] = dsp->samples_win[i];
 }
 
 

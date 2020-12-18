@@ -36,6 +36,6 @@ struct HEADER {
     41-44   File size (data)    Size of the data section.
     Sample values are given above for a 16-bit stereo source.
 
-    It is important to note that the WAV  format uses little-endian [LSB in smallest address] format to store bytes,
+    It is important to note that the WAV format uses little-endian [LSB in smallest address] format to store bytes,
     so you need to convert the bytes to big-endian [MSB in smallest address] in code for the values to make sense.
 */

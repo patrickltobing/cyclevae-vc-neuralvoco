@@ -1,7 +1,6 @@
 #ifndef MWDLP10NET_CYCVAE_PRIVATE_H
 #define MWDLP10NET_CYCVAE_PRIVATE_H
 
-#include <stdio.h>
 #include "mwdlpnet10_cycvae.h"
 #include "nnet_data.h"
 #include "nnet_cv_data.h"
@@ -109,7 +108,7 @@ LAST n-outputs [due to frame- and pqmf-delays, w/ right-side replicate- and zero
 */
 #define FIRST_N_OUTPUT (((PQMF_DELAY / N_MBANDS) + (PQMF_DELAY % N_MBANDS) * N_MBANDS) % PQMF_DELAY)
 #define MAX_N_OUTPUT IMAX((FIRST_N_OUTPUT + 1) * N_SAMPLE_BANDS * N_MBANDS, \
-                    N_SAMPLE_BANDS * FEATURE_ALL_CONV_DELAY * N_MBANDS + PQMF_DELAY)
+                    N_SAMPLE_BANDS * FEATURE_CONV_ALL_DELAY * N_MBANDS + PQMF_DELAY)
 //note that frame-delay includes cyclevae+wavernn
 
 #define FIRST_N_OUTPUT_MBANDS FIRST_N_OUTPUT * N_MBANDS

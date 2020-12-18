@@ -140,7 +140,6 @@ void compute_gru_post(const GRULayer *gru, float *state, const float *input);
 
 void compute_sampling_laplace(float *loc, const float *scale, int dim);
 
-//PLT_Dec20
 void compute_spkidtr(const DenseLayer *in_layer, const DenseLayer *out_layer, float *output, const float *input);
 void compute_spkidtr_coord(const DenseLayer *out_layer, float *output, const float *input);
 
