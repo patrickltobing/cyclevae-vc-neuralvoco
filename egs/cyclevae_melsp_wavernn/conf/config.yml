@@ -35,12 +35,12 @@ hidden_units_lf0: 128
 hidden_units_post: 128
 
 ## GRU hidden units wavernn
-###[9-bit mu-law 5-bands, 16-bit-cf 5-bands]
-#hidden_units_wave: 640 
-###[9-bit mu-law 5-bands, 10-bit-cf 5-bands, 10-bit-cf 10-bands]
+##[16-bit coarse-fine, 9-bit mu-law]
+hidden_units_wave: 640 
+##[10-bit mu-law coarse-fine]
 #hidden_units_wave: 672 
-###[10-bit cf 10-bands] much higher-quality especially for multispeaker data
-hidden_units_wave: 704 
+##[10-bit mu-law coarse-fine]
+#hidden_units_wave: 704 
 
 hidden_units_wave_2: 32
 
@@ -201,9 +201,12 @@ mdl_name: cycmelspxlf0capvae-laplace
 
 mdl_name_post: cycmelspxlf0capvae-post-smpl-laplace
 
+##[8 kHz, 16 kHz, 22.05 kHz, 24 kHz]
 #mdl_name_wave: wavernn_dualgru_compact_lpc_mband_9bit
-mdl_name_wave: wavernn_dualgru_compact_lpc_mband_10bit_cf
-#mdl_name_wave: wavernn_dualgru_compact_lpc_mband_16bit
+##[8 kHz, 16 kHz, 22.05 kHz, 24 kHz, 44.1 kHz, 48 kHz]
+#mdl_name_wave: wavernn_dualgru_compact_lpc_mband_10bit_cf
+##[8 kHz, 16 kHz, 22.05 kHz, 24 kHz]
+mdl_name_wave: wavernn_dualgru_compact_lpc_mband_16bit
 
 ## sparsification scheduling settings for wavernn
 t_start: 20000
@@ -217,11 +220,12 @@ n_stage: 4
 #lpc: 4
 lpc: 6
 
-#n_bands: 5
-#[for sampling rate 44.1 or 48 kHz, please use 10 bands and 10bit_cf model w/ 672 or 704 GRU for real-time]
-#[for lower sampling rate, 10-bands 10-bit cf-model with 704 GRU also provides much better quality]
-#[especially for multispeaker data which requires more GRU capacity to give consistent quality output]
-n_bands: 10
+##[8 kHz, 16 kHz]
+#n_bands: 4
+##[22.05 kHz, 24 kHz]
+n_bands: 5
+##[44.1 kHz, 48 kHz]
+#n_bands: 10
 
 #use_mcep: true
 ## mel-spectrogram-based modeling (wavernn)

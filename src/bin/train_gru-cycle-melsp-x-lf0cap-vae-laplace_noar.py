@@ -30,7 +30,7 @@ from utils import find_files
 from utils import read_hdf5
 from utils import read_txt
 from vcneuvoco import GRU_VAE_ENCODER, GRU_SPEC_DECODER, GRU_LAT_FEAT_CLASSIFIER
-from vcneuvoco import GRU_EXCIT_DECODER, SPKID_TRANSFORM_LAYER
+from vcneuvoco import GRU_EXCIT_DECODER, SPKID_TRANSFORM_LAYER, GRU_SPK
 from vcneuvoco import kl_laplace, ModulationSpectrumLoss, kl_categorical_categorical_logits
 
 import torch_optimizer as optim
@@ -238,7 +238,7 @@ def eval_generator(dataloader, device, batch_size, limit_count=None, spcidx=True
 
 
 def save_checkpoint(checkpoint_dir, model_encoder_melsp, model_decoder_melsp, model_encoder_excit, model_decoder_excit,
-        model_classifier, min_eval_loss_melsp_dB, min_eval_loss_melsp_dB_std, min_eval_loss_melsp_cv,
+        model_spk, model_classifier, min_eval_loss_melsp_dB, min_eval_loss_melsp_dB_std, min_eval_loss_melsp_cv,
         min_eval_loss_melsp, min_eval_loss_melsp_dB_src_trg, min_eval_loss_melsp_dB_src_trg_std, min_eval_loss_gv_src_trg,
         iter_idx, min_idx, optimizer, numpy_random_state, torch_random_state, iterations, model_spkidtr=None):
     """FUNCTION TO SAVE CHECKPOINT
@@ -253,6 +253,7 @@ def save_checkpoint(checkpoint_dir, model_encoder_melsp, model_decoder_melsp, mo
     model_decoder_melsp.cpu()
     model_encoder_excit.cpu()
     model_decoder_excit.cpu()
+    model_spk.cpu()
     model_classifier.cpu()
     if model_spkidtr is not None:
         model_spkidtr.cpu()
@@ -261,6 +262,7 @@ def save_checkpoint(checkpoint_dir, model_encoder_melsp, model_decoder_melsp, mo
         "model_decoder_melsp": model_decoder_melsp.state_dict(),
         "model_encoder_excit": model_encoder_excit.state_dict(),
         "model_decoder_excit": model_decoder_excit.state_dict(),
+        "model_spk": model_spk.state_dict(),
         "model_classifier": model_classifier.state_dict(),
         "min_eval_loss_melsp_dB": min_eval_loss_melsp_dB,
         "min_eval_loss_melsp_dB_std": min_eval_loss_melsp_dB_std,
@@ -284,6 +286,7 @@ def save_checkpoint(checkpoint_dir, model_encoder_melsp, model_decoder_melsp, mo
     model_decoder_melsp.cuda()
     model_encoder_excit.cuda()
     model_decoder_excit.cuda()
+    model_spk.cuda()
     model_classifier.cuda()
     if model_spkidtr is not None:
         model_spkidtr.cuda()
@@ -477,6 +480,7 @@ def main():
         excit_dim=args.excit_dim,
         out_dim=args.mel_dim,
         n_spk=n_spk,
+        aux_dim=n_spk,
         hidden_layers=args.hidden_layers_dec,
         hidden_units=args.hidden_units_dec,
         kernel_size=args.kernel_size_dec,
@@ -503,6 +507,7 @@ def main():
         feat_dim=args.lat_dim_e,
         cap_dim=args.cap_dim,
         n_spk=n_spk,
+        aux_dim=n_spk,
         hidden_layers=args.hidden_layers_lf0,
         hidden_units=args.hidden_units_lf0,
         kernel_size=args.kernel_size_lf0,
@@ -526,6 +531,12 @@ def main():
         hidden_units=32,
         hidden_layers=1)
     logging.info(model_classifier) 
+    model_spk = GRU_SPK(
+        n_spk=n_spk,
+        feat_dim=args.lat_dim+args.lat_dim_e,
+        hidden_units=32,
+        do_prob=args.do_prob)
+    logging.info(model_spk)
     #criterion_ms = ModulationSpectrumLoss(args.fftsize)
     criterion_ms = ModulationSpectrumLoss(args.fftsize, post=True)
     criterion_ce = torch.nn.CrossEntropyLoss(reduction='none')
@@ -540,6 +551,7 @@ def main():
         model_decoder_melsp.cuda()
         model_encoder_excit.cuda()
         model_decoder_excit.cuda()
+        model_spk.cuda()
         model_classifier.cuda()
         if (args.spkidtr_dim > 0):
             model_spkidtr.cuda()
@@ -566,6 +578,7 @@ def main():
     model_decoder_melsp.train()
     model_encoder_excit.train()
     model_decoder_excit.train()
+    model_spk.train()
     model_classifier.train()
     if (args.spkidtr_dim > 0):
         model_spkidtr.train()
@@ -617,6 +630,9 @@ def main():
     parameters = filter(lambda p: p.requires_grad, model_decoder_excit.parameters())
     parameters = sum([np.prod(p.size()) for p in parameters]) / 1000000
     logging.info('Trainable Parameters (decoder_excit): %.3f million' % parameters)
+    parameters = filter(lambda p: p.requires_grad, model_spk.parameters())
+    parameters = sum([np.prod(p.size()) for p in parameters]) / 1000000
+    logging.info('Trainable Parameters (spk): %.3f million' % parameters)
     parameters = filter(lambda p: p.requires_grad, model_classifier.parameters())
     parameters = sum([np.prod(p.size()) for p in parameters]) / 1000000
     logging.info('Trainable Parameters (classifier): %.3f million' % parameters)
@@ -661,6 +677,8 @@ def main():
     module_list += list(model_decoder_excit.conv.parameters())
     module_list += list(model_decoder_excit.gru.parameters()) + list(model_decoder_excit.out.parameters())
 
+    module_list += list(model_spk.gru.parameters()) + list(model_spk.out.parameters())
+
     module_list += list(model_classifier.conv_lat.parameters()) + list(model_classifier.conv_feat.parameters())
     module_list += list(model_classifier.gru.parameters()) + list(model_classifier.out.parameters())
 
@@ -683,6 +701,7 @@ def main():
         #model_decoder_melsp.load_state_dict(checkpoint["model_decoder_melsp"])
         #model_encoder_excit.load_state_dict(checkpoint["model_encoder_excit"])
         #model_decoder_excit.load_state_dict(checkpoint["model_decoder_excit"])
+        #model_spk.load_state_dict(checkpoint["model_spk"])
         #model_classifier.load_state_dict(checkpoint["model_classifier"])
         if (args.spkidtr_dim > 0):
             model_spkidtr.load_state_dict(checkpoint["model_spkidtr"])
@@ -695,6 +714,7 @@ def main():
         model_decoder_melsp.load_state_dict(checkpoint["model_decoder_melsp"])
         model_encoder_excit.load_state_dict(checkpoint["model_encoder_excit"])
         model_decoder_excit.load_state_dict(checkpoint["model_decoder_excit"])
+        model_spk.load_state_dict(checkpoint["model_spk"])
         model_classifier.load_state_dict(checkpoint["model_classifier"])
         if (args.spkidtr_dim > 0):
             model_spkidtr.load_state_dict(checkpoint["model_spkidtr"])
@@ -826,6 +846,8 @@ def main():
     h_z = [None]*n_rec
     h_z_sc = [None]*n_rec
     h_z_e = [None]*n_rec
+    h_spk = [None]*n_rec
+    h_spk_cv = [None]*n_cv
     h_melsp = [None]*n_rec
     h_lf0 = [None]*n_rec
     h_feat_sc = [None]*n_rec
@@ -1314,6 +1336,10 @@ def main():
                                                                 del_index_utt, axis=1)).to(device)
                                 h_z_e[i] = torch.FloatTensor(np.delete(h_z_e[i].cpu().data.numpy(),
                                                                 del_index_utt, axis=1)).to(device)
+                                h_spk[i] = torch.FloatTensor(np.delete(h_spk[i].cpu().data.numpy(),
+                                                                del_index_utt, axis=1)).to(device)
+                                h_spk_cv[i_cv] = torch.FloatTensor(np.delete(h_spk_cv[i_cv].cpu().data.numpy(),
+                                                                del_index_utt, axis=1)).to(device)
                                 h_z_sc[i] = torch.FloatTensor(np.delete(h_z_sc[i].cpu().data.numpy(),
                                                                 del_index_utt, axis=1)).to(device)
                                 h_lf0[i] = torch.FloatTensor(np.delete(h_lf0[i].cpu().data.numpy(),
@@ -1333,6 +1359,8 @@ def main():
                                 h_z_e[j] = torch.FloatTensor(np.delete(h_z_e[j].cpu().data.numpy(),
                                                                 del_index_utt, axis=1)).to(device)
                                 if n_half_cyc_eval > 1:
+                                    h_spk[j] = torch.FloatTensor(np.delete(h_spk[j].cpu().data.numpy(),
+                                                                    del_index_utt, axis=1)).to(device)
                                     h_z_sc[j] = torch.FloatTensor(np.delete(h_z_sc[j].cpu().data.numpy(),
                                                                     del_index_utt, axis=1)).to(device)
                                     h_lf0[j] = torch.FloatTensor(np.delete(h_lf0[j].cpu().data.numpy(),
@@ -1362,25 +1390,33 @@ def main():
                             if args.spkidtr_dim > 0:
                                 spk_code_in = model_spkidtr(batch_sc_in[idx_in])
                                 spk_cv_code_in = model_spkidtr(batch_sc_cv_in[i_cv_in])
+                                batch_spk, h_spk[i] = model_spk(spk_code_in, z=z_cat, outpad_right=outpad_rights[idx_in], h=h_spk[i])
+                                batch_spk_cv, h_spk_cv[i_cv] = model_spk(spk_cv_code_in, z=z_cat, outpad_right=outpad_rights[idx_in], h=h_spk_cv[i_cv])
                                 batch_lf0_rec[i], h_lf0[i] \
-                                        = model_decoder_excit(z_e[i], y=spk_code_in, outpad_right=outpad_rights[idx_in], h=h_lf0[i])
+                                        = model_decoder_excit(z_e[i], y=spk_code_in, aux=batch_spk, outpad_right=outpad_rights[idx_in], h=h_lf0[i])
                                 batch_lf0_cv[i_cv], h_lf0_cv[i_cv] \
-                                        = model_decoder_excit(z_e[i], y=spk_cv_code_in, outpad_right=outpad_rights[idx_in], h=h_lf0_cv[i_cv])
+                                        = model_decoder_excit(z_e[i], y=spk_cv_code_in, aux=batch_spk_cv, outpad_right=outpad_rights[idx_in], h=h_lf0_cv[i_cv])
                             else:
+                                batch_spk, h_spk[i] = model_spk(batch_sc_in[idx_in], z=z_cat, outpad_right=outpad_rights[idx_in], h=h_spk[i])
+                                batch_spk_cv, h_spk_cv[i_cv] = model_spk(batch_sc_cv_in[i_cv_in], z=z_cat, outpad_right=outpad_rights[idx_in], h=h_spk_cv[i_cv])
                                 batch_lf0_rec[i], h_lf0[i] \
-                                        = model_decoder_excit(z_e[i], y=batch_sc_in[idx_in], outpad_right=outpad_rights[idx_in], h=h_lf0[i])
+                                        = model_decoder_excit(z_e[i], y=batch_sc_in[idx_in], aux=batch_spk, outpad_right=outpad_rights[idx_in], h=h_lf0[i])
                                 batch_lf0_cv[i_cv], h_lf0_cv[i_cv] \
-                                        = model_decoder_excit(z_e[i], y=batch_sc_cv_in[i_cv_in], outpad_right=outpad_rights[idx_in], h=h_lf0_cv[i_cv])
+                                        = model_decoder_excit(z_e[i], y=batch_sc_cv_in[i_cv_in], aux=batch_spk_cv, outpad_right=outpad_rights[idx_in], h=h_lf0_cv[i_cv])
                             if lf0_pad_right > 0:
                                 z_cat = z_cat[:,lf0_pad_left:-lf0_pad_right]
                                 if args.spkidtr_dim > 0:
                                     spk_code_in = spk_code_in[:,lf0_pad_left:-lf0_pad_right]
                                     spk_cv_code_in = spk_cv_code_in[:,lf0_pad_left:-lf0_pad_right]
+                                batch_spk = batch_spk[:,lf0_pad_left:-lf0_pad_right]
+                                batch_spk_cv = batch_spk_cv[:,lf0_pad_left:-lf0_pad_right]
                             else:
                                 z_cat = z_cat[:,lf0_pad_left:]
                                 if args.spkidtr_dim > 0:
                                     spk_code_in = spk_code_in[:,lf0_pad_left:]
                                     spk_cv_code_in = spk_cv_code_in[:,lf0_pad_left:]
+                                batch_spk = batch_spk[:,lf0_pad_left:]
+                                batch_spk_cv = batch_spk_cv[:,lf0_pad_left:]
                             feat_len = qy_logits[i].shape[1]
                             idx_in_1 = idx_in-1
                             z[i] = z[i][:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
@@ -1393,14 +1429,14 @@ def main():
                             idx_in += 1
                             i_cv_in += 1
                             if args.spkidtr_dim > 0:
-                                batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=spk_code_in,
+                                batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
                                                     e=batch_lf0_rec[i][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], h=h_melsp[i])
-                                batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=spk_cv_code_in,
+                                batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=spk_cv_code_in, aux=batch_spk_cv,
                                                     e=batch_lf0_cv[i_cv][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], h=h_melsp_cv[i_cv])
                             else:
-                                batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in],
+                                batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in], aux=batch_spk,
                                                     e=batch_lf0_rec[i][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], h=h_melsp[i])
-                                batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=batch_sc_cv_in[i_cv_in],
+                                batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=batch_sc_cv_in[i_cv_in], aux=batch_spk_cv,
                                                     e=batch_lf0_cv[i_cv][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], h=h_melsp_cv[i_cv])
                             idx_in_1 = idx_in-1
                             feat_len_e = batch_lf0_rec[i].shape[1]
@@ -1425,17 +1461,21 @@ def main():
                                         spk_code_in = spk_code_in[:,dec_enc_pad_left:-dec_enc_pad_right]
                                     else:
                                         spk_code_in = spk_code_in[:,dec_enc_pad_left:]
-                                    batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(z_e[j], y=spk_code_in, outpad_right=outpad_rights[idx_in], h=h_lf0[j])
+                                    batch_spk, h_spk[j] = model_spk(spk_code_in, z=z_cat, outpad_right=outpad_rights[idx_in], h=h_spk[j])
+                                    batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(z_e[j], y=spk_code_in, aux=batch_spk, outpad_right=outpad_rights[idx_in], h=h_lf0[j])
                                 else:
-                                    batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(z_e[j], y=batch_sc_in[idx_in], outpad_right=outpad_rights[idx_in], h=h_lf0[j])
+                                    batch_spk, h_spk[j] = model_spk(batch_sc_in[idx_in], z=z_cat, outpad_right=outpad_rights[idx_in], h=h_spk[j])
+                                    batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(z_e[j], y=batch_sc_in[idx_in], aux=batch_spk, outpad_right=outpad_rights[idx_in], h=h_lf0[j])
                                 if lf0_pad_right > 0:
                                     z_cat = z_cat[:,lf0_pad_left:-lf0_pad_right]
                                     if args.spkidtr_dim > 0:
                                         spk_code_in = spk_code_in[:,lf0_pad_left:-lf0_pad_right]
+                                    batch_spk = batch_spk[:,lf0_pad_left:-lf0_pad_right]
                                 else:
                                     z_cat = z_cat[:,lf0_pad_left:]
                                     if args.spkidtr_dim > 0:
                                         spk_code_in = spk_code_in[:,lf0_pad_left:]
+                                    batch_spk = batch_spk[:,lf0_pad_left:]
                                 feat_len = qy_logits[j].shape[1]
                                 idx_in_1 = idx_in-1
                                 z[j] = z[j][:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
@@ -1447,10 +1487,10 @@ def main():
                                 qz_alpha_e[j] = qz_alpha_e[j][:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
                                 idx_in += 1
                                 if args.spkidtr_dim > 0:
-                                    batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=spk_code_in,
+                                    batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
                                                             e=batch_lf0_rec[j][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], h=h_melsp[j])
                                 else:
-                                    batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in],
+                                    batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in], aux=batch_spk,
                                                             e=batch_lf0_rec[j][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], h=h_melsp[j])
                                 idx_in_1 = idx_in-1
                                 batch_lf0_rec[j] = batch_lf0_rec[j][:,outpad_lefts[idx_in_1]:batch_lf0_rec[j].shape[1]-outpad_rights[idx_in_1]]
@@ -1480,21 +1520,29 @@ def main():
                         if args.spkidtr_dim > 0:
                             trj_spk_code = model_spkidtr(batch_sc_data_full)
                             trj_spk_cv_code = model_spkidtr(batch_sc_cv_data_full)
+                            trj_spk, _ = model_spk(trj_spk_code, z=z_cat)
+                            trj_spk_cv, _ = model_spk(trj_spk_cv_code, z=z_cat)
                         else:
                             trj_spk_code = batch_sc_data_full
                             trj_spk_cv_code = batch_sc_cv_data_full
-                        trj_src_src_uvlf0, _ = model_decoder_excit(trj_lat_src_e, y=trj_spk_code)
-                        trj_src_trg_uvlf0, _ = model_decoder_excit(trj_lat_src_e, y=trj_spk_cv_code)
+                            trj_spk, _ = model_spk(batch_sc_data_full, z=z_cat)
+                            trj_spk_cv, _ = model_spk(batch_sc_cv_data_full, z=z_cat)
+                        trj_src_src_uvlf0, _ = model_decoder_excit(trj_lat_src_e, y=trj_spk_code, aux=trj_spk)
+                        trj_src_trg_uvlf0, _ = model_decoder_excit(trj_lat_src_e, y=trj_spk_cv_code, aux=trj_spk_cv)
                         if lf0_pad_right > 0:
                             z_cat = z_cat[:,lf0_pad_left:-lf0_pad_right]
                             trj_spk_code = trj_spk_code[:,lf0_pad_left:-lf0_pad_right]
                             trj_spk_cv_code = trj_spk_cv_code[:,lf0_pad_left:-lf0_pad_right]
+                            trj_spk = trj_spk[:,lf0_pad_left:-lf0_pad_right]
+                            trj_spk_cv = trj_spk_cv[:,lf0_pad_left:-lf0_pad_right]
                         else:
                             z_cat = z_cat[:,lf0_pad_left:]
                             trj_spk_code = trj_spk_code[:,lf0_pad_left:]
                             trj_spk_cv_code = trj_spk_cv_code[:,lf0_pad_left:]
-                        trj_src_src, _ = model_decoder_melsp(z_cat, y=trj_spk_code, e=trj_src_src_uvlf0[:,:,:args.excit_dim])
-                        trj_src_trg, _ = model_decoder_melsp(z_cat, y=trj_spk_cv_code, e=trj_src_trg_uvlf0[:,:,:args.excit_dim])
+                            trj_spk = trj_spk[:,lf0_pad_left:]
+                            trj_spk_cv = trj_spk_cv[:,lf0_pad_left:]
+                        trj_src_src, _ = model_decoder_melsp(z_cat, y=trj_spk_code, aux=trj_spk, e=trj_src_src_uvlf0[:,:,:args.excit_dim])
+                        trj_src_trg, _ = model_decoder_melsp(z_cat, y=trj_spk_cv_code, aux=trj_spk_cv, e=trj_src_trg_uvlf0[:,:,:args.excit_dim])
                         if dec_pad_right > 0:
                             trj_src_trg_uvlf0 = trj_src_trg_uvlf0[:,dec_pad_left:-dec_pad_right]
                             trj_lat_src = trj_lat_src[:,dec_pad_left:-dec_pad_right]
@@ -1620,21 +1668,29 @@ def main():
                             if args.spkidtr_dim > 0:
                                 spk_code_in = model_spkidtr(batch_sc_in[idx_in])
                                 spk_cv_code_in = model_spkidtr(batch_sc_cv_in[i_cv_in])
-                                batch_lf0_rec[i], h_lf0[i] = model_decoder_excit(z_e[i], y=spk_code_in, outpad_right=outpad_rights[idx_in])
-                                batch_lf0_cv[i_cv], h_lf0_cv[i_cv] = model_decoder_excit(z_e[i], y=spk_cv_code_in, outpad_right=outpad_rights[idx_in])
+                                batch_spk, h_spk[i] = model_spk(spk_code_in, z=z_cat, outpad_right=outpad_rights[idx_in])
+                                batch_spk_cv, h_spk_cv[i_cv] = model_spk(spk_cv_code_in, z=z_cat, outpad_right=outpad_rights[idx_in])
+                                batch_lf0_rec[i], h_lf0[i] = model_decoder_excit(z_e[i], y=spk_code_in, aux=batch_spk, outpad_right=outpad_rights[idx_in])
+                                batch_lf0_cv[i_cv], h_lf0_cv[i_cv] = model_decoder_excit(z_e[i], y=spk_cv_code_in, aux=batch_spk_cv, outpad_right=outpad_rights[idx_in])
                             else:
-                                batch_lf0_rec[i], h_lf0[i] = model_decoder_excit(z_e[i], y=batch_sc_in[idx_in], outpad_right=outpad_rights[idx_in])
-                                batch_lf0_cv[i_cv], h_lf0_cv[i_cv] = model_decoder_excit(z_e[i], y=batch_sc_cv_in[i_cv_in], outpad_right=outpad_rights[idx_in])
+                                batch_spk, h_spk[i] = model_spk(batch_sc_in[idx_in], z=z_cat, outpad_right=outpad_rights[idx_in])
+                                batch_spk_cv, h_spk_cv[i_cv] = model_spk(batch_sc_cv_in[i_cv_in], z=z_cat, outpad_right=outpad_rights[idx_in])
+                                batch_lf0_rec[i], h_lf0[i] = model_decoder_excit(z_e[i], y=batch_sc_in[idx_in], aux=batch_spk, outpad_right=outpad_rights[idx_in])
+                                batch_lf0_cv[i_cv], h_lf0_cv[i_cv] = model_decoder_excit(z_e[i], y=batch_sc_cv_in[i_cv_in], aux=batch_spk_cv, outpad_right=outpad_rights[idx_in])
                             if lf0_pad_right > 0:
                                 z_cat = z_cat[:,lf0_pad_left:-lf0_pad_right]
                                 if args.spkidtr_dim > 0:
                                     spk_code_in = spk_code_in[:,lf0_pad_left:-lf0_pad_right]
                                     spk_cv_code_in = spk_cv_code_in[:,lf0_pad_left:-lf0_pad_right]
+                                batch_spk = batch_spk[:,lf0_pad_left:-lf0_pad_right]
+                                batch_spk_cv = batch_spk_cv[:,lf0_pad_left:-lf0_pad_right]
                             else:
                                 z_cat = z_cat[:,lf0_pad_left:]
                                 if args.spkidtr_dim > 0:
                                     spk_code_in = spk_code_in[:,lf0_pad_left:]
                                     spk_cv_code_in = spk_cv_code_in[:,lf0_pad_left:]
+                                batch_spk = batch_spk[:,lf0_pad_left:]
+                                batch_spk_cv = batch_spk_cv[:,lf0_pad_left:]
                             feat_len = qy_logits[i].shape[1]
                             idx_in_1 = idx_in-1
                             z[i] = z[i][:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
@@ -1647,14 +1703,14 @@ def main():
                             idx_in += 1
                             i_cv_in += 1
                             if args.spkidtr_dim > 0:
-                                batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=spk_cv_code_in,
+                                batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=spk_cv_code_in, aux=batch_spk,
                                                     e=batch_lf0_rec[i][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in])
-                                batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=spk_cv_code_in,
+                                batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=spk_cv_code_in, aux=batch_spk_cv,
                                                     e=batch_lf0_cv[i_cv][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in])
                             else:
-                                batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in],
+                                batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in], aux=batch_spk,
                                                     e=batch_lf0_rec[i][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in])
-                                batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=batch_sc_cv_in[i_cv_in],
+                                batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=batch_sc_cv_in[i_cv_in], aux=batch_spk_cv,
                                                     e=batch_lf0_cv[i_cv][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in])
                             idx_in_1 = idx_in-1
                             feat_len_e = batch_lf0_rec[i].shape[1]
@@ -1679,17 +1735,21 @@ def main():
                                         spk_code_in = spk_code_in[:,dec_enc_pad_left:-dec_enc_pad_right]
                                     else:
                                         spk_code_in = spk_code_in[:,dec_enc_pad_left:]
-                                    batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(z_e[j], y=spk_code_in, outpad_right=outpad_rights[idx_in])
+                                    batch_spk, h_spk[j] = model_spk(spk_code_in, z=z_cat, outpad_right=outpad_rights[idx_in])
+                                    batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(z_e[j], y=spk_code_in, aux=batch_spk, outpad_right=outpad_rights[idx_in])
                                 else:
-                                    batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(z_e[j], y=batch_sc_in[idx_in], outpad_right=outpad_rights[idx_in])
+                                    batch_spk, h_spk[j] = model_spk(batch_sc_in[idx_in], z=z_cat, outpad_right=outpad_rights[idx_in])
+                                    batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(z_e[j], y=batch_sc_in[idx_in], aux=batch_spk, outpad_right=outpad_rights[idx_in])
                                 if lf0_pad_right > 0:
                                     z_cat = z_cat[:,lf0_pad_left:-lf0_pad_right]
                                     if args.spkidtr_dim > 0:
                                         spk_code_in = spk_code_in[:,lf0_pad_left:-lf0_pad_right]
+                                    batch_spk = batch_spk[:,lf0_pad_left:-lf0_pad_right]
                                 else:
                                     z_cat = z_cat[:,lf0_pad_left:]
                                     if args.spkidtr_dim > 0:
                                         spk_code_in = spk_code_in[:,lf0_pad_left:]
+                                    batch_spk = batch_spk[:,lf0_pad_left:]
                                 feat_len = qy_logits[j].shape[1]
                                 idx_in_1 = idx_in-1
                                 z[j] = z[j][:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
@@ -1701,10 +1761,10 @@ def main():
                                 qz_alpha_e[j] = qz_alpha_e[j][:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
                                 idx_in += 1
                                 if args.spkidtr_dim > 0:
-                                    batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=spk_code_in,
+                                    batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
                                                             e=batch_lf0_rec[j][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in])
                                 else:
-                                    batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in],
+                                    batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in], aux=batch_spk,
                                                             e=batch_lf0_rec[j][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in])
                                 idx_in_1 = idx_in-1
                                 batch_lf0_rec[j] = batch_lf0_rec[j][:,outpad_lefts[idx_in_1]:batch_lf0_rec[j].shape[1]-outpad_rights[idx_in_1]]
@@ -1840,10 +1900,11 @@ def main():
                         batch_loss_px[i] += batch_loss_uvcap[i] + batch_loss_cap[i]
                         batch_loss_px_sum += batch_loss_uvcap_.sum() + batch_loss_cap_.sum()
 
-                        batch_loss_melsp_ = torch.mean(torch.sum(criterion_l1(melsp_est, melsp), -1), -1) \
-                                                + torch.sqrt(torch.mean(torch.sum(criterion_l2(melsp_est, melsp), -1), -1)) \
-                                            + torch.mean(torch.mean(criterion_l1(melsp_est, melsp), -1), -1) \
-                                                + torch.sqrt(torch.mean(torch.mean(criterion_l2(melsp_est, melsp), -1), -1))
+                        batch_loss_melsp_ = torch.mean(torch.sum(criterion_l1(melsp_est, melsp), -1), -1)
+                        #batch_loss_melsp_ = torch.mean(torch.sum(criterion_l1(melsp_est, melsp), -1), -1) \
+                        #                        + torch.sqrt(torch.mean(torch.sum(criterion_l2(melsp_est, melsp), -1), -1)) \
+                        #                    + torch.mean(torch.mean(criterion_l1(melsp_est, melsp), -1), -1) \
+                        #                        + torch.sqrt(torch.mean(torch.mean(criterion_l2(melsp_est, melsp), -1), -1))
                         batch_loss_px_sum += batch_loss_melsp_.sum()
                         batch_loss_melsp[i] = batch_loss_melsp_.mean()
                         batch_loss_px[i] += batch_loss_melsp[i]
@@ -1866,10 +1927,11 @@ def main():
                             batch_loss_px_sum += batch_loss_f0_cv_.sum()
                             batch_loss_uvcap_cv[i//2] = torch.mean(torch.mean(100*criterion_l1(uvcap_cv, uvcap), -1))
                             batch_loss_cap_cv[i//2] = torch.mean(torch.sqrt(torch.mean(torch.sum(criterion_l2(cap_cv, cap), -1), -1)))
-                            batch_loss_melsp_cv[i//2] = torch.mean(torch.sum(criterion_l1(melsp_cv, melsp), -1)) \
-                                                            + torch.sqrt(torch.mean(torch.sum(criterion_l2(melsp_cv, melsp), -1))) \
-                                                        + torch.mean(criterion_l1(melsp_cv, melsp)) \
-                                                            + torch.sqrt(torch.mean(criterion_l2(melsp_cv, melsp)))
+                            batch_loss_melsp_cv[i//2] = torch.mean(torch.sum(criterion_l1(melsp_cv, melsp), -1))
+                            #batch_loss_melsp_cv[i//2] = torch.mean(torch.sum(criterion_l1(melsp_cv, melsp), -1)) \
+                            #                                + torch.sqrt(torch.mean(torch.sum(criterion_l2(melsp_cv, melsp), -1))) \
+                            #                            + torch.mean(criterion_l1(melsp_cv, melsp)) \
+                            #                                + torch.sqrt(torch.mean(criterion_l2(melsp_cv, melsp)))
 
                         # KL-div lat., CE and error-percentage spk.
                         batch_sc_cv_ = batch_sc_cv[i//2].reshape(-1)
@@ -2342,7 +2404,7 @@ def main():
             if True:
                 logging.info('save epoch:%d' % (epoch_idx+1))
                 save_checkpoint(args.expdir, model_encoder_melsp, model_decoder_melsp, model_encoder_excit, model_decoder_excit,
-                    model_classifier, min_eval_loss_melsp_dB[0], min_eval_loss_melsp_dB_std[0], min_eval_loss_melsp_cv[0],
+                    model_spk, model_classifier, min_eval_loss_melsp_dB[0], min_eval_loss_melsp_dB_std[0], min_eval_loss_melsp_cv[0],
                     min_eval_loss_melsp[0], min_eval_loss_melsp_dB_src_trg, min_eval_loss_melsp_dB_src_trg_std, min_eval_loss_gv_src_trg,
                     iter_idx, min_idx, optimizer, numpy_random_state, torch_random_state, epoch_idx + 1, model_spkidtr=model_spkidtr)
             total = 0
@@ -2523,6 +2585,10 @@ def main():
                                                         del_index_utt, axis=1)).to(device)
                         h_z_e[i] = torch.FloatTensor(np.delete(h_z_e[i].cpu().data.numpy(),
                                                         del_index_utt, axis=1)).to(device)
+                        h_spk[i] = torch.FloatTensor(np.delete(h_spk[i].cpu().data.numpy(),
+                                                        del_index_utt, axis=1)).to(device)
+                        h_spk_cv[i_cv] = torch.FloatTensor(np.delete(h_spk_cv[i_cv].cpu().data.numpy(),
+                                                        del_index_utt, axis=1)).to(device)
                         h_z_sc[i] = torch.FloatTensor(np.delete(h_z_sc[i].cpu().data.numpy(),
                                                         del_index_utt, axis=1)).to(device)
                         h_lf0[i] = torch.FloatTensor(np.delete(h_lf0[i].cpu().data.numpy(),
@@ -2542,6 +2608,8 @@ def main():
                         h_z_e[j] = torch.FloatTensor(np.delete(h_z_e[j].cpu().data.numpy(),
                                                         del_index_utt, axis=1)).to(device)
                         if args.n_half_cyc > 1:
+                            h_spk[j] = torch.FloatTensor(np.delete(h_spk[j].cpu().data.numpy(),
+                                                            del_index_utt, axis=1)).to(device)
                             h_z_sc[j] = torch.FloatTensor(np.delete(h_z_sc[j].cpu().data.numpy(),
                                                             del_index_utt, axis=1)).to(device)
                             h_lf0[j] = torch.FloatTensor(np.delete(h_lf0[j].cpu().data.numpy(),
@@ -2571,25 +2639,33 @@ def main():
                     if args.spkidtr_dim > 0:
                         spk_code_in = model_spkidtr(batch_sc_in[idx_in])
                         spk_cv_code_in = model_spkidtr(batch_sc_cv_in[i_cv_in])
+                        batch_spk, h_spk[i] = model_spk(spk_code_in, z=z_cat, outpad_right=outpad_rights[idx_in], h=h_spk[i], do=True)
+                        batch_spk_cv, h_spk_cv[i_cv] = model_spk(spk_cv_code_in, z=z_cat, outpad_right=outpad_rights[idx_in], h=h_spk_cv[i_cv], do=True)
                         batch_lf0_rec[i], h_lf0[i] \
-                                = model_decoder_excit(z_e[i], y=spk_code_in, outpad_right=outpad_rights[idx_in], h=h_lf0[i], do=True)
+                                = model_decoder_excit(z_e[i], y=spk_code_in, aux=batch_spk, outpad_right=outpad_rights[idx_in], h=h_lf0[i], do=True)
                         batch_lf0_cv[i_cv], h_lf0_cv[i_cv] \
-                                = model_decoder_excit(z_e[i], y=spk_cv_code_in, outpad_right=outpad_rights[idx_in], h=h_lf0_cv[i_cv], do=True)
+                                = model_decoder_excit(z_e[i], y=spk_cv_code_in, aux=batch_spk_cv, outpad_right=outpad_rights[idx_in], h=h_lf0_cv[i_cv], do=True)
                     else:
+                        batch_spk, h_spk[i] = model_spk(batch_sc_in[idx_in], z=z_cat, outpad_right=outpad_rights[idx_in], h=h_spk[i], do=True)
+                        batch_spk_cv, h_spk_cv[i_cv] = model_spk(batch_sc_cv_in[i_cv_in], z=z_cat, outpad_right=outpad_rights[idx_in], h=h_spk_cv[i_cv], do=True)
                         batch_lf0_rec[i], h_lf0[i] \
-                                = model_decoder_excit(z_e[i], y=batch_sc_in[idx_in], outpad_right=outpad_rights[idx_in], h=h_lf0[i], do=True)
+                                = model_decoder_excit(z_e[i], y=batch_sc_in[idx_in], aux=batch_spk, outpad_right=outpad_rights[idx_in], h=h_lf0[i], do=True)
                         batch_lf0_cv[i_cv], h_lf0_cv[i_cv] \
-                                = model_decoder_excit(z_e[i], y=batch_sc_cv_in[i_cv_in], outpad_right=outpad_rights[idx_in], h=h_lf0_cv[i_cv], do=True)
+                                = model_decoder_excit(z_e[i], y=batch_sc_cv_in[i_cv_in], aux=batch_spk_cv, outpad_right=outpad_rights[idx_in], h=h_lf0_cv[i_cv], do=True)
                     if lf0_pad_right > 0:
                         z_cat = z_cat[:,lf0_pad_left:-lf0_pad_right]
                         if args.spkidtr_dim > 0:
                             spk_code_in = spk_code_in[:,lf0_pad_left:-lf0_pad_right]
                             spk_cv_code_in = spk_cv_code_in[:,lf0_pad_left:-lf0_pad_right]
+                        batch_spk = batch_spk[:,lf0_pad_left:-lf0_pad_right]
+                        batch_spk_cv = batch_spk_cv[:,lf0_pad_left:-lf0_pad_right]
                     else:
                         z_cat = z_cat[:,lf0_pad_left:]
                         if args.spkidtr_dim > 0:
                             spk_code_in = spk_code_in[:,lf0_pad_left:]
                             spk_cv_code_in = spk_cv_code_in[:,lf0_pad_left:]
+                        batch_spk = batch_spk[:,lf0_pad_left:]
+                        batch_spk_cv = batch_spk_cv[:,lf0_pad_left:]
                     feat_len = qy_logits[i].shape[1]
                     idx_in_1 = idx_in-1
                     z[i] = z[i][:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
@@ -2602,14 +2678,14 @@ def main():
                     idx_in += 1
                     i_cv_in += 1
                     if args.spkidtr_dim > 0:
-                        batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=spk_code_in,
+                        batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
                                             e=batch_lf0_rec[i][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], h=h_melsp[i], do=True)
-                        batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=spk_cv_code_in,
+                        batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=spk_cv_code_in, aux=batch_spk_cv,
                                             e=batch_lf0_cv[i_cv][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], h=h_melsp_cv[i_cv], do=True)
                     else:
-                        batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in],
+                        batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in], aux=batch_spk,
                                             e=batch_lf0_rec[i][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], h=h_melsp[i], do=True)
-                        batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=batch_sc_cv_in[i_cv_in],
+                        batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=batch_sc_cv_in[i_cv_in], aux=batch_spk_cv,
                                             e=batch_lf0_cv[i_cv][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], h=h_melsp_cv[i_cv], do=True)
                     idx_in_1 = idx_in-1
                     feat_len_e = batch_lf0_rec[i].shape[1]
@@ -2634,17 +2710,21 @@ def main():
                                 spk_code_in = spk_code_in[:,dec_enc_pad_left:-dec_enc_pad_right]
                             else:
                                 spk_code_in = spk_code_in[:,dec_enc_pad_left:]
-                            batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(z_e[j], y=spk_code_in, outpad_right=outpad_rights[idx_in], h=h_lf0[j], do=True)
+                            batch_spk, h_spk[j] = model_spk(spk_code_in, z=z_cat, outpad_right=outpad_rights[idx_in], h=h_spk[j], do=True)
+                            batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(z_e[j], y=spk_code_in, aux=batch_spk, outpad_right=outpad_rights[idx_in], h=h_lf0[j], do=True)
                         else:
-                            batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(z_e[j], y=batch_sc_in[idx_in], outpad_right=outpad_rights[idx_in], h=h_lf0[j], do=True)
+                            batch_spk, h_spk[j] = model_spk(batch_sc_in[idx_in], z=z_cat, outpad_right=outpad_rights[idx_in], h=h_spk[j], do=True)
+                            batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(z_e[j], y=batch_sc_in[idx_in], aux=batch_spk, outpad_right=outpad_rights[idx_in], h=h_lf0[j], do=True)
                         if lf0_pad_right > 0:
                             z_cat = z_cat[:,lf0_pad_left:-lf0_pad_right]
                             if args.spkidtr_dim > 0:
                                 spk_code_in = spk_code_in[:,lf0_pad_left:-lf0_pad_right]
+                            batch_spk = batch_spk[:,lf0_pad_left:-lf0_pad_right]
                         else:
                             z_cat = z_cat[:,lf0_pad_left:]
                             if args.spkidtr_dim > 0:
                                 spk_code_in = spk_code_in[:,lf0_pad_left:]
+                            batch_spk = batch_spk[:,lf0_pad_left:]
                         feat_len = qy_logits[j].shape[1]
                         idx_in_1 = idx_in-1
                         z[j] = z[j][:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
@@ -2656,10 +2736,10 @@ def main():
                         qz_alpha_e[j] = qz_alpha_e[j][:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
                         idx_in += 1
                         if args.spkidtr_dim > 0:
-                            batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=spk_code_in,
+                            batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
                                                     e=batch_lf0_rec[j][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], h=h_melsp[j], do=True)
                         else:
-                            batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in],
+                            batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in], aux=batch_spk,
                                                     e=batch_lf0_rec[j][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], h=h_melsp[j], do=True)
                         idx_in_1 = idx_in-1
                         batch_lf0_rec[j] = batch_lf0_rec[j][:,outpad_lefts[idx_in_1]:batch_lf0_rec[j].shape[1]-outpad_rights[idx_in_1]]
@@ -2700,21 +2780,29 @@ def main():
                     if args.spkidtr_dim > 0:
                         spk_code_in = model_spkidtr(batch_sc_in[idx_in])
                         spk_cv_code_in = model_spkidtr(batch_sc_cv_in[i_cv_in])
-                        batch_lf0_rec[i], h_lf0[i] = model_decoder_excit(z_e[i], y=spk_code_in, outpad_right=outpad_rights[idx_in], do=True)
-                        batch_lf0_cv[i_cv], h_lf0_cv[i_cv] = model_decoder_excit(z_e[i], y=spk_cv_code_in, outpad_right=outpad_rights[idx_in], do=True)
+                        batch_spk, h_spk[i] = model_spk(spk_code_in, z=z_cat, outpad_right=outpad_rights[idx_in], do=True)
+                        batch_spk_cv, h_spk_cv[i_cv] = model_spk(spk_cv_code_in, z=z_cat, outpad_right=outpad_rights[idx_in], do=True)
+                        batch_lf0_rec[i], h_lf0[i] = model_decoder_excit(z_e[i], y=spk_code_in, aux=batch_spk, outpad_right=outpad_rights[idx_in], do=True)
+                        batch_lf0_cv[i_cv], h_lf0_cv[i_cv] = model_decoder_excit(z_e[i], y=spk_cv_code_in, aux=batch_spk_cv, outpad_right=outpad_rights[idx_in], do=True)
                     else:
-                        batch_lf0_rec[i], h_lf0[i] = model_decoder_excit(z_e[i], y=batch_sc_in[idx_in], outpad_right=outpad_rights[idx_in], do=True)
-                        batch_lf0_cv[i_cv], h_lf0_cv[i_cv] = model_decoder_excit(z_e[i], y=batch_sc_cv_in[i_cv_in], outpad_right=outpad_rights[idx_in], do=True)
+                        batch_spk, h_spk[i] = model_spk(batch_sc_in[idx_in], z=z_cat, outpad_right=outpad_rights[idx_in], do=True)
+                        batch_spk_cv, h_spk_cv[i_cv] = model_spk(batch_sc_cv_in[i_cv_in], z=z_cat, outpad_right=outpad_rights[idx_in], do=True)
+                        batch_lf0_rec[i], h_lf0[i] = model_decoder_excit(z_e[i], y=batch_sc_in[idx_in], aux=batch_spk, outpad_right=outpad_rights[idx_in], do=True)
+                        batch_lf0_cv[i_cv], h_lf0_cv[i_cv] = model_decoder_excit(z_e[i], y=batch_sc_cv_in[i_cv_in], aux=batch_spk_cv, outpad_right=outpad_rights[idx_in], do=True)
                     if lf0_pad_right > 0:
                         z_cat = z_cat[:,lf0_pad_left:-lf0_pad_right]
                         if args.spkidtr_dim > 0:
                             spk_code_in = spk_code_in[:,lf0_pad_left:-lf0_pad_right]
                             spk_cv_code_in = spk_cv_code_in[:,lf0_pad_left:-lf0_pad_right]
+                        batch_spk = batch_spk[:,lf0_pad_left:-lf0_pad_right]
+                        batch_spk_cv = batch_spk_cv[:,lf0_pad_left:-lf0_pad_right]
                     else:
                         z_cat = z_cat[:,lf0_pad_left:]
                         if args.spkidtr_dim > 0:
                             spk_code_in = spk_code_in[:,lf0_pad_left:]
                             spk_cv_code_in = spk_cv_code_in[:,lf0_pad_left:]
+                        batch_spk = batch_spk[:,lf0_pad_left:]
+                        batch_spk_cv = batch_spk_cv[:,lf0_pad_left:]
                     feat_len = qy_logits[i].shape[1]
                     idx_in_1 = idx_in-1
                     z[i] = z[i][:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
@@ -2727,14 +2815,14 @@ def main():
                     idx_in += 1
                     i_cv_in += 1
                     if args.spkidtr_dim > 0:
-                        batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=spk_cv_code_in,
+                        batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=spk_cv_code_in, aux=batch_spk,
                                             e=batch_lf0_rec[i][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], do=True)
-                        batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=spk_cv_code_in,
+                        batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=spk_cv_code_in, aux=batch_spk_cv,
                                             e=batch_lf0_cv[i_cv][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], do=True)
                     else:
-                        batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in],
+                        batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in], aux=batch_spk,
                                             e=batch_lf0_rec[i][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], do=True)
-                        batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=batch_sc_cv_in[i_cv_in],
+                        batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=batch_sc_cv_in[i_cv_in], aux=batch_spk_cv,
                                             e=batch_lf0_cv[i_cv][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], do=True)
                     idx_in_1 = idx_in-1
                     feat_len_e = batch_lf0_rec[i].shape[1]
@@ -2759,17 +2847,21 @@ def main():
                                 spk_code_in = spk_code_in[:,dec_enc_pad_left:-dec_enc_pad_right]
                             else:
                                 spk_code_in = spk_code_in[:,dec_enc_pad_left:]
-                            batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(z_e[j], y=spk_code_in, outpad_right=outpad_rights[idx_in], do=True)
+                            batch_spk, h_spk[j] = model_spk(spk_code_in, z=z_cat, outpad_right=outpad_rights[idx_in], do=True)
+                            batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(z_e[j], y=spk_code_in, aux=batch_spk, outpad_right=outpad_rights[idx_in], do=True)
                         else:
-                            batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(z_e[j], y=batch_sc_in[idx_in], outpad_right=outpad_rights[idx_in], do=True)
+                            batch_spk, h_spk[j] = model_spk(batch_sc_in[idx_in], z=z_cat, outpad_right=outpad_rights[idx_in], do=True)
+                            batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(z_e[j], y=batch_sc_in[idx_in], aux=batch_spk, outpad_right=outpad_rights[idx_in], do=True)
                         if lf0_pad_right > 0:
                             z_cat = z_cat[:,lf0_pad_left:-lf0_pad_right]
                             if args.spkidtr_dim > 0:
                                 spk_code_in = spk_code_in[:,lf0_pad_left:-lf0_pad_right]
+                            batch_spk = batch_spk[:,lf0_pad_left:-lf0_pad_right]
                         else:
                             z_cat = z_cat[:,lf0_pad_left:]
                             if args.spkidtr_dim > 0:
                                 spk_code_in = spk_code_in[:,lf0_pad_left:]
+                            batch_spk = batch_spk[:,lf0_pad_left:]
                         feat_len = qy_logits[j].shape[1]
                         idx_in_1 = idx_in-1
                         z[j] = z[j][:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
@@ -2781,10 +2873,10 @@ def main():
                         qz_alpha_e[j] = qz_alpha_e[j][:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
                         idx_in += 1
                         if args.spkidtr_dim > 0:
-                            batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=spk_code_in,
+                            batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
                                                     e=batch_lf0_rec[j][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], do=True)
                         else:
-                            batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in],
+                            batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in], aux=batch_spk,
                                                     e=batch_lf0_rec[j][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], do=True)
                         idx_in_1 = idx_in-1
                         batch_lf0_rec[j] = batch_lf0_rec[j][:,outpad_lefts[idx_in_1]:batch_lf0_rec[j].shape[1]-outpad_rights[idx_in_1]]
@@ -2883,17 +2975,19 @@ def main():
 
                         ## U/V, lf0, codeap, melsp acc.
                         if flens_utt > 1:
+                            #batch_loss_px_select += torch.mean(torch.sum(criterion_l1(melsp_est, melsp), -1)) \
+                            #                        + torch.sqrt(torch.mean(torch.sum(criterion_l2(melsp_est, melsp), -1))) \
+                            #                            + torch.mean(criterion_l1(melsp_est, melsp)) \
+                            #                        + torch.sqrt(torch.mean(criterion_l2(melsp_est, melsp))) \
                             batch_loss_px_select += torch.mean(torch.sum(criterion_l1(melsp_est, melsp), -1)) \
-                                                    + torch.sqrt(torch.mean(torch.sum(criterion_l2(melsp_est, melsp), -1))) \
-                                                        + torch.mean(criterion_l1(melsp_est, melsp)) \
-                                                    + torch.sqrt(torch.mean(criterion_l2(melsp_est, melsp))) \
                                                         + torch.mean(100*criterion_l1(uv_est, uv)) \
                                                             + torch.sqrt(torch.mean(criterion_l2(f0_est, f0))) \
                                                         + torch.mean(100*criterion_l1(uvcap_est, uvcap_select)) \
                                                             + torch.mean(torch.sum(criterion_l1(cap_est, cap), -1))
                         else:
+                            #batch_loss_px_select += torch.mean(torch.sum(criterion_l1(melsp_est, melsp), -1)) \
+                            #                            + torch.mean(criterion_l1(melsp_est, melsp)) \
                             batch_loss_px_select += torch.mean(torch.sum(criterion_l1(melsp_est, melsp), -1)) \
-                                                        + torch.mean(criterion_l1(melsp_est, melsp)) \
                                                         + torch.mean(100*criterion_l1(uv_est, uv)) \
                                                             + torch.mean(criterion_l1(f0_est, f0)) \
                                                         + torch.mean(100*criterion_l1(uvcap_est, uvcap_select)) \
@@ -3047,10 +3141,11 @@ def main():
                 batch_loss_px[i] += batch_loss_uvcap[i] + batch_loss_cap[i]
                 batch_loss_px_sum += batch_loss_uvcap_.sum() + batch_loss_cap_.sum()
 
-                batch_loss_melsp_ = torch.mean(torch.sum(criterion_l1(melsp_est, melsp), -1), -1) \
-                                        + torch.sqrt(torch.mean(torch.sum(criterion_l2(melsp_est, melsp), -1), -1)) \
-                                    + torch.mean(torch.mean(criterion_l1(melsp_est, melsp), -1), -1) \
-                                        + torch.sqrt(torch.mean(torch.mean(criterion_l2(melsp_est, melsp), -1), -1))
+                batch_loss_melsp_ = torch.mean(torch.sum(criterion_l1(melsp_est, melsp), -1), -1)
+                #batch_loss_melsp_ = torch.mean(torch.sum(criterion_l1(melsp_est, melsp), -1), -1) \
+                #                        + torch.sqrt(torch.mean(torch.sum(criterion_l2(melsp_est, melsp), -1), -1)) \
+                #                    + torch.mean(torch.mean(criterion_l1(melsp_est, melsp), -1), -1) \
+                #                        + torch.sqrt(torch.mean(torch.mean(criterion_l2(melsp_est, melsp), -1), -1))
                 batch_loss_px_sum += batch_loss_melsp_.sum()
                 batch_loss_melsp[i] = batch_loss_melsp_.mean()
                 batch_loss_px[i] += batch_loss_melsp[i]
@@ -3076,10 +3171,11 @@ def main():
                         batch_loss_px_sum += batch_loss_f0_cv[i//2]
                     batch_loss_uvcap_cv[i//2] = torch.mean(torch.mean(100*criterion_l1(uvcap_cv, uvcap), -1))
                     batch_loss_cap_cv[i//2] = torch.mean(torch.sqrt(torch.mean(torch.sum(criterion_l2(cap_cv, cap), -1), -1)))
-                    batch_loss_melsp_cv[i//2] = torch.mean(torch.sum(criterion_l1(melsp_cv, melsp), -1)) \
-                                                    + torch.sqrt(torch.mean(torch.sum(criterion_l2(melsp_cv, melsp), -1))) \
-                                                + torch.mean(criterion_l1(melsp_cv, melsp)) \
-                                                    + torch.sqrt(torch.mean(criterion_l2(melsp_cv, melsp)))
+                    batch_loss_melsp_cv[i//2] = torch.mean(torch.sum(criterion_l1(melsp_cv, melsp), -1))
+                    #batch_loss_melsp_cv[i//2] = torch.mean(torch.sum(criterion_l1(melsp_cv, melsp), -1)) \
+                    #                                + torch.sqrt(torch.mean(torch.sum(criterion_l2(melsp_cv, melsp), -1))) \
+                    #                            + torch.mean(criterion_l1(melsp_cv, melsp)) \
+                    #                                + torch.sqrt(torch.mean(criterion_l2(melsp_cv, melsp)))
 
                 # KL-div lat., CE and error-percentage spk.
                 batch_sc_cv_ = batch_sc_cv[i//2].reshape(-1)
