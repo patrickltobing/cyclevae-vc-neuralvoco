@@ -1,30 +1,6 @@
-/* Copyright (c) 2018 Mozilla */
 /*
-   Redistribution and use in source and binary forms, with or without
-   modification, are permitted provided that the following conditions
-   are met:
-
-   - Redistributions of source code must retain the above copyright
-   notice, this list of conditions and the following disclaimer.
-
-   - Redistributions in binary form must reproduce the above copyright
-   notice, this list of conditions and the following disclaimer in the
-   documentation and/or other materials provided with the distribution.
-
-   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-   ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-   LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-   A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE FOUNDATION OR
-   CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-   EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-   PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-   PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-   LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-   NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-/* Based on test_lpcnet.c
-   Modified by Patrick Lumban Tobing (Nagoya University) on Sept.-Dec. 2020
+   Copyright 2020 Patrick Lumban Tobing (Nagoya University)
+   Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
    WAV file read based on http://truelogic.org/wordpress/2015/09/04/parsing-a-wav-file-in-c
 */
 
@@ -226,8 +202,13 @@ int main(int argc, char **argv) {
         // calculate no.of samples
         long num_samples = (8 * header.data_size) / (header.channels * header.bits_per_sample);
         printf("Number of samples: %lu \n", num_samples);
+        // first samples are of the right-side hanning window, i.e., 1st frame,
+        // the remaining samples are then divided by FRAME_SHIFT to get the remaining frames
         long num_frame = 1 + (num_samples - RIGHT_SAMPLES) / FRAME_SHIFT
-        if ((num_samples - RIGHT_SAMPLES) % FRAME_SHIFT > 0)
+        // if theere exist remainder samples of the 2nd-Nth frame,
+        // use reflected samples of the last buffer for the missing amount of samples to process one last frame
+        long num_reflected_right_edge_samples = (num_samples - RIGHT_SAMPLES) % FRAME_SHIFT
+        if (num_reflected_right_edge_samples > 0)
             num_frame += 1 //use additional reflected samples for the trailing remainder samples on the right-edge
         long num_samples_frame = num_frame * FRAME_SHIFT
         printf("Number of samples in processed output wav: %lu \n", num_samples_frame);
@@ -253,26 +234,26 @@ int main(int argc, char **argv) {
                 exit(1);
             }
             
-            // the valid amplitude range for values based on the bits per sample
-            long low_limit = 0l;
-            long high_limit = 0l;
-            
-            switch (header.bits_per_sample) {
-                case 8:
-                    low_limit = -128;
-                    high_limit = 127;
-                    break;
-                case 16:
-                    low_limit = -32768;
-                    high_limit = 32767;
-                    break;
-                case 32:
-                    low_limit = -2147483648;
-                    high_limit = 2147483647;
-                    break;
-            }                   
-            
-            printf("nn.Valid range for data values : %ld to %ld \n", low_limit, high_limit);
+            //// the valid amplitude range for values based on the bits per sample
+            //long low_limit = 0l;
+            //long high_limit = 0l;
+            //
+            //switch (header.bits_per_sample) {
+            //    //case 8:
+            //    //    low_limit = -128;
+            //    //    high_limit = 127;
+            //    //    break;
+            //    case 16:
+            //        low_limit = -32768;
+            //        high_limit = 32767;
+            //        break;
+            //    //case 32:
+            //    //    low_limit = -2147483648;
+            //    //    high_limit = 2147483647;
+            //    //    break;
+            //}                   
+            //
+            //printf("nn.Valid range for data values : %ld to %ld \n", low_limit, high_limit);
 
             t = clock();
             DSPState *dsp;
@@ -300,7 +281,6 @@ int main(int argc, char **argv) {
 
             // set spk-code here
             float spk_code_aux[FEATURE_N_SPK*2]; //if use gru-spk
-            //float spk_code_aux[FEATURE_N_SPK]; //if without gru-spk
             if (argc == 4) //exact point spk-code location
                 float one_hot_code[FEATURE_N_SPK] = {0};
                 one_hot_code[spk_idx-1] = 1;
@@ -325,15 +305,14 @@ int main(int argc, char **argv) {
                     // high-pass filter to remove DC component of recording device
                     shift_apply_hpassfilt(dsp, &data_in_channel)
             
-                    //printf("%d ", data_in_channel);
-                    
                     //check waveform buffer here
                     if (first_buffer_flag) { //first frame has been processed, now taking every FRAME_SHIFT amount of samples
-                        x_buffer[i] = data_in_channel;
+                        x_buffer[j] = data_in_channel;
                         j += 1;
                         if (j >= FRAME_SHIFT) {
                             shift_apply_window(dsp, x_buffer); //shift old FRAME_SHIFT amount for new FRAME_SHIFT amount and window
                             waveform_buffer_flag = 1;
+                            j = 0;
                         }
                     } else { //take RIGHT_SAMPLES amount of samples as the first samples
                         //put only LEFT_SAMPLES and RIGHT_SAMPLES amount in window buffer, because zero-padding until FFT_LENGTH with centered window position
@@ -353,11 +332,7 @@ int main(int argc, char **argv) {
                         mel_spec_extract(dsp, features);
             
                         cyclevae_post_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0);
-                        //// check if value was in range
-                        //if (data_in_channel < low_limit || data_in_channel > high_limit)
-                        //    printf("**value out of range\n");
             
-                        //printf("\n");
                         if (n_output > 0)  { //delay is reached, samples are generated
                             fwrite(pcm, sizeof(pcm[0]), n_output, fout);
                             samples += n_output;
@@ -378,6 +353,18 @@ int main(int argc, char **argv) {
         
         if (!waveform_buffer_flag) {
             //set additional reflected samples for trailing remainder samples on the right edge here
+            int k;
+            for (i = 0, k=j-1; i < num_reflected_right_edge_samples; i++, j++)
+                x_buffer[j] = x_buffer[k-i];
+
+            if (j != FRAME_SHIFT) {
+                printf("Error remainder right-edge samples calculation %d %d\n", j, FRAME_SHIFT);
+                fclose(fin);
+                fclose(fout);
+                dspstate_destroy(dsp);
+                mwdlp10cyclevaenet_destroy(net);
+                exit(1);
+            }
 
             cyclevae_post_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 1); //last_frame, synth pad_right
             if (n_output > 0)  {
@@ -401,4 +388,5 @@ int main(int argc, char **argv) {
         mwdlp10cyclevaenet_destroy(net);
 
         return 0;
+    }
 }

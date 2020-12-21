@@ -31,7 +31,7 @@ from utils import read_hdf5
 from utils import read_txt
 from vcneuvoco import GRU_VAE_ENCODER, GRU_SPEC_DECODER, GRU_LAT_FEAT_CLASSIFIER
 from vcneuvoco import GRU_EXCIT_DECODER, SPKID_TRANSFORM_LAYER, GRU_SPK, GRU_POST_NET
-from vcneuvoco import kl_laplace, ModulationSpectrumLoss, kl_categorical_categorical_logits, LaplaceLoss
+from vcneuvoco import kl_laplace, ModulationSpectrumLoss, LaplaceLoss
 
 import torch_optimizer as optim
 
@@ -586,8 +586,6 @@ def main():
     criterion_l2 = torch.nn.MSELoss(reduction='none')
     melfb_t = torch.FloatTensor(np.linalg.pinv(librosa.filters.mel(args.fs, args.fftl, n_mels=args.mel_dim)).T)
 
-    p_spk = torch.ones(n_spk)/n_spk
-
     # send to gpu
     if torch.cuda.is_available():
         model_encoder_melsp.cuda()
@@ -610,15 +608,10 @@ def main():
         scale_cap = scale_cap.cuda()
         mean_full = mean_full.cuda()
         scale_full = scale_full.cuda()
-        p_spk = p_spk.cuda()
         melfb_t = melfb_t.cuda()
     else:
         logging.error("gpu is not available. please check the setting.")
         sys.exit(1)
-    logits_p_spk = torch.log(p_spk)
-
-    logging.info(p_spk)
-    logging.info(logits_p_spk)
 
     model_encoder_melsp.train()
     model_decoder_melsp.train()
@@ -2916,7 +2909,6 @@ def main():
                     melsp = batch_melsp[k,:flens_utt]
                     melsp_rest = (torch.exp(melsp)-1)/10000
                     magsp = batch_magsp[k,:flens_utt]
-                    batch_excit_select = batch_excit[k,:flens_utt]
 
                     batch_sc_ = batch_sc[k,:flens_utt]
                     batch_loss_sc_feat_in_kl_select += torch.mean(criterion_ce(batch_feat_in_sc[k,:flens_utt], batch_sc_)) \

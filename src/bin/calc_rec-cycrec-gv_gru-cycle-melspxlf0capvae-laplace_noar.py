@@ -318,6 +318,12 @@ def main():
                         trj_src_code = trj_src_code[:,model_decoder_excit.pad_left:]
                     cvmelsp_cyc, _ = model_decoder_melsp(lat_cat, y=src_code, aux=trj_src_code, e=cvlf0_cyc[:,:,:config.excit_dim])
 
+                    #if outpad_rights[0] > 0:
+                    #    lat_src = lat_src[:,outpad_lefts[0]:-outpad_rights[0]]
+                    #    lat_src_e = lat_src_e[:,outpad_lefts[0]:-outpad_rights[0]]
+                    #else:
+                    #    lat_src = lat_src[:,outpad_lefts[0]:]
+                    #    lat_src_e = lat_src_e[:,outpad_lefts[0]:]
                     if outpad_rights[1] > 0:
                         cvlf0_src = cvlf0_src[:,outpad_lefts[1]:-outpad_rights[1]]
                     else:
@@ -326,6 +332,12 @@ def main():
                         cvmelsp_src = cvmelsp_src[:,outpad_lefts[2]:-outpad_rights[2]]
                     else:
                         cvmelsp_src = cvmelsp_src[:,outpad_lefts[2]:]
+                    #if outpad_rights[3] > 0:
+                    #    lat_rec = lat_rec[:,outpad_lefts[3]:-outpad_rights[3]]
+                    #    lat_rec_e = lat_rec_e[:,outpad_lefts[3]:-outpad_rights[3]]
+                    #else:
+                    #    lat_rec = lat_rec[:,outpad_lefts[3]:]
+                    #    lat_rec_e = lat_rec_e[:,outpad_lefts[3]:]
                     if outpad_rights[4] > 0:
                         cvlf0_cyc = cvlf0_cyc[:,outpad_lefts[4]:-outpad_rights[4]]
                     else:
@@ -334,8 +346,14 @@ def main():
                     feat_rec = cvmelsp_src[0].cpu().data.numpy()
                     feat_cyc = cvmelsp_cyc[0].cpu().data.numpy()
 
+                    lat_src = lat_src[0].cpu().data.numpy()
+                    lat_src_e = lat_src_e[0].cpu().data.numpy()
+
                     cvmelsp_src = np.array(cvmelsp_src[0].cpu().data.numpy(), dtype=np.float64)
                     cvlf0_src = np.array(cvlf0_src[0].cpu().data.numpy(), dtype=np.float64)
+
+                    lat_rec = lat_rec[0].cpu().data.numpy()
+                    lat_rec_e = lat_rec_e[0].cpu().data.numpy()
 
                     cvmelsp_cyc = np.array(cvmelsp_cyc[0].cpu().data.numpy(), dtype=np.float64)
                     cvlf0_cyc = np.array(cvlf0_cyc[0].cpu().data.numpy(), dtype=np.float64)
@@ -452,6 +470,16 @@ def main():
                 logging.info(feat_rec.shape)
                 write_hdf5(feat_file, args.string_path, feat_rec)
 
+                #logging.info('write lat src to h5')
+                #logging.info(feat_file + ' ' + args.string_path+'_lat')
+                #logging.info(lat_src.shape)
+                #write_hdf5(feat_file, args.string_path+'_lat', lat_src)
+
+                #logging.info('write lat_e src to h5')
+                #logging.info(feat_file + ' ' + args.string_path+'_lat_e')
+                #logging.info(lat_src_e.shape)
+                #write_hdf5(feat_file, args.string_path+'_lat_e', lat_src_e)
+
                 logging.info('write cyc to h5')
                 outh5dir = os.path.join(os.path.dirname(os.path.dirname(feat_file)), args.spk+"-"+args.spk+"-"+args.spk)
                 if not os.path.exists(outh5dir):
@@ -460,6 +488,16 @@ def main():
                 logging.info(feat_file + ' ' + args.string_path)
                 logging.info(feat_cyc.shape)
                 write_hdf5(feat_file, args.string_path, feat_cyc)
+
+                #logging.info('write lat rec to h5')
+                #logging.info(feat_file + ' ' + args.string_path+'_lat')
+                #logging.info(lat_rec.shape)
+                #write_hdf5(feat_file, args.string_path+'_lat', lat_rec)
+
+                #logging.info('write lat_e rec to h5')
+                #logging.info(feat_file + ' ' + args.string_path+'_lat_e')
+                #logging.info(lat_rec_e.shape)
+                #write_hdf5(feat_file, args.string_path+'_lat_e', lat_rec_e)
 
                 count += 1
                 #if count >= 5:

@@ -393,8 +393,6 @@ def main():
                         type=int, help="seed number")
     parser.add_argument("--resume", default=None,
                         type=str, help="model path to restart training")
-    parser.add_argument("--pretrained", default=None,
-                        type=str, help="model path to restart training")
     #parser.add_argument("--string_path", default=None,
     #                    type=str, help="model path to restart training")
     parser.add_argument("--GPU_device", default=None,
@@ -537,7 +535,6 @@ def main():
         hidden_units=32,
         do_prob=args.do_prob)
     logging.info(model_spk)
-    #criterion_ms = ModulationSpectrumLoss(args.fftsize)
     criterion_ms = ModulationSpectrumLoss(args.fftsize, post=True)
     criterion_ce = torch.nn.CrossEntropyLoss(reduction='none')
     criterion_l1 = torch.nn.L1Loss(reduction='none')
@@ -661,9 +658,6 @@ def main():
         param.requires_grad = False
     for param in model_decoder_excit.scale_out_cap.parameters():
         param.requires_grad = False
-    if (args.spkidtr_dim > 0) and args.pretrained is not None:
-        for param in model_spkidtr.parameters():
-            param.requires_grad = False
 
     module_list = list(model_encoder_melsp.conv.parameters())
     module_list += list(model_encoder_melsp.gru.parameters()) + list(model_encoder_melsp.out.parameters())
@@ -682,7 +676,7 @@ def main():
     module_list += list(model_classifier.conv_lat.parameters()) + list(model_classifier.conv_feat.parameters())
     module_list += list(model_classifier.gru.parameters()) + list(model_classifier.out.parameters())
 
-    if (args.spkidtr_dim > 0) and args.pretrained is None:
+    if (args.spkidtr_dim > 0):
         module_list += list(model_spkidtr.conv.parameters()) + list(model_spkidtr.deconv.parameters())
 
     # model = ...
@@ -695,20 +689,7 @@ def main():
     )
 
     # resume
-    if args.pretrained is not None and args.resume is None:
-        checkpoint = torch.load(args.pretrained)
-        #model_encoder_melsp.load_state_dict(checkpoint["model_encoder_melsp"])
-        #model_decoder_melsp.load_state_dict(checkpoint["model_decoder_melsp"])
-        #model_encoder_excit.load_state_dict(checkpoint["model_encoder_excit"])
-        #model_decoder_excit.load_state_dict(checkpoint["model_decoder_excit"])
-        #model_spk.load_state_dict(checkpoint["model_spk"])
-        #model_classifier.load_state_dict(checkpoint["model_classifier"])
-        if (args.spkidtr_dim > 0):
-            model_spkidtr.load_state_dict(checkpoint["model_spkidtr"])
-        epoch_idx = checkpoint["iterations"]
-        logging.info("pretrained spkidtr from %d-iter checkpoint." % epoch_idx)
-        epoch_idx = 0
-    elif args.resume is not None:
+    if args.resume is not None:
         checkpoint = torch.load(args.resume)
         model_encoder_melsp.load_state_dict(checkpoint["model_encoder_melsp"])
         model_decoder_melsp.load_state_dict(checkpoint["model_decoder_melsp"])
@@ -1207,6 +1188,7 @@ def main():
             model_encoder_excit.eval()
             model_decoder_excit.eval()
             model_classifier.eval()
+            model_spk.eval()
             if args.spkidtr_dim > 0:
                 model_spkidtr.eval()
             for param in model_encoder_melsp.parameters():
@@ -1219,7 +1201,7 @@ def main():
                 param.requires_grad = False
             for param in model_classifier.parameters():
                 param.requires_grad = False
-            if args.spkidtr_dim > 0 and args.pretrained is None:
+            if args.spkidtr_dim > 0:
                 for param in model_spkidtr.parameters():
                     param.requires_grad = False
             pair_exist = False
@@ -1373,12 +1355,11 @@ def main():
                                 idx_in += 1
                                 i_cv_in += 1
                                 i_1 = i-1
-                                cyc_rec_feat = batch_melsp_rec[i_1].detach()
+                                cyc_rec_feat = batch_melsp_rec[i_1]
                                 qy_logits[i], qz_alpha[i], z[i], h_z[i] = model_encoder_melsp(cyc_rec_feat, outpad_right=outpad_rights[idx_in], h=h_z[i], sampling=False)
                                 qy_logits_e[i], qz_alpha_e[i], z_e[i], h_z_e[i] = model_encoder_excit(cyc_rec_feat, outpad_right=outpad_rights[idx_in], h=h_z_e[i], sampling=False)
                                 idx_in_1 = idx_in-1
-                                feat_len = batch_melsp_rec[i_1].shape[1]
-                                batch_melsp_rec[i_1] = batch_melsp_rec[i_1][:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
+                                batch_melsp_rec[i_1] = batch_melsp_rec[i_1][:,outpad_lefts[idx_in_1]:batch_melsp_rec[i_1].shape[1]-outpad_rights[idx_in_1]]
                                 batch_feat_rec_sc[i_1], h_feat_sc[i_1] = model_classifier(feat=batch_melsp_rec[i_1], h=h_feat_sc[i_1])
                             else:
                                 qy_logits[i], qz_alpha[i], z[i], h_z[i] = model_encoder_melsp(batch_feat_in[idx_in], outpad_right=outpad_rights[idx_in], h=h_z[i], sampling=False)
@@ -1444,7 +1425,7 @@ def main():
                             batch_lf0_cv[i_cv] = batch_lf0_cv[i_cv][:,outpad_lefts[idx_in_1]:feat_len_e-outpad_rights[idx_in_1]]
                             ## cyclic reconstruction
                             idx_in += 1
-                            cv_feat = batch_melsp_cv[i_cv].detach()
+                            cv_feat = batch_melsp_cv[i_cv]
                             qy_logits[j], qz_alpha[j], z[j], h_z[j] = model_encoder_melsp(cv_feat, outpad_right=outpad_rights[idx_in], h=h_z[j], sampling=False)
                             qy_logits_e[j], qz_alpha_e[j], z_e[j], h_z_e[j] = model_encoder_excit(cv_feat, outpad_right=outpad_rights[idx_in], h=h_z_e[j], sampling=False)
                             feat_len = batch_melsp_rec[i].shape[1]
@@ -1495,8 +1476,7 @@ def main():
                                 idx_in_1 = idx_in-1
                                 batch_lf0_rec[j] = batch_lf0_rec[j][:,outpad_lefts[idx_in_1]:batch_lf0_rec[j].shape[1]-outpad_rights[idx_in_1]]
                                 if j+1 == n_half_cyc_eval:
-                                    feat_len = batch_melsp_rec[j].shape[1]
-                                    batch_melsp_rec[j] = batch_melsp_rec[j][:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
+                                    batch_melsp_rec[j] = batch_melsp_rec[j][:,outpad_lefts[idx_in]:batch_melsp_rec[j].shape[1]-outpad_rights[idx_in]]
                                     batch_feat_rec_sc[j], h_feat_sc[j] = model_classifier(feat=batch_melsp_rec[j], h=h_feat_sc[j])
                             else:
                                 feat_len = qy_logits[j].shape[1]
@@ -1651,12 +1631,11 @@ def main():
                                 idx_in += 1
                                 i_cv_in += 1
                                 i_1 = i-1
-                                cyc_rec_feat = batch_melsp_rec[i_1].detach()
+                                cyc_rec_feat = batch_melsp_rec[i_1]
                                 qy_logits[i], qz_alpha[i], z[i], h_z[i] = model_encoder_melsp(cyc_rec_feat, outpad_right=outpad_rights[idx_in], sampling=False)
                                 qy_logits_e[i], qz_alpha_e[i], z_e[i], h_z_e[i] = model_encoder_excit(cyc_rec_feat, outpad_right=outpad_rights[idx_in], sampling=False)
                                 idx_in_1 = idx_in-1
-                                feat_len = batch_melsp_rec[i_1].shape[1]
-                                batch_melsp_rec[i_1] = batch_melsp_rec[i_1][:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
+                                batch_melsp_rec[i_1] = batch_melsp_rec[i_1][:,outpad_lefts[idx_in_1]:batch_melsp_rec[i_1].shape[1]-outpad_rights[idx_in_1]]
                                 batch_feat_rec_sc[i_1], h_feat_sc[i_1] = model_classifier(feat=batch_melsp_rec[i_1])
                             else:
                                 qy_logits[i], qz_alpha[i], z[i], h_z[i] = model_encoder_melsp(batch_feat_in[idx_in], outpad_right=outpad_rights[idx_in], sampling=False)
@@ -1718,7 +1697,7 @@ def main():
                             batch_lf0_cv[i_cv] = batch_lf0_cv[i_cv][:,outpad_lefts[idx_in_1]:feat_len_e-outpad_rights[idx_in_1]]
                             ## cyclic reconstruction
                             idx_in += 1
-                            cv_feat = batch_melsp_cv[i_cv].detach()
+                            cv_feat = batch_melsp_cv[i_cv]
                             qy_logits[j], qz_alpha[j], z[j], h_z[j] = model_encoder_melsp(cv_feat, outpad_right=outpad_rights[idx_in], sampling=False)
                             qy_logits_e[j], qz_alpha_e[j], z_e[j], h_z_e[j] = model_encoder_excit(cv_feat, outpad_right=outpad_rights[idx_in], sampling=False)
                             feat_len = batch_melsp_rec[i].shape[1]
@@ -1769,8 +1748,7 @@ def main():
                                 idx_in_1 = idx_in-1
                                 batch_lf0_rec[j] = batch_lf0_rec[j][:,outpad_lefts[idx_in_1]:batch_lf0_rec[j].shape[1]-outpad_rights[idx_in_1]]
                                 if j+1 == n_half_cyc_eval:
-                                    feat_len = batch_melsp_rec[j].shape[1]
-                                    batch_melsp_rec[j] = batch_melsp_rec[j][:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
+                                    batch_melsp_rec[j] = batch_melsp_rec[j][:,outpad_lefts[idx_in]:batch_melsp_rec[j].shape[1]-outpad_rights[idx_in]]
                                     batch_feat_rec_sc[j], h_feat_sc[j] = model_classifier(feat=batch_melsp_rec[j])
                             else:
                                 feat_len = qy_logits[j].shape[1]
@@ -2442,6 +2420,7 @@ def main():
             model_encoder_excit.train()
             model_decoder_excit.train()
             model_classifier.train()
+            model_spk.train()
             if args.spkidtr_dim > 0:
                 model_spkidtr.train()
             for param in model_encoder_melsp.parameters():
@@ -2466,7 +2445,7 @@ def main():
                 param.requires_grad = False
             for param in model_classifier.parameters():
                 param.requires_grad = True
-            if args.spkidtr_dim > 0 and args.pretrained is None:
+            if args.spkidtr_dim > 0:
                 for param in model_spkidtr.parameters():
                     param.requires_grad = True
             # start next epoch
@@ -2618,8 +2597,7 @@ def main():
                         qy_logits[i], qz_alpha[i], z[i], h_z[i] = model_encoder_melsp(cyc_rec_feat, outpad_right=outpad_rights[idx_in], h=h_z[i], do=True)
                         qy_logits_e[i], qz_alpha_e[i], z_e[i], h_z_e[i] = model_encoder_excit(cyc_rec_feat, outpad_right=outpad_rights[idx_in], h=h_z_e[i], do=True)
                         idx_in_1 = idx_in-1
-                        feat_len = batch_melsp_rec[i_1].shape[1]
-                        batch_melsp_rec[i_1] = batch_melsp_rec[i_1][:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
+                        batch_melsp_rec[i_1] = batch_melsp_rec[i_1][:,outpad_lefts[idx_in_1]:batch_melsp_rec[i_1].shape[1]-outpad_rights[idx_in_1]]
                         batch_feat_rec_sc[i_1], h_feat_sc[i_1] = model_classifier(feat=batch_melsp_rec[i_1], h=h_feat_sc[i_1], do=True)
                     else:
                         qy_logits[i], qz_alpha[i], z[i], h_z[i] = model_encoder_melsp(batch_feat_in[idx_in], outpad_right=outpad_rights[idx_in], h=h_z[i], do=True)
@@ -2736,8 +2714,7 @@ def main():
                         idx_in_1 = idx_in-1
                         batch_lf0_rec[j] = batch_lf0_rec[j][:,outpad_lefts[idx_in_1]:batch_lf0_rec[j].shape[1]-outpad_rights[idx_in_1]]
                         if j+1 == args.n_half_cyc:
-                            feat_len = batch_melsp_rec[j].shape[1]
-                            batch_melsp_rec[j] = batch_melsp_rec[j][:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
+                            batch_melsp_rec[j] = batch_melsp_rec[j][:,outpad_lefts[idx_in]:batch_melsp_rec[j].shape[1]-outpad_rights[idx_in]]
                             batch_feat_rec_sc[j], h_feat_sc[j] = model_classifier(feat=batch_melsp_rec[j], h=h_feat_sc[j], do=True)
                     else:
                         feat_len = qy_logits[j].shape[1]
@@ -2759,8 +2736,7 @@ def main():
                         qy_logits[i], qz_alpha[i], z[i], h_z[i] = model_encoder_melsp(cyc_rec_feat, outpad_right=outpad_rights[idx_in], do=True)
                         qy_logits_e[i], qz_alpha_e[i], z_e[i], h_z_e[i] = model_encoder_excit(cyc_rec_feat, outpad_right=outpad_rights[idx_in], do=True)
                         idx_in_1 = idx_in-1
-                        feat_len = batch_melsp_rec[i_1].shape[1]
-                        batch_melsp_rec[i_1] = batch_melsp_rec[i_1][:,outpad_lefts[idx_in_1]:feat_len-outpad_rights[idx_in_1]]
+                        batch_melsp_rec[i_1] = batch_melsp_rec[i_1][:,outpad_lefts[idx_in_1]:batch_melsp_rec[i_1].shape[1]-outpad_rights[idx_in_1]]
                         batch_feat_rec_sc[i_1], h_feat_sc[i_1] = model_classifier(feat=batch_melsp_rec[i_1], do=True)
                     else:
                         qy_logits[i], qz_alpha[i], z[i], h_z[i] = model_encoder_melsp(batch_feat_in[idx_in], outpad_right=outpad_rights[idx_in], do=True)
@@ -2873,8 +2849,7 @@ def main():
                         idx_in_1 = idx_in-1
                         batch_lf0_rec[j] = batch_lf0_rec[j][:,outpad_lefts[idx_in_1]:batch_lf0_rec[j].shape[1]-outpad_rights[idx_in_1]]
                         if j+1 == args.n_half_cyc:
-                            feat_len = batch_melsp_rec[j].shape[1]
-                            batch_melsp_rec[j] = batch_melsp_rec[j][:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
+                            batch_melsp_rec[j] = batch_melsp_rec[j][:,outpad_lefts[idx_in]:batch_melsp_rec[j].shape[1]-outpad_rights[idx_in]]
                             batch_feat_rec_sc[j], h_feat_sc[j] = model_classifier(feat=batch_melsp_rec[j], do=True)
                     else:
                         feat_len = qy_logits[j].shape[1]

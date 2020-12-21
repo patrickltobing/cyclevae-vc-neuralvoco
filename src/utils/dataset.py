@@ -292,9 +292,8 @@ class FeatureDatasetCycMceplf0WavVAE(Dataset):
     """
 
     def __init__(self, feat_list, pad_feat_transform, spk_list, stat_spk_list, n_cyc, string_path, excit_dim=None, cap_exc_dim=None,
-            upsampling_factor=None, wav_list=None, pad_wav_transform=None, wav_transform=None, logits=False, spcidx=True, uvcap_flag=True,
-                n_quantize=None, min_spec_bound=None, max_spec_bound=None, n_bands=1, cf_dim=None, pad_left=0, pad_right=0,
-                    magsp=False):
+            upsampling_factor=None, wav_list=None, pad_wav_transform=None, wav_transform=None, spcidx=True, uvcap_flag=True,
+                n_bands=1, cf_dim=None, pad_left=0, pad_right=0, magsp=False, string_path_rec=None):
         self.wav_list = wav_list
         self.feat_list = feat_list
         self.pad_wav_transform = pad_wav_transform
@@ -307,11 +306,11 @@ class FeatureDatasetCycMceplf0WavVAE(Dataset):
         self.n_cv = int(self.n_cyc/2 + self.n_cyc%2)
         self.n_spk = len(self.spk_list)
         self.string_path = string_path
-        self.logits = logits
         self.excit_dim = excit_dim
         self.cap_exc_dim = cap_exc_dim #to exclude cap
         self.spcidx = spcidx
         self.magsp = magsp
+        self.string_path_rec = string_path_rec
         if 'mel' in self.string_path:
             self.mean_path = "/mean_feat_mceplf0cap"
             self.scale_path = "/scale_feat_mceplf0cap"
@@ -326,16 +325,6 @@ class FeatureDatasetCycMceplf0WavVAE(Dataset):
             else:
                 self.uvcap = False
             self.mel = False
-        if n_quantize is not None:
-            self.n_quantize = n_quantize // 2
-        else:
-            self.n_quantize = None
-        self.min_spec_bound = min_spec_bound
-        self.max_spec_bound = max_spec_bound
-        if self.min_spec_bound is not None and self.max_spec_bound is not None:
-            self.diff_spec_bound = self.max_spec_bound - self.min_spec_bound
-        else:
-            self.diff_spec_bound = None
         self.n_bands = n_bands
         if self.upsampling_factor is not None:
             self.upsampling_factor_bands = self.upsampling_factor // self.n_bands
@@ -348,31 +337,31 @@ class FeatureDatasetCycMceplf0WavVAE(Dataset):
 
     def __getitem__(self, idx):
         featfile = self.feat_list[idx]
-        if self.n_quantize is not None:
-            if self.mel:
-                feat = ((2*(read_hdf5(featfile, self.string_path)-self.min_spec_bound)/self.diff_spec_bound - 1) * self.n_quantize + self.n_quantize + 0.5).astype(np.int64)
-                if self.excit_dim is not None:
-                    feat = np.c_[read_hdf5(featfile, '/feat_mceplf0cap')[:,:self.excit_dim], feat]
+        if self.mel:
+            if self.excit_dim is not None:
+                feat = np.c_[read_hdf5(featfile, '/feat_mceplf0cap')[:,:self.excit_dim], read_hdf5(featfile, self.string_path)]
             else:
-                if self.cap_exc_dim is None:
-                    feat = ((2*(read_hdf5(featfile, self.string_path)[:,self.excit_dim:]-self.min_spec_bound)/self.diff_spec_bound - 1) * self.n_quantize + self.n_quantize + 0.5).astype(np.int64)
-                    feat = np.c_[read_hdf5(featfile, self.string_path)[:,:self.excit_dim], feat]
-                else:
-                    feat = ((2*(read_hdf5(featfile, '/feat_mceplf0cap')[:,self.cap_exc_dim:]-self.min_spec_bound)/self.diff_spec_bound - 1) * self.n_quantize + self.n_quantize + 0.5).astype(np.int64)
-                    feat = np.c_[read_hdf5(featfile, '/feat_mceplf0cap')[:,:2], feat]
+                feat = read_hdf5(featfile, self.string_path)
+            if self.magsp:
+                feat_magsp = read_hdf5(featfile, '/magsp')
         else:
-            if self.mel:
-                if self.excit_dim is not None:
-                    feat = np.c_[read_hdf5(featfile, '/feat_mceplf0cap')[:,:self.excit_dim], read_hdf5(featfile, self.string_path)]
-                else:
-                    feat = read_hdf5(featfile, self.string_path)
-                if self.magsp:
-                    feat_magsp = read_hdf5(featfile, '/magsp')
+            if self.cap_exc_dim is None:
+                feat = read_hdf5(featfile, self.string_path)
             else:
-                if self.cap_exc_dim is None:
-                    feat = read_hdf5(featfile, self.string_path)
-                else:
-                    feat = np.c_[read_hdf5(featfile, '/feat_mceplf0cap')[:,:2], read_hdf5(featfile, '/feat_mceplf0cap')[:,self.cap_exc_dim:]]
+                feat = np.c_[read_hdf5(featfile, '/feat_mceplf0cap')[:,:2], read_hdf5(featfile, '/feat_mceplf0cap')[:,self.cap_exc_dim:]]
+        if self.string_path_rec is not None:
+            dirpath = os.path.dirname(featfile)
+            spk = os.path.basename(dirpath)
+            lat = [None]*self.n_cyc
+            lat_e = [None]*self.n_cyc
+            spks = spk+'-'+spk
+            dirpath = os.path.dirname(dirpath)
+            basepath = os.path.basename(featfile)
+            for i in range(self.n_cyc):
+                auxpath = os.path.join(dirpath, spks, basepath)
+                lat[i] = read_hdf5(auxpath, self.string_path_rec+'_lat')
+                lat_e[i] = read_hdf5(auxpath, self.string_path_rec+'_lat_e')
+                spks = spks+'-'+spk
         frm_len = len(read_hdf5(featfile, '/f0_range'))
         featfile_spk = os.path.basename(os.path.dirname(featfile))
         src_idx = self.spk_list.index(featfile_spk)
@@ -447,6 +436,10 @@ class FeatureDatasetCycMceplf0WavVAE(Dataset):
             feat = feat[spcidx_s_e[0]:spcidx_s_e[-1]]
             if self.magsp and self.mel:
                 feat_magsp = feat_magsp[spcidx_s_e[0]:spcidx_s_e[-1]]
+            if self.string_path_rec is not None:
+                for i in range(self.n_cyc):
+                    lat[i] = lat[i][spcidx_s_e[0]:spcidx_s_e[-1]]
+                    lat_e[i] = lat_e[i][spcidx_s_e[0]:spcidx_s_e[-1]]
             flen = feat.shape[0]
 
         mean_trg_list, std_trg_list, trg_code_list, pair_spk_list = \
@@ -474,10 +467,6 @@ class FeatureDatasetCycMceplf0WavVAE(Dataset):
         for i in range(self.n_cv):
             trg_code_list[i] = torch.LongTensor(self.pad_feat_transform(trg_code_list[i]))
 
-        if self.logits:
-            py_logits = torch.zeros(1,self.n_spk).fill_(-103)
-            py_logits[:,src_idx] = 88.72283554
-
         if self.uvcap:
             if self.spcidx:
                 if self.wav_list is not None:
@@ -491,11 +480,24 @@ class FeatureDatasetCycMceplf0WavVAE(Dataset):
             feat = torch.FloatTensor(self.pad_feat_transform(feat))
         if self.magsp and self.mel:
             feat_magsp = torch.FloatTensor(self.pad_feat_transform(feat_magsp))
+        if self.string_path_rec is not None:
+            for i in range(self.n_cyc):
+                lat[i] = torch.FloatTensor(self.pad_feat_transform(lat[i]))
+                lat_e[i] = torch.FloatTensor(self.pad_feat_transform(lat_e[i]))
         src_codes = torch.LongTensor(self.pad_feat_transform(np.ones(flen, dtype=np.int64)*src_idx))
 
         if self.wav_list is None:
-            if not self.logits:
-                if not self.mel or (self.mel and self.excit_dim is not None):
+            if not self.mel or (self.mel and self.excit_dim is not None):
+                if self.string_path_rec is not None:
+                    if not self.magsp or not self.mel:
+                        return {'flen': flen, 'src_codes': src_codes, 'src_trg_codes_list': trg_code_list, \
+                                'pair_spk_list': pair_spk_list, 'feat_cv_list': cv_src_list, 'featfile_spk': featfile_spk, \
+                                    'featfile': featfile, 'feat': feat, 'z': lat, 'z_e': lat_e}
+                    else:
+                        return {'flen': flen, 'src_codes': src_codes, 'src_trg_codes_list': trg_code_list, \
+                                'pair_spk_list': pair_spk_list, 'feat_cv_list': cv_src_list, 'featfile_spk': featfile_spk, \
+                                    'featfile': featfile, 'feat': feat, 'feat_magsp': feat_magsp, 'z': lat, 'z_e': lat_e}
+                else:
                     if not self.magsp or not self.mel:
                         return {'flen': flen, 'src_codes': src_codes, 'src_trg_codes_list': trg_code_list, \
                                 'pair_spk_list': pair_spk_list, 'feat_cv_list': cv_src_list, 'featfile_spk': featfile_spk, \
@@ -504,6 +506,16 @@ class FeatureDatasetCycMceplf0WavVAE(Dataset):
                         return {'flen': flen, 'src_codes': src_codes, 'src_trg_codes_list': trg_code_list, \
                                 'pair_spk_list': pair_spk_list, 'feat_cv_list': cv_src_list, 'featfile_spk': featfile_spk, \
                                     'featfile': featfile, 'feat': feat, 'feat_magsp': feat_magsp}
+            else:
+                if self.string_path_rec is not None:
+                    if not self.magsp:
+                        return {'flen': flen, 'src_codes': src_codes, 'src_trg_codes_list': trg_code_list, \
+                                'pair_spk_list': pair_spk_list, 'featfile_spk': featfile_spk, \
+                                    'featfile': featfile, 'feat': feat, 'z': lat, 'z_e': lat_e}
+                    else:
+                        return {'flen': flen, 'src_codes': src_codes, 'src_trg_codes_list': trg_code_list, \
+                                'pair_spk_list': pair_spk_list, 'featfile_spk': featfile_spk, \
+                                    'featfile': featfile, 'feat': feat, 'feat_magsp': feat_magsp, 'z': lat, 'z_e': lat_e}
                 else:
                     if not self.magsp:
                         return {'flen': flen, 'src_codes': src_codes, 'src_trg_codes_list': trg_code_list, \
@@ -513,10 +525,6 @@ class FeatureDatasetCycMceplf0WavVAE(Dataset):
                         return {'flen': flen, 'src_codes': src_codes, 'src_trg_codes_list': trg_code_list, \
                                 'pair_spk_list': pair_spk_list, 'featfile_spk': featfile_spk, \
                                     'featfile': featfile, 'feat': feat, 'feat_magsp': feat_magsp}
-            else:
-                return {'flen': flen, 'src_codes': src_codes, 'src_trg_codes_list': trg_code_list, \
-                        'pair_spk_list': pair_spk_list, 'feat_cv_list': cv_src_list, 'featfile_spk': featfile_spk, \
-                            'featfile': featfile, 'feat': feat, 'py_logits': py_logits}
         else:
             x = torch.LongTensor(self.pad_wav_transform(x))
             if self.cf_dim is not None:
@@ -534,7 +542,7 @@ class FeatureDatasetEvalCycMceplf0WavVAE(Dataset):
     """
 
     def __init__(self, file_list, pad_transform, spk_list, stat_spk_list, string_path, excit_dim=None, cap_exc_dim=None,
-            spcidx=True, uvcap_flag=True, pad_left=0, pad_right=0, magsp=False):
+            spcidx=True, uvcap_flag=True, pad_left=0, pad_right=0, magsp=False, n_rec=None, string_path_rec=None):
         self.file_list = file_list
         self.pad_transform = pad_transform
         self.spk_list = spk_list
@@ -552,6 +560,8 @@ class FeatureDatasetEvalCycMceplf0WavVAE(Dataset):
         self.magsp = magsp
         self.pad_left = 0
         self.pad_right = 0
+        self.n_rec = n_rec
+        self.string_path_rec = string_path_rec
         if 'mel' in self.string_path:
             self.mean_path = "/mean_feat_mceplf0cap"
             self.scale_path = "/scale_feat_mceplf0cap"
@@ -658,6 +668,18 @@ class FeatureDatasetEvalCycMceplf0WavVAE(Dataset):
         spk_trg = os.path.basename(os.path.dirname(featfile_src_trg))
         idx_src = self.spk_list.index(spk_src)
         idx_trg = self.spk_list.index(spk_trg)
+        if self.string_path_rec is not None:
+            dirpath = os.path.dirname(featfile_src)
+            lat = [None]*self.n_rec
+            lat_e = [None]*self.n_rec
+            spks = spk_src+'-'+spk_src
+            dirpath = os.path.dirname(dirpath)
+            basepath = os.path.basename(featfile_src)
+            for i in range(self.n_rec):
+                auxpath = os.path.join(dirpath, spks, basepath)
+                lat[i] = read_hdf5(auxpath, self.string_path_rec+'_lat')
+                lat_e[i] = read_hdf5(auxpath, self.string_path_rec+'_lat_e')
+                spks = spks+'-'+spk_src
 
         spcidx_src = read_hdf5(featfile_src, '/spcidx_range')[0]
         frm_len = len(read_hdf5(featfile_src, '/f0_range'))
@@ -674,6 +696,10 @@ class FeatureDatasetEvalCycMceplf0WavVAE(Dataset):
             h_src = h_src[spcidx_s_e[0]:spcidx_s_e[-1]]
             if self.magsp and self.mel:
                 h_src_magsp = h_src_magsp[spcidx_s_e[0]:spcidx_s_e[-1]]
+            if self.string_path_rec is not None:
+                for i in range(self.n_rec):
+                    lat[i] = lat[i][spcidx_s_e[0]:spcidx_s_e[-1]]
+                    lat_e[i] = lat_e[i][spcidx_s_e[0]:spcidx_s_e[-1]]
             flen = h_src.shape[0]
 
         if not self.mel or (self.mel and self.excit_dim is not None):
@@ -748,6 +774,10 @@ class FeatureDatasetEvalCycMceplf0WavVAE(Dataset):
         if not self.mel or (self.mel and self.excit_dim is not None):
             cv_src = torch.FloatTensor(self.pad_transform(cv_src))
             cv_src_full = torch.FloatTensor(self.pad_transform(cv_src_full))
+        if self.string_path_rec is not None:
+            for i in range(self.n_rec):
+                lat[i] = torch.FloatTensor(self.pad_transform(lat[i]))
+                lat_e[i] = torch.FloatTensor(self.pad_transform(lat_e[i]))
 
         if not file_src_trg_flag:
             flen_src_trg = flen_src
@@ -757,37 +787,71 @@ class FeatureDatasetEvalCycMceplf0WavVAE(Dataset):
 
         if self.spcidx:
             if not self.mel or (self.mel and self.excit_dim is not None):
-                if not self.magsp or not self.mel:
-                    return {'h_src': h_src, 'flen_src': flen_src, 'src_code': src_code, 'src_trg_code': src_trg_code, \
-                            'cv_src': cv_src, 'h_src_trg': h_src_trg, 'flen_src_trg': flen_src_trg, 'featfile': featfile_src, \
-                            'file_src_trg_flag': file_src_trg_flag, 'spk_trg': spk_trg, 'spcidx_src': spcidx_src, \
-                            'spcidx_src_trg': spcidx_src_trg, 'flen_spc_src': flen_spc_src, 'flen_spc_src_trg': flen_spc_src_trg, \
-                            'h_src_full': h_src_full, 'cv_src_full': cv_src_full, 'flen_src_full': flen_src_full, \
-                            'src_code_full': src_code_full, 'src_trg_code_full': src_trg_code_full}
+                if self.string_path_rec is not None:
+                    if not self.magsp or not self.mel:
+                        return {'h_src': h_src, 'flen_src': flen_src, 'src_code': src_code, 'src_trg_code': src_trg_code, \
+                                'cv_src': cv_src, 'h_src_trg': h_src_trg, 'flen_src_trg': flen_src_trg, 'featfile': featfile_src, \
+                                'file_src_trg_flag': file_src_trg_flag, 'spk_trg': spk_trg, 'spcidx_src': spcidx_src, \
+                                'spcidx_src_trg': spcidx_src_trg, 'flen_spc_src': flen_spc_src, 'flen_spc_src_trg': flen_spc_src_trg, \
+                                'h_src_full': h_src_full, 'cv_src_full': cv_src_full, 'flen_src_full': flen_src_full, \
+                                'src_code_full': src_code_full, 'src_trg_code_full': src_trg_code_full, 'z': lat, 'z_e': lat_e}
+                    else:
+                        return {'h_src': h_src, 'flen_src': flen_src, 'src_code': src_code, 'src_trg_code': src_trg_code, \
+                                'cv_src': cv_src, 'h_src_trg': h_src_trg, 'flen_src_trg': flen_src_trg, 'featfile': featfile_src, \
+                                'file_src_trg_flag': file_src_trg_flag, 'spk_trg': spk_trg, 'spcidx_src': spcidx_src, \
+                                'spcidx_src_trg': spcidx_src_trg, 'flen_spc_src': flen_spc_src, 'flen_spc_src_trg': flen_spc_src_trg, \
+                                'h_src_full': h_src_full, 'cv_src_full': cv_src_full, 'flen_src_full': flen_src_full, \
+                                'src_code_full': src_code_full, 'src_trg_code_full': src_trg_code_full, \
+                                'h_src_magsp': h_src_magsp, 'z': lat, 'z_e': lat_e}
                 else:
-                    return {'h_src': h_src, 'flen_src': flen_src, 'src_code': src_code, 'src_trg_code': src_trg_code, \
-                            'cv_src': cv_src, 'h_src_trg': h_src_trg, 'flen_src_trg': flen_src_trg, 'featfile': featfile_src, \
-                            'file_src_trg_flag': file_src_trg_flag, 'spk_trg': spk_trg, 'spcidx_src': spcidx_src, \
-                            'spcidx_src_trg': spcidx_src_trg, 'flen_spc_src': flen_spc_src, 'flen_spc_src_trg': flen_spc_src_trg, \
-                            'h_src_full': h_src_full, 'cv_src_full': cv_src_full, 'flen_src_full': flen_src_full, \
-                            'src_code_full': src_code_full, 'src_trg_code_full': src_trg_code_full, \
-                            'h_src_magsp': h_src_magsp}
+                    if not self.magsp or not self.mel:
+                        return {'h_src': h_src, 'flen_src': flen_src, 'src_code': src_code, 'src_trg_code': src_trg_code, \
+                                'cv_src': cv_src, 'h_src_trg': h_src_trg, 'flen_src_trg': flen_src_trg, 'featfile': featfile_src, \
+                                'file_src_trg_flag': file_src_trg_flag, 'spk_trg': spk_trg, 'spcidx_src': spcidx_src, \
+                                'spcidx_src_trg': spcidx_src_trg, 'flen_spc_src': flen_spc_src, 'flen_spc_src_trg': flen_spc_src_trg, \
+                                'h_src_full': h_src_full, 'cv_src_full': cv_src_full, 'flen_src_full': flen_src_full, \
+                                'src_code_full': src_code_full, 'src_trg_code_full': src_trg_code_full}
+                    else:
+                        return {'h_src': h_src, 'flen_src': flen_src, 'src_code': src_code, 'src_trg_code': src_trg_code, \
+                                'cv_src': cv_src, 'h_src_trg': h_src_trg, 'flen_src_trg': flen_src_trg, 'featfile': featfile_src, \
+                                'file_src_trg_flag': file_src_trg_flag, 'spk_trg': spk_trg, 'spcidx_src': spcidx_src, \
+                                'spcidx_src_trg': spcidx_src_trg, 'flen_spc_src': flen_spc_src, 'flen_spc_src_trg': flen_spc_src_trg, \
+                                'h_src_full': h_src_full, 'cv_src_full': cv_src_full, 'flen_src_full': flen_src_full, \
+                                'src_code_full': src_code_full, 'src_trg_code_full': src_trg_code_full, \
+                                'h_src_magsp': h_src_magsp}
             else:
-                if not self.magsp:
-                    return {'h_src': h_src, 'flen_src': flen_src, 'src_code': src_code, 'src_trg_code': src_trg_code, \
-                            'h_src_trg': h_src_trg, 'flen_src_trg': flen_src_trg, 'featfile': featfile_src, \
-                            'file_src_trg_flag': file_src_trg_flag, 'spk_trg': spk_trg, 'spcidx_src': spcidx_src, \
-                            'spcidx_src_trg': spcidx_src_trg, 'flen_spc_src': flen_spc_src, 'flen_spc_src_trg': flen_spc_src_trg, \
-                            'h_src_full': h_src_full, 'flen_src_full': flen_src_full, \
-                            'src_code_full': src_code_full, 'src_trg_code_full': src_trg_code_full}
+                if self.string_path_rec is not None:
+                    if not self.magsp:
+                        return {'h_src': h_src, 'flen_src': flen_src, 'src_code': src_code, 'src_trg_code': src_trg_code, \
+                                'h_src_trg': h_src_trg, 'flen_src_trg': flen_src_trg, 'featfile': featfile_src, \
+                                'file_src_trg_flag': file_src_trg_flag, 'spk_trg': spk_trg, 'spcidx_src': spcidx_src, \
+                                'spcidx_src_trg': spcidx_src_trg, 'flen_spc_src': flen_spc_src, 'flen_spc_src_trg': flen_spc_src_trg, \
+                                'h_src_full': h_src_full, 'flen_src_full': flen_src_full, \
+                                'src_code_full': src_code_full, 'src_trg_code_full': src_trg_code_full, 'z': lat, 'z_e': lat_e}
+                    else:
+                        return {'h_src': h_src, 'flen_src': flen_src, 'src_code': src_code, 'src_trg_code': src_trg_code, \
+                                'h_src_trg': h_src_trg, 'flen_src_trg': flen_src_trg, 'featfile': featfile_src, \
+                                'file_src_trg_flag': file_src_trg_flag, 'spk_trg': spk_trg, 'spcidx_src': spcidx_src, \
+                                'spcidx_src_trg': spcidx_src_trg, 'flen_spc_src': flen_spc_src, 'flen_spc_src_trg': flen_spc_src_trg, \
+                                'h_src_full': h_src_full, 'flen_src_full': flen_src_full, \
+                                'src_code_full': src_code_full, 'src_trg_code_full': src_trg_code_full, \
+                                'h_src_magsp': h_src_magsp, 'z': lat, 'z_e': lat_e}
                 else:
-                    return {'h_src': h_src, 'flen_src': flen_src, 'src_code': src_code, 'src_trg_code': src_trg_code, \
-                            'h_src_trg': h_src_trg, 'flen_src_trg': flen_src_trg, 'featfile': featfile_src, \
-                            'file_src_trg_flag': file_src_trg_flag, 'spk_trg': spk_trg, 'spcidx_src': spcidx_src, \
-                            'spcidx_src_trg': spcidx_src_trg, 'flen_spc_src': flen_spc_src, 'flen_spc_src_trg': flen_spc_src_trg, \
-                            'h_src_full': h_src_full, 'flen_src_full': flen_src_full, \
-                            'src_code_full': src_code_full, 'src_trg_code_full': src_trg_code_full, \
-                            'h_src_magsp': h_src_magsp}
+                    if not self.magsp:
+                        return {'h_src': h_src, 'flen_src': flen_src, 'src_code': src_code, 'src_trg_code': src_trg_code, \
+                                'h_src_trg': h_src_trg, 'flen_src_trg': flen_src_trg, 'featfile': featfile_src, \
+                                'file_src_trg_flag': file_src_trg_flag, 'spk_trg': spk_trg, 'spcidx_src': spcidx_src, \
+                                'spcidx_src_trg': spcidx_src_trg, 'flen_spc_src': flen_spc_src, 'flen_spc_src_trg': flen_spc_src_trg, \
+                                'h_src_full': h_src_full, 'flen_src_full': flen_src_full, \
+                                'src_code_full': src_code_full, 'src_trg_code_full': src_trg_code_full}
+                    else:
+                        return {'h_src': h_src, 'flen_src': flen_src, 'src_code': src_code, 'src_trg_code': src_trg_code, \
+                                'h_src_trg': h_src_trg, 'flen_src_trg': flen_src_trg, 'featfile': featfile_src, \
+                                'file_src_trg_flag': file_src_trg_flag, 'spk_trg': spk_trg, 'spcidx_src': spcidx_src, \
+                                'spcidx_src_trg': spcidx_src_trg, 'flen_spc_src': flen_spc_src, 'flen_spc_src_trg': flen_spc_src_trg, \
+                                'h_src_full': h_src_full, 'flen_src_full': flen_src_full, \
+                                'src_code_full': src_code_full, 'src_trg_code_full': src_trg_code_full, \
+                                'h_src_magsp': h_src_magsp}
         else:
             return {'h_src': h_src, 'flen_src': flen_src, 'src_code': src_code, 'src_trg_code': src_trg_code, \
                     'cv_src': cv_src, 'h_src_trg': h_src_trg, 'flen_src_trg': flen_src_trg, 'featfile': featfile_src, \

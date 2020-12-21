@@ -130,7 +130,7 @@ do_prob: 0.5
 #epoch_count: 110
 #epoch_count: 120
 #epoch_count: 125
-epoch_count: 130
+epoch_count: 135
 #epoch_count_wave: 35
 #epoch_count_wave: 80
 #epoch_count_wave: 360
