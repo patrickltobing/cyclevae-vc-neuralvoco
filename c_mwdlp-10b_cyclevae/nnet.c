@@ -205,7 +205,7 @@ void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *f
             for (i=0;i<DLPC_ORDER;i++,n_c_lpcbands2++) {
                 //previous code uses shared factors for signs/mags between bands [c*DLPC_ORDER + i]
                 //changed into band-dependent factors for signs/mags [n*DLPC_ORDER*2 + c*DLPC_ORDER + i]
-                lpc_signs[n_lpcbands+i] += signs[n_c_lpcbands2]*layer->factor_signs[n_c_lpcbands2]
+                lpc_signs[n_lpcbands+i] += signs[n_c_lpcbands2]*layer->factor_signs[n_c_lpcbands2];
                 lpc_mags[n_lpcbands+i] += mags[n_c_lpcbands2]*layer->factor_mags[n_c_lpcbands2];
             }
         }
@@ -380,14 +380,14 @@ int sample_from_pdf_mwdlp(const float *pdf, int N)
 void compute_normalize(const NormStats *norm_stats, float *input_output)
 {
   for (int i=0;i<norm_stats->n_dim;i++)
-    input_output[i] = (input_output[i] - norm_stats->mean[i]) / norm_stats->std[i]
+    input_output[i] = (input_output[i] - norm_stats->mean[i]) / norm_stats->std[i];
 }
 
 //PLT_Dec20
 void compute_denormalize(const NormStats *norm_stats, float *input_output)
 {
   for (int i=0;i<norm_stats->n_dim;i++)
-    input_output[i] = input_output[i] * norm_stats->std[i] + norm_stats->mean[i]
+    input_output[i] = input_output[i] * norm_stats->std[i] + norm_stats->mean[i];
 }
 
 //PLT_Dec20
@@ -408,7 +408,7 @@ void compute_gru_enc_melsp(const GRULayer *gru, float *state, const float *input
       recur[i] = gru->bias[i];
    sgemv_accum(recur, gru->recurrent_weights, RNN_ENC_MELSP_NEURONS_3, RNN_ENC_MELSP_NEURONS, RNN_ENC_MELSP_NEURONS_3, state);
 
-   compute_dense_linear(gru->weights, gru_input, input);
+   sgemv_accum(zrh, gru->input_weights, RNN_ENC_MELSP_NEURONS_3, FEATURE_CONV_ENC_MELSP_OUT_SIZE, RNN_ENC_MELSP_NEURONS_3, input);
 
    for (i=0;i<RNN_ENC_MELSP_NEURONS_2;i++)
       zrh[i] += recur[i]; //z_t and r_t computed in a similar way : sigmoid(in_t + W_z*h_{t-1})
@@ -442,7 +442,7 @@ void compute_gru_enc_excit(const GRULayer *gru, float *state, const float *input
       recur[i] = gru->bias[i];
    sgemv_accum(recur, gru->recurrent_weights, RNN_ENC_EXCIT_NEURONS_3, RNN_ENC_EXCIT_NEURONS, RNN_ENC_EXCIT_NEURONS_3, state);
 
-   compute_dense_linear(gru->weights, zrh, input);
+   sgemv_accum(zrh, gru->input_weights, RNN_ENC_EXCIT_NEURONS_3, FEATURE_CONV_ENC_EXCIT_OUT_SIZE, RNN_ENC_EXCIT_NEURONS_3, input);
 
    for (i=0;i<RNN_ENC_EXCIT_NEURONS_2;i++)
       zrh[i] += recur[i]; //z_t and r_t computed in a similar way : sigmoid(in_t + W_z*h_{t-1})
@@ -478,7 +478,7 @@ void compute_gru_spk(const GRULayer *gru, float *state, const float *input)
       recur[i] = gru->bias[i];
    sgemv_accum(recur, gru->recurrent_weights, RNN_SPK_NEURONS_3, RNN_SPK_NEURONS, RNN_SPK_NEURONS_3, state);
 
-   compute_dense_linear(gru->weights, zrh, input);
+   sgemv_accum(zrh, gru->input_weights, RNN_SPK_NEURONS_3, FEATURE_N_SPK_LAT_DIM_EXCIT_MELSP, RNN_SPK_NEURONS_3, input);
 
    for (i=0;i<RNN_SPK_NEURONS_2;i++)
       zrh[i] += recur[i]; //z_t and r_t computed in a similar way : sigmoid(in_t + W_z*h_{t-1})
@@ -512,7 +512,7 @@ void compute_gru_dec_excit(const GRULayer *gru, float *state, const float *input
       recur[i] = gru->bias[i];
    sgemv_accum(recur, gru->recurrent_weights, RNN_DEC_EXCIT_NEURONS_3, RNN_DEC_EXCIT_NEURONS, RNN_DEC_EXCIT_NEURONS_3, state);
 
-   compute_dense_linear(gru->weights, zrh, input);
+   sgemv_accum(zrh, gru->input_weights, RNN_DEC_EXCIT_NEURONS_3, FEATURE_CONV_DEC_EXCIT_OUT_SIZE, RNN_DEC_EXCIT_NEURONS_3, input);
 
    for (i=0;i<RNN_DEC_EXCIT_NEURONS_2;i++)
       zrh[i] += recur[i]; //z_t and r_t computed in a similar way : sigmoid(in_t + W_z*h_{t-1})
@@ -546,7 +546,7 @@ void compute_gru_dec_melsp(const GRULayer *gru, float *state, const float *input
       recur[i] = gru->bias[i];
    sgemv_accum(recur, gru->recurrent_weights, RNN_DEC_MELSP_NEURONS_3, RNN_DEC_MELSP_NEURONS, RNN_DEC_MELSP_NEURONS_3, state);
 
-   compute_dense_linear(gru->weights, zrh, input);
+   sgemv_accum(zrh, gru->input_weights, RNN_DEC_MELSP_NEURONS_3, FEATURE_CONV_DEC_MELSP_OUT_SIZE, RNN_DEC_MELSP_NEURONS_3, input);
 
    for (i=0;i<RNN_DEC_MELSP_NEURONS_2;i++)
       zrh[i] += recur[i]; //z_t and r_t computed in a similar way : sigmoid(in_t + W_z*h_{t-1})
@@ -580,7 +580,7 @@ void compute_gru_post(const GRULayer *gru, float *state, const float *input)
       recur[i] = gru->bias[i];
    sgemv_accum(recur, gru->recurrent_weights, RNN_POST_NEURONS_3, RNN_POST_NEURONS, RNN_POST_NEURONS_3, state);
 
-   compute_dense_linear(gru->weights, zrh, input);
+   sgemv_accum(zrh, gru->input_weights, RNN_POST_NEURONS_3, FEATURE_CONV_POST_OUT_SIZE, RNN_POST_NEURONS_3, input);
 
    for (i=0;i<RNN_POST_NEURONS_2;i++)
       zrh[i] += recur[i]; //z_t and r_t computed in a similar way : sigmoid(in_t + W_z*h_{t-1})
@@ -626,7 +626,7 @@ void compute_spkidtr(const DenseLayer *in_layer, const DenseLayer *out_layer, fl
 }
 
 //PLT_Dec20
-void compute_spkidtr_coord(const DenseLayer *out_layer, float *output, const float *input)
+void compute_spkidtr_coord(const DenseLayer *layer, float *output, const float *input)
 {
    int i, N;
    //transform to N_SPK-dim [from input 2-dim]

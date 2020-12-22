@@ -1098,8 +1098,8 @@ def main():
                     text_log += "[%ld] %.6f (+- %.6f) , %.6f (+- %.6f) %.6f (+- %.6f) , %.6f (+- %.6f) ; " \
                         "%.6f (+- %.6f) %.6f (+- %.6f) , %.6f (+- %.6f) %.6f (+- %.6f) ; " \
                         "%.6f (+- %.6f) %.6f (+- %.6f) , %.6f (+- %.6f) %.6f (+- %.6f) ; " \
-                        "%.6f (+- %.6f) %.6f (+- %.6f) %.6f (+- %.6f) dB , %.6f (+- %.6f) %.6f (+- %.6f) %.6f (+- %.6f) dB ;; " % (
-                            i+1, np.mean(loss_elbo[i]), np.std(loss_elbo[i]), np.mean(loss_laplace[i]), np.std(loss_laplace[i]),
+                        "%.6f (+- %.6f) %.6f (+- %.6f) %.6f (+- %.6f) dB , %.6f (+- %.6f) %.6f (+- %.6f) %.6f (+- %.6f) dB ;; " % (i+1,
+                            np.mean(loss_elbo[i]), np.std(loss_elbo[i]), np.mean(loss_laplace[i]), np.std(loss_laplace[i]),
                             np.mean(loss_laplace_cv[i//2]), np.std(loss_laplace_cv[i//2]), np.mean(loss_px[i]), np.std(loss_px[i]),
                             np.mean(loss_ms_norm_post[i]), np.std(loss_ms_norm_post[i]), np.mean(loss_ms_err_post[i]), np.std(loss_ms_err_post[i]),
                             np.mean(loss_ms_norm_magsp_post[i]), np.std(loss_ms_norm_magsp_post[i]), np.mean(loss_ms_err_magsp_post[i]), np.std(loss_ms_err_magsp_post[i]),

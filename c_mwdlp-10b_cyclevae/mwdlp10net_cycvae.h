@@ -64,7 +64,7 @@ MWDLP10NET_CYCVAE_EXPORT void mwdlp10net_destroy(MWDLP10NetState *mwdlp10net);
 
 MWDLP10NET_CYCVAE_EXPORT void cyclevae_post_melsp_excit_spk_convert_mwdlp10net_synthesize(
     MWDLP10CycleVAEPostMelspExcitSpkNetState *st, const float *features, float *spk_code_aux,
-        short *output, int *n_output, int flag_last_frame)
+        short *output, int *n_output, int flag_last_frame);
 
 MWDLP10NET_CYCVAE_EXPORT void mwdlp10net_synthesize(MWDLP10NetState *st, const float *features,
     short *output, int *n_output, int flag_last_frame);

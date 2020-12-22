@@ -37,42 +37,55 @@ import os
 import sys
 
 import torch
+from vcneuvoco import GRU_VAE_ENCODER, GRU_SPEC_DECODER, GRU_EXCIT_DECODER
+from vcneuvoco import GRU_SPK, GRU_POST_NET, SPKID_TRANSFORM_LAYER
 from vcneuvoco import GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF, decode_mu_law
 from pqmf import PQMF
 
 from scipy.signal import firwin
 from scipy.signal import windows
 
+#print("a")
 from librosa import filters
+#print("b")
 
 import numpy as np
 
-SHIFTMS 5
-WINMS 27.5
-HIGHPASS_CUTOFF 65
-HPASS_FILTER_TAPS 1023
-
-#import h5py
-#import re
+SHIFTMS = 5
+WINMS = 27.5
+HIGHPASS_CUTOFF = 65
+HPASS_FILTER_TAPS = 1023
 
 
 def printVector(f, vector, name, dtype='float'):
     v = np.reshape(vector, (-1))
     #print('static const float ', name, '[', len(v), '] = \n', file=f)
-    f.write('static const {} {}[{}] = {{\n   '.format(dtype, name, len(v)))
-    for i in range(0, len(v)):
-        f.write('{}'.format(v[i]))
-        if (i!=len(v)-1):
-            f.write(',')
-        else:
-            break;
-        if (i%8==7):
-            f.write("\n   ")
-        else:
-            f.write(" ")
+    f.write('static const {} {}[{}] = {{\n'.format(dtype, name, len(v)))
+    if dtype == 'float':
+        for i in range(0, len(v)):
+            f.write('{}f'.format(v[i]))
+            if (i!=len(v)-1):
+                f.write(',')
+            else:
+                break;
+            if (i%8==7):
+                f.write("\n")
+            else:
+                f.write(" ")
+    else:
+        for i in range(0, len(v)):
+            f.write('{}'.format(v[i]))
+            if (i!=len(v)-1):
+                f.write(',')
+            else:
+                break;
+            if (i%8==7):
+                f.write("\n")
+            else:
+                f.write(" ")
     #print(v, file=f)
     f.write('\n};\n\n')
-    return;
+
 
 def printSparseVector(f, A, name):
     N = A.shape[0]
@@ -96,29 +109,28 @@ def printSparseVector(f, A, name):
     printVector(f, W, name)
     #idx = np.tile(np.concatenate([np.array([N]), np.arange(N)]), 3*N//16)
     printVector(f, idx, name + '_idx', dtype='int')
-    return;
 
 
 def main():
     parser = argparse.ArgumentParser()
     # mandatory arguments
-    parser.add_argument("config_cycvae", metavar="string",
-                        type=str, help="path of model config")
-    parser.add_argument("model_cycvae", metavar="string",
-                        type=str, help="path of model file")
-    parser.add_argument("config", metavar="string",
-                        type=str, help="path of model config")
-    parser.add_argument("model", metavar="string",
-                        type=str, help="path of model file")
+    parser.add_argument("config_cycvae", metavar="config_cycvae.conf",
+                        type=str, help="path of model cycvae config")
+    parser.add_argument("model_cycvae", metavar="model_cycvae.pkl",
+                        type=str, help="path of model cycvae file")
+    parser.add_argument("config", metavar="config_mwdlp10bit.conf",
+                        type=str, help="path of model mwdlp10bit config")
+    parser.add_argument("model", metavar="model_mwdlp10bit.pkl",
+                        type=str, help="path of model mwdlp10bit file")
     # optional arguments
-    parser.add_argument("--c_out_file", "-cf", default="nnet_data.c", metavar="string",
-                        type=str, help="c out file; default is nnet_data.c")
-    parser.add_argument("--h_out_file", "-hf", default="nnet_data.h", metavar="string",
-                        type=str, help="header out file; default is nnet_data.h")
-    parser.add_argument("--c_cycvae_out_file", "-cf", default="nnet_cv_data.c", metavar="string",
-                        type=str, help="c out file; default is nnet_cv_data.c")
-    parser.add_argument("--h_cycvae_out_file", "-hf", default="nnet_cv_data.h", metavar="string",
-                        type=str, help="header out file; default is nnet_cv_data.h")
+    parser.add_argument("--c_cycvae_file", "-cvf", default="nnet_cv_data.c", metavar="c_cycvae.c",
+                        type=str, help="cycvae c file; default is nnet_cv_data.c")
+    parser.add_argument("--h_cycvae_file", "-hvf", default="nnet_cv_data.h", metavar="c_cycvae.h",
+                        type=str, help="cycvae header file; default is nnet_cv_data.h")
+    parser.add_argument("--c_mwdlp10bit_file", "-cf", default="nnet_data.c", metavar="c_mwdlp10bit.c",
+                        type=str, help="mwdlp10bit c file; default is nnet_data.c")
+    parser.add_argument("--h_mwdlp10bit_file", "-hf", default="nnet_data.h", metavar="c_mwdlp10bit.h",
+                        type=str, help="mwdlp10bit header file; default is nnet_data.h")
     args = parser.parse_args()
 
     #set config and model
@@ -141,7 +153,7 @@ def main():
         causal_conv=config_cycvae.causal_conv_enc,
         pad_first=True,
         right_size=config_cycvae.right_size_enc)
-    print.info(model_encoder_melsp)
+    print(model_encoder_melsp)
     model_decoder_melsp = GRU_SPEC_DECODER(
         feat_dim=config_cycvae.lat_dim+config_cycvae.lat_dim_e,
         excit_dim=config_cycvae.excit_dim,
@@ -224,7 +236,7 @@ def main():
     model_decoder_melsp.load_state_dict(torch.load(args.model_cycvae)["model_decoder_melsp"])
     model_encoder_excit.load_state_dict(torch.load(args.model_cycvae)["model_encoder_excit"])
     model_decoder_excit.load_state_dict(torch.load(args.model_cycvae)["model_decoder_excit"])
-    if (config.spkidtr_dim > 0):
+    if (config_cycvae.spkidtr_dim > 0):
         model_spkidtr.load_state_dict(torch.load(args.model_cycvae)["model_spkidtr"])
     model_spk.load_state_dict(torch.load(args.model_cycvae)["model_spk"])
     model_post.load_state_dict(torch.load(args.model_cycvae)["model_post"])
@@ -233,7 +245,7 @@ def main():
     model_decoder_melsp.remove_weight_norm()
     model_encoder_excit.remove_weight_norm()
     model_decoder_excit.remove_weight_norm()
-    if (config.spkidtr_dim > 0):
+    if (config_cycvae.spkidtr_dim > 0):
         model_spkidtr.remove_weight_norm()
     model_spk.remove_weight_norm()
     model_post.remove_weight_norm()
@@ -242,7 +254,7 @@ def main():
     model_decoder_melsp.eval()
     model_encoder_excit.eval()
     model_decoder_excit.eval()
-    if (config.spkidtr_dim > 0):
+    if (config_cycvae.spkidtr_dim > 0):
         model_spkidtr.eval()
     model_spk.eval()
     model_post.eval()
@@ -255,7 +267,7 @@ def main():
         param.requires_grad = False
     for param in model_decoder_excit.parameters():
         param.requires_grad = False
-    if (config.spkidtr_dim > 0):
+    if (config_cycvae.spkidtr_dim > 0):
         for param in model_spkidtr.parameters():
             param.requires_grad = False
     for param in model_spk.parameters():
@@ -266,8 +278,8 @@ def main():
         param.requires_grad = False
 
     ## Multiband WaveRNN with data-driven LPC (MWDLP)
-    cfile = args.c_out_file
-    hfile = args.h_out_file
+    cfile = args.c_mwdlp10bit_file
+    hfile = args.h_mwdlp10bit_file
     
     f = open(cfile, 'w')
     hf = open(hfile, 'w')
@@ -406,7 +418,7 @@ def main():
     mean = (-bias)*std #in training script, bias defined as -mean/std
     printVector(f, mean, name + '_mean')
     printVector(f, std, name + '_std')
-    f.write('const DenseLayer {} = {{\n   {}_mean,\n   {}_std,\n   {}\n}};\n\n'
+    f.write('const NormStats {} = {{\n   {}_mean,\n   {}_std,\n   {}\n}};\n\n'
             .format(name, name, name, bias.shape[0]))
     hf.write('extern const NormStats {};\n\n'.format(name))
 
@@ -605,8 +617,8 @@ def main():
     hf.close()
 
     ## CycleVAE+PostNet+SpkNet for Mel-Spectrogram conversion with intermediate excitation estimation
-    cfile = args.c_cycvae_out_file
-    hfile = args.h_cycvae_out_file
+    cfile = args.c_cycvae_file
+    hfile = args.h_cycvae_file
     
     f = open(cfile, 'w')
     hf = open(hfile, 'w')
@@ -626,7 +638,7 @@ def main():
     mean = (-bias)*std #in training script, bias defined as -mean/std
     printVector(f, mean, name + '_mean')
     printVector(f, std, name + '_std')
-    f.write('const DenseLayer {} = {{\n   {}_mean,\n   {}_std,\n   {}\n}};\n\n'
+    f.write('const NormStats {} = {{\n   {}_mean,\n   {}_std,\n   {}\n}};\n\n'
             .format(name, name, name, bias.shape[0]))
     hf.write('extern const NormStats {};\n\n'.format(name))
 
@@ -639,7 +651,7 @@ def main():
     mean = (-bias[:1])*std #in training script, bias defined as -mean/std
     printVector(f, mean, name + '_mean')
     printVector(f, std, name + '_std')
-    f.write('const DenseLayer {} = {{\n   {}_mean,\n   {}_std,\n   {}\n}};\n\n'
+    f.write('const NormStats {} = {{\n   {}_mean,\n   {}_std,\n   {}\n}};\n\n'
             .format(name, name, name, mean.shape[0]))
     hf.write('extern const NormStats {};\n\n'.format(name))
 
@@ -650,7 +662,7 @@ def main():
     mean = (-bias[2:3])*std #in training script, bias defined as -mean/std
     printVector(f, mean, name + '_mean')
     printVector(f, std, name + '_std')
-    f.write('const DenseLayer {} = {{\n   {}_mean,\n   {}_std,\n   {}\n}};\n\n'
+    f.write('const NormStats {} = {{\n   {}_mean,\n   {}_std,\n   {}\n}};\n\n'
             .format(name, name, name, mean.shape[0]))
     hf.write('extern const NormStats {};\n\n'.format(name))
 
@@ -694,7 +706,7 @@ def main():
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[2]))
     hf.write('#define {}_STATE_SIZE ({}*{})\n'.format(name.upper(), weights.shape[1],
         model_encoder_excit.pad_left+1+model_encoder_excit.pad_right-1))
-    enc_excit_state_size = weights.shape[1]*(model_encoder_excit.pad_left+1+model_encoder_xcit.pad_right-1)
+    enc_excit_state_size = weights.shape[1]*(model_encoder_excit.pad_left+1+model_encoder_excit.pad_right-1)
     hf.write('#define {}_DELAY {}\n'.format(name.upper(), model_encoder_excit.pad_right))
     hf.write('extern const Conv1DLayer {};\n\n'.format(name))
 
@@ -702,7 +714,7 @@ def main():
     assert(model_encoder_melsp.pad_right == model_encoder_excit.pad_right)
 
     ## Same conv out size for melsp and excit encoders
-    assert(enc_melsp_state_size == dec_melsp_state_size)
+    assert(enc_melsp_state_size == enc_excit_state_size)
 
     ## Dump conv_in dec_excit
     name = "feature_conv_dec_excit"
@@ -746,25 +758,25 @@ def main():
     hf.write('#define {}_DELAY {}\n'.format(name.upper(), model_decoder_melsp.pad_right))
     hf.write('extern const Conv1DLayer {};\n\n'.format(name))
 
-    ## Dump conv_in dec_post
-    name = "feature_conv_dec_post"
+    ## Dump conv_in post
+    name = "feature_conv_post"
     #FIXME: make model format without sequential for two-sided/causal conv
-    if model_decoder_post.right_size <= 0:
-        print("printing layer " + name + " of type " + model_decoder_post.conv.conv[0].__class__.__name__)
-        weights = model_decoder_post.conv.conv[0].weight.permute(2,1,0).numpy()
-        bias = model_decoder_post.conv.conv[0].bias.numpy()
+    if model_post.right_size <= 0:
+        print("printing layer " + name + " of type " + model_post.conv.conv[0].__class__.__name__)
+        weights = model_post.conv.conv[0].weight.permute(2,1,0).numpy()
+        bias = model_post.conv.conv[0].bias.numpy()
     else:
-        print("printing layer " + name + " of type " + model_decoder_post.conv.conv.__class__.__name__)
-        weights = model_decoder_post.conv.conv.weight.permute(2,1,0).numpy()
-        bias = model_decoder_post.conv.conv.bias.numpy()
+        print("printing layer " + name + " of type " + model_post.conv.conv.__class__.__name__)
+        weights = model_post.conv.conv.weight.permute(2,1,0).numpy()
+        bias = model_post.conv.conv.bias.numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
     f.write('const Conv1DLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, {}, ACTIVATION_LINEAR\n}};\n\n'
             .format(name, name, name, weights.shape[1], weights.shape[0], weights.shape[2]))
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[2]))
     hf.write('#define {}_STATE_SIZE ({}*{})\n'.format(name.upper(), weights.shape[1],
-        model_decoder_post.pad_left+1+model_decoder_post.pad_right-1))
-    hf.write('#define {}_DELAY {}\n'.format(name.upper(), model_decoder_post.pad_right))
+        model_post.pad_left+1+model_post.pad_right-1))
+    hf.write('#define {}_DELAY {}\n'.format(name.upper(), model_post.pad_right))
     hf.write('extern const Conv1DLayer {};\n\n'.format(name))
 
     #dump dense_gru_enc_melsp
@@ -1079,7 +1091,7 @@ def main():
     hf.close()
     
     # high-pass filter
-    fil = firwin(taps, norm_cutoff, pass_zero=False) #taps
+    filt = firwin(taps, norm_cutoff, pass_zero=False) #taps
     cfile = "hpassfilt.h"
     hf = open(cfile, 'w')
     hf.write('/*This file is automatically generated from scipy function*/\n\n')
@@ -1099,7 +1111,7 @@ def main():
     hf.close()
 
     # mu-law 10-bit table
-    mu_law_10_table = np.array([decode_mu_law(x) for x in range(config.n_quantize)])
+    mu_law_10_table = np.array([decode_mu_law(x, mu=config.n_quantize) for x in range(config.n_quantize)])
     cfile = "mu_law_10_table.h"
     hf = open(cfile, 'w')
     hf.write('/*This file is automatically generated from numpy function*/\n\n')

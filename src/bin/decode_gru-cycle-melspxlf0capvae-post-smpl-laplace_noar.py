@@ -442,7 +442,6 @@ def main():
                         #cvmelsp_src_post = pdf[:,:,:config.mel_dim]
                         #cvmelsp_post = pdf_cv[:,:,:config.mel_dim]
 
-                        cvmelsp_src, _ = model_decoder_melsp(lat_cat, y=src_code, aux=trj_src_code, e=cvlf0_src[:,:,:config.excit_dim])
                         if model_post.pad_right > 0:
                             cvmelsp_src = cvmelsp_src[:,model_post.pad_left:-model_post.pad_right]
                         else:
@@ -460,7 +459,6 @@ def main():
                         else:
                             logging.info(torch.mean(F.softmax(spk_logits_e[:,outpad_lefts[4]:], dim=-1), 1))
 
-                        cvmelsp, _ = model_decoder_melsp(lat_cat, y=trg_code, aux=trj_trg_code, e=cvlf0[:,:,:config.excit_dim])
                         if model_post.pad_right > 0:
                             cvmelsp = cvmelsp[:,model_post.pad_left:-model_post.pad_right]
                         else:

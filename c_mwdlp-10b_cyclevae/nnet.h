@@ -111,7 +111,7 @@ void compute_dense(const DenseLayer *layer, float *output, const float *input);
 void compute_dense_linear(const DenseLayer *layer, float *output, const float *input);
 
 //PLT_Dec20
-void compute_mdense_mwdlp10(const MDenseLayerMBDLP *layer, const DenseLayer *fc_layer, float *output,
+void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *fc_layer, float *output,
     const float *input, const int *last_output);
 
 void compute_gru3(const GRULayer *gru, float *state, const float *input);
@@ -125,8 +125,8 @@ void compute_conv1d_linear(const Conv1DLayer *layer, float *output, float *mem, 
 int sample_from_pdf_mwdlp(const float *pdf, int N);
 
 //PLT_Dec20
-void compute_normalize(const NormStats norm_stats, float *input_output);
-void compute_denormalize(const NormStats norm_stats, float *input_output);
+void compute_normalize(const NormStats *norm_stats, float *input_output);
+void compute_denormalize(const NormStats *norm_stats, float *input_output);
 
 void compute_gru_enc_melsp(const GRULayer *gru, float *state, const float *input);
 void compute_gru_enc_excit(const GRULayer *gru, float *state, const float *input);
@@ -141,6 +141,6 @@ void compute_gru_post(const GRULayer *gru, float *state, const float *input);
 void compute_sampling_laplace(float *loc, const float *scale, int dim);
 
 void compute_spkidtr(const DenseLayer *in_layer, const DenseLayer *out_layer, float *output, const float *input);
-void compute_spkidtr_coord(const DenseLayer *out_layer, float *output, const float *input);
+void compute_spkidtr_coord(const DenseLayer *layer, float *output, const float *input);
 
 #endif /* _MLP_H_ */

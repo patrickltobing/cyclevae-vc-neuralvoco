@@ -1567,7 +1567,6 @@ def main():
                                     trj_trg_f0 = torch.exp(trj_trg_uvlf0_[:,1])
                                     trj_trg_uvcap = trj_trg_uvlf0_[:,2]
                                     trj_trg_cap = -torch.exp(trj_trg_uvlf0_[:,3:])
-                                    #logging.info(trj_trg_.shape)
                                     # spec dtw
                                     # MCD of spectral
                                     _, twf_melsp, _, _ = dtw.dtw_org_to_trg(\
