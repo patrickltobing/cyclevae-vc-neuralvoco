@@ -36,10 +36,10 @@ hidden_units_post: 128
 
 ## GRU hidden units wavernn
 ##[16-bit coarse-fine (16bit), 9-bit mu-law (9bit)]
-hidden_units_wave: 640 
-##[10-bit mu-law coarse-fine (10bit_cf), others]
-#hidden_units_wave: 672 
-##[10-bit mu-law coarse-fine (10bit_cf), 10-bands, 44.1/48 kHz]
+#hidden_units_wave: 640 
+##[9-bit mu-law (9bit)] [10-bit mu-law coarse-fine (10bit_cf), faster, higher-quality than 16-bit/9-bit]
+hidden_units_wave: 672 
+##[10-bit mu-law coarse-fine (10bit_cf), higher-quality]
 #hidden_units_wave: 704 
 
 hidden_units_wave_2: 32
@@ -204,9 +204,9 @@ mdl_name_post: cycmelspxlf0capvae-post-smpl-laplace
 ##[8 kHz, 16 kHz, 22.05 kHz, 24 kHz]
 #mdl_name_wave: wavernn_dualgru_compact_lpc_mband_9bit
 ##[8 kHz, 16 kHz, 22.05 kHz, 24 kHz, 44.1 kHz, 48 kHz]
-#mdl_name_wave: wavernn_dualgru_compact_lpc_mband_10bit_cf
+mdl_name_wave: wavernn_dualgru_compact_lpc_mband_10bit_cf
 ##[8 kHz, 16 kHz, 22.05 kHz, 24 kHz]
-mdl_name_wave: wavernn_dualgru_compact_lpc_mband_16bit
+#mdl_name_wave: wavernn_dualgru_compact_lpc_mband_16bit
 
 ## sparsification scheduling settings for wavernn
 t_start: 20000
@@ -228,8 +228,10 @@ lpc: 6
 #n_bands: 4
 ##[22.05 kHz, 24 kHz]
 n_bands: 5
-##[44.1 kHz, 48 kHz]
+##[44.1 kHz]
 #n_bands: 10
+##[48 kHz]
+#n_bands: 12
 
 #use_mcep: true
 ## mel-spectrogram-based modeling (wavernn)

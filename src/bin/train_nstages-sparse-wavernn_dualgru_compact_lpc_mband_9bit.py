@@ -164,6 +164,8 @@ def write_to_tensorboard(writer, steps, loss):
         writer.add_scalar(key, value, steps)
 
 
+## Based on lpcnet.py [https://github.com/mozilla/LPCNet/blob/master/src/lpcnet.py]
+## Modified to accomodate PyTorch model and n-stages of sparsification
 def sparsify(model_waveform, iter_idx, t_start, t_end, interval, densities, densities_p=None):
     if iter_idx < t_start or ((iter_idx-t_start) % interval != 0 and iter_idx < t_end):
         pass

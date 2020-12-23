@@ -1927,9 +1927,10 @@ if [ `echo ${stage} | grep a` ] || [ `echo ${stage} | grep b` ];then
 for spk_src in ${spks_src_dec[@]};do
 for spk_trg in ${spks_trg_dec[@]};do
         if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_16bit" ] \
-            || [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_9bit" ]; then
-            outdir=${expdir_wave}/${mdl_name_post}-${mdl_name}-${mdl_name_wave}-${data_name}_dev-${hidden_units_wave}-${epoch_count_wave}-${lpc}-${n_bands}-${batch_size_wave}-${min_idx_cycvae}-${min_idx}-${min_idx_wave}_${spk_src}-${spk_trg}
-            #outdir=${expdir_wave}/${mdl_name_post}-${mdl_name}-${mdl_name_wave}-${data_name}_tst-${hidden_units_wave}-${epoch_count_wave}-${lpc}-${n_bands}-${batch_size_wave}-${min_idx_cycvae}-${min_idx}-${min_idx_wave}_${spk_src}-${spk_trg}
+            || [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_9bit" ] \
+                || [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf" ];then
+            outdir=${expdir_wave}/${mdl_name_post}-${mdl_name}-${mdl_name_wave}-${data_name}_dev-${hidden_units_wave}-${epoch_count}-${epoch_count_wave}-${lpc}-${n_bands}-${batch_size_wave}-${min_idx_cycvae}-${min_idx}-${min_idx_wave}_${spk_src}-${spk_trg}
+            #outdir=${expdir_wave}/${mdl_name_post}-${mdl_name}-${mdl_name_wave}-${data_name}_tst-${hidden_units_wave}-${epoch_count}-${epoch_count_wave}-${lpc}-${n_bands}-${batch_size_wave}-${min_idx_cycvae}-${min_idx}-${min_idx_wave}_${spk_src}-${spk_trg}
         fi
 if [ `echo ${stage} | grep a` ];then
         echo $spk_src $spk_trg $min_idx_cycvae $min_idx $min_idx_wave
@@ -1949,7 +1950,20 @@ if [ `echo ${stage} | grep a` ];then
         cat $feats | grep "\/${spk_src}-${spk_trg}\/" > ${feats_scp}
 
         # decode
-        if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_9bit" ]; then
+        if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf" ]; then
+            #${cuda_cmd} ${expdir_wave}/log/decode_tst_${min_idx_cycvae}-${min_idx}-${min_idx_wave}_${spk_src}-${spk_trg}.log \
+            ${cuda_cmd} ${expdir_wave}/log/decode_dev_${min_idx_cycvae}-${min_idx}-${min_idx_wave}_${spk_src}-${spk_trg}.log \
+                decode_wavernn_dualgru_compact_lpc_mband_10bit_cf.py \
+                    --feats ${feats_scp} \
+                    --outdir ${outdir} \
+                    --checkpoint ${checkpoint} \
+                    --config ${config} \
+                    --fs ${fs} \
+                    --batch_size ${decode_batch_size} \
+                    --n_gpus ${n_gpus} \
+                    --string_path ${string_path_cv} \
+                    --GPU_device_str ${GPU_device_str}
+        elif [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_9bit" ]; then
             #${cuda_cmd} ${expdir_wave}/log/decode_tst_${min_idx_cycvae}-${min_idx}-${min_idx_wave}_${spk_src}-${spk_trg}.log \
             ${cuda_cmd} ${expdir_wave}/log/decode_dev_${min_idx_cycvae}-${min_idx}-${min_idx_wave}_${spk_src}-${spk_trg}.log \
                 decode_wavernn_dualgru_compact_lpc_mband_9bit.py \

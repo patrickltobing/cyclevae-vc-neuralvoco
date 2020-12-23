@@ -31,7 +31,6 @@
    marked by PLT_<Sep>20 */
 
 #include <arm_neon.h>
-#ifndef LPCNET_TEST
 static OPUS_INLINE float32x4_t exp4_approx(float32x4_t x) {
   int32x4_t i;
   float32x4_t xf;
@@ -148,7 +147,6 @@ static void vec_sigmoid(float *y, const float *x, int N)
         y[i] = (ex)/(ex+1);
     }
 }
-#endif
 
 static void sgemv_accum16(float *out, const float *weights, int rows, int cols, int col_stride, const float *x)
 {

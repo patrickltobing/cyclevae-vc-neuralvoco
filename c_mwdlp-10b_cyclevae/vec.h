@@ -30,7 +30,6 @@
    marked by PLT_<Sep/Dec>20 */
 
 
-#ifndef LPCNET_TEST
 
 //PLT_Dec20
 #include "tansig_table.h"
@@ -113,7 +112,7 @@ static void vec_sigmoid(float *y, const float *x, int N)
         y[i] = sigmoid_approx(x[i]);
     }
 }
-#endif
+
 static void sgemv_accum16(float *out, const float *weights, int rows, int cols, int col_stride, const float *x)
 {
    int i, j;

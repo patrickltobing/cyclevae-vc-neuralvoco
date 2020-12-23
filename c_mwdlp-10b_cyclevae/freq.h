@@ -29,6 +29,7 @@
 #include "freq_conf.h"
 #include "kiss_fft.h"
 
+
 //PLT_Dec20
 /*
     Define these on freq_conf.h
@@ -54,8 +55,8 @@
 #define LEFT_SAMPLES (HALF_FFT_LENGTH - WIN_PAD_LEFT) //samples at left-side window / reflected samples at the left edge
 #define RIGHT_SAMPLES (HALF_FFT_LENGTH - WIN_PAD_RIGHT) //samples at right-side window / reflected samples at the right edge
 
-#define HALF_FFT_LENGTH_1 (HALF_FFT_LENGTH - 1) //for indexing first frame samples
-#define LEFT_SAMPLES_1 (LEFT_SAMPLES - 1) //for indexing first frame reflected samples
+#define LEFT_SAMPLES_1 (LEFT_SAMPLES - 1) //for indexing first frame samples
+#define LEFT_SAMPLES_2 (LEFT_SAMPLES_1 - 1) //for indexing first frame reflected samples
 #define RIGHT_SAMPLES_1 (RIGHT_SAMPLES - 1) //for indexing first frame samples
 
 #define WIN_LEFT_IDX (WIN_PAD_LEFT + 1) //0->439, index of centered 1st in total FFT-length, exclude first sample (+1) [0 coefficient]
@@ -66,6 +67,7 @@
 #define HPASS_FILT_TAPS_1 (HPASS_FILT_TAPS - 1)
 
 #define MAGSP_DIM (HALF_FFT_LENGTH + 1)
+#define MELSP_MAGSP_DIM (MAGSP_DIM * MEL_DIM)
 #define MEL_DIM 80
 #define MEL_DIM_16_BLOCK ((MEL_DIM % 16) == 0)
 
@@ -80,7 +82,7 @@ typedef struct {
     kiss_fft_cpx in_fft[FFT_LENGTH]; //initialized with zeros, fill in only centered window_length
     kiss_fft_cpx out_fft[FFT_LENGTH];
     float magsp[MAGSP_DIM];
-    float melfb[MEL_DIM];
+    float melfb[MELSP_MAGSP_DIM];
 } DSPState;
 
 int dspstate_get_size();

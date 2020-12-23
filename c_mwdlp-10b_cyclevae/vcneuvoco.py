@@ -318,7 +318,7 @@ class CausalDilConv1d(nn.Module):
 
 
 class DualFC_CF(nn.Module):
-    """Compact Dual Fully Connected layers based on LPCNet"""
+    """Compact Dual Fully Connected layers based on LPCNet for coarse-fine architecture"""
 
     def __init__(self, in_dim=32, out_dim=256, lpc=6, bias=True, n_bands=10, mid_out=32):
         super(DualFC_CF, self).__init__()
@@ -1508,52 +1508,6 @@ class GRU_SPK(nn.Module):
             e = self.out(e.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
 
         return F.tanhshrink(e), h.detach()
-
-    def apply_weight_norm(self):
-        """Apply weight normalization module from all of the layers."""
-        def _apply_weight_norm(m):
-            if isinstance(m, torch.nn.Conv1d):
-                torch.nn.utils.weight_norm(m)
-                logging.info(f"Weight norm is applied to {m}.")
-
-        self.apply(_apply_weight_norm)
-
-    def remove_weight_norm(self):
-        """Remove weight normalization module from all of the layers."""
-        def _remove_weight_norm(m):
-            try:
-                if isinstance(m, torch.nn.Conv1d):
-                    torch.nn.utils.remove_weight_norm(m)
-                    logging.info(f"Weight norm is removed from {m}.")
-            except ValueError:
-                return
-
-        self.apply(_remove_weight_norm)
-
-
-class TRANSFORM_LAYER(nn.Module):
-    def __init__(self, in_dim=160, out_dim=80, use_weight_norm=True):
-        super(TRANSFORM_LAYER, self).__init__()
-
-        self.in_dim = in_dim
-        self.out_dim = out_dim
-        self.use_weight_norm = use_weight_norm
-
-        #conv = [nn.Conv1d(self.in_dim, self.out_dim, 1, bias=False), nn.Hardshrink()]
-        #self.conv = nn.Sequential(*conv)
-        self.conv = nn.Conv1d(self.in_dim, self.out_dim, 1, bias=False)
-
-        # apply weight norm
-        if self.use_weight_norm:
-            self.apply_weight_norm()
-        else:
-            self.apply(initialize)
-
-    def forward(self, x):
-        # in: B x T x C_in
-        # out: B x T x C_out
-        #return self.conv(x.transpose(1,2)).transpose(1,2)
-        return F.tanhshrink(torch.clamp(self.conv(x.transpose(1,2)).transpose(1,2), min=-32, max=32))
 
     def apply_weight_norm(self):
         """Apply weight normalization module from all of the layers."""

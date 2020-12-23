@@ -1019,9 +1019,6 @@ def main():
     hf.write('#define DEC_EXCIT_CONV_KERNEL_1 {}\n\n'.format(model_decoder_excit.kernel_size-1))
     hf.write('#define DEC_MELSP_CONV_KERNEL_1 {}\n\n'.format(model_decoder_melsp.kernel_size-1))
     hf.write('#define POST_CONV_KERNEL_1 {}\n\n'.format(model_post.kernel_size-1))
-    hf.write('#define NB_IN_DEC_EXCIT {}\n\n'.format(model_decoder_excit.in_dim*model_decoder_excit.conv.rec_field))
-    hf.write('#define NB_IN_DEC_MELSP {}\n\n'.format(model_decoder_melsp.in_dim*model_decoder_melsp.conv.rec_field))
-    hf.write('#define NB_IN_POST {}\n\n'.format(model_post.in_dim*model_post.conv.rec_field))
 
     hf.write('typedef struct {\n')
     hf.write('  float feature_conv_enc_melsp_state[FEATURE_CONV_ENC_MELSP_STATE_SIZE];\n')
