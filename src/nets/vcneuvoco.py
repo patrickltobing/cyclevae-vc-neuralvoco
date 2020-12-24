@@ -317,103 +317,10 @@ class CausalDilConv1d(nn.Module):
             return self.conv(x)
 
 
-class DualFC_CF(nn.Module):
-    """Compact Dual Fully Connected layers based on LPCNet for coarse-fine architecture"""
-
-    def __init__(self, in_dim=32, out_dim=256, lpc=6, bias=True, n_bands=10, mid_out=32):
-        super(DualFC_CF, self).__init__()
-        self.in_dim = in_dim
-        self.out_dim = out_dim
-        self.lpc = lpc
-        self.n_bands = n_bands
-        self.lpc2 = self.lpc*2 #signs and scales
-        self.bias = bias
-        self.lpc4 = self.lpc2*2
-        self.lpc2bands = self.lpc2*self.n_bands
-        self.lpc4bands = self.lpc4*self.n_bands
-        self.mid_out = mid_out
-
-        if self.mid_out is not None:
-            self.mid_out_bands = self.mid_out*self.n_bands
-            self.mid_out_bands2 = self.mid_out_bands*2
-            self.conv = nn.Conv1d(self.in_dim, self.mid_out_bands2+self.lpc4bands, 1, bias=self.bias)
-            self.fact = EmbeddingZero(1, self.mid_out_bands2+self.lpc4bands)
-            self.out = nn.Conv1d(self.mid_out, self.out_dim, 1, bias=self.bias)
-        else:
-            self.out_bands = self.out_dim*self.n_bands
-            self.out_bands2 = self.out_bands*2
-            self.conv = nn.Conv1d(self.in_dim, self.out_bands2+self.lpc4bands, 1, bias=self.bias)
-            self.fact = EmbeddingZero(1, self.out_bands2+self.lpc4bands)
-
-    def forward(self, x):
-        """Forward calculation
-
-        Arg:
-            x (Variable): float tensor variable with the shape  (B x C_in x T)
-
-        Return:
-            (Variable): float tensor variable with the shape (B x T x C_out)
-        """
-
-        # out = fact_1 o tanh(conv_1 * x) + fact_2 o tanh(conv_2 * x)
-        if self.n_bands > 1:
-            if self.mid_out is not None:
-                if self.lpc > 0:
-                    conv = self.conv(x).transpose(1,2) # B x T x n_bands*(K*4+mid_dim*2)
-                    fact_weight = 0.5*torch.exp(self.fact.weight[0]) # K*4+256*2
-                    B = x.shape[0]
-                    T = x.shape[2]
-                    # B x T x n_bands x K*2 --> B x T x n_bands x K
-                    return torch.sum((torch.tanh(conv[:,:,:self.lpc2bands])*fact_weight[:self.lpc2bands]).reshape(B,T,self.n_bands,2,-1), 3), \
-                            torch.sum((torch.exp(conv[:,:,self.lpc2bands:self.lpc4bands])*fact_weight[self.lpc2bands:self.lpc4bands]).reshape(B,T,self.n_bands,2,-1), 3), \
-                                F.tanhshrink(self.out(torch.sum((F.relu(conv[:,:,self.lpc4bands:])
-                                    *fact_weight[self.lpc4bands:]).reshape(B,T,self.n_bands,2,-1), 3).reshape(B,T*self.n_bands,-1).transpose(1,2))).transpose(1,2).reshape(B,T,self.n_bands,-1)
-                    # B x T x n_bands x mid*2 --> B x (T x n_bands) x mid --> B x mid x (T x n_bands) --> B x T x n_bands x 256
-                else:
-                    # B x T x n_bands x mid*2 --> B x (T x n_bands) x mid --> B x mid x (T x n_bands) --> B x T x n_bands x 256
-                    B = x.shape[0]
-                    T = x.shape[2]
-                    return F.tanhshrink(self.out(torch.sum((F.relu(self.conv(x).transpose(1,2))
-                                *(0.5*torch.exp(self.fact.weight[0]))).reshape(B,T,self.n_bands,2,-1), 3).reshape(B,T*self.n_bands,-1).transpose(1,2))).transpose(1,2).reshape(B,T,self.n_bands,-1)
-            else:
-                if self.lpc > 0:
-                    conv = self.conv(x).transpose(1,2) # B x T x n_bands*(K*4+out_dim*2)
-                    fact_weight = 0.5*torch.exp(self.fact.weight[0]) # K*4+32*2
-                    B = x.shape[0]
-                    T = x.shape[2]
-                    # B x T x n_bands x K*2 --> B x T x n_bands x K
-                    return torch.sum((torch.tanh(conv[:,:,:self.lpc2bands])*fact_weight[:self.lpc2bands]).reshape(B,T,self.n_bands,2,-1), 3), \
-                            torch.sum((torch.exp(conv[:,:,self.lpc2bands:self.lpc4bands])*fact_weight[self.lpc2bands:self.lpc4bands]).reshape(B,T,self.n_bands,2,-1), 3), \
-                                torch.sum((F.tanhshrink(conv[:,:,self.lpc4bands:])*fact_weight[self.lpc4bands:]).reshape(B,T,self.n_bands,2,-1), 3)
-                    # B x T x n_bands x out*2 --> B x T x n_bands x 32
-                else:
-                    # B x T x n_bands x out*2 --> B x T x n_bands x 32
-                    return torch.sum((F.tanhshrink(self.conv(x).transpose(1,2))*(0.5*torch.exp(self.fact.weight[0]))).reshape(x.shape[0],x.shape[2],self.n_bands,2,-1), 3)
-        else:
-            if self.mid_out is not None:
-                if self.lpc > 0:
-                    conv = self.conv(x).transpose(1,2)
-                    fact_weight = 0.5*torch.exp(self.fact.weight[0])
-                    return torch.sum((torch.tanh(conv[:,:,:self.lpc2])*fact_weight[:self.lpc2]).reshape(x.shape[0],x.shape[2],2,-1), 2), \
-                            torch.sum((torch.exp(conv[:,:,self.lpc2:self.lpc4])*fact_weight[self.lpc2:self.lpc4]).reshape(x.shape[0],x.shape[2],2,-1), 2), \
-                                F.tanhshrink(self.out(torch.sum((F.relu(conv[:,:,self.lpc4:])*fact_weight[self.lpc4:]).reshape(x.shape[0],x.shape[2],2,-1), 2).transpose(1,2))).transpose(1,2)
-                else:
-                    return F.tanhshrink(self.out(torch.sum((F.relu(self.conv(x).transpose(1,2))*(0.5*torch.exp(self.fact.weight[0]))).reshape(x.shape[0],x.shape[2],2,-1), 2).transpose(1,2))).transpose(1,2)
-            else:
-                if self.lpc > 0:
-                    conv = self.conv(x).transpose(1,2)
-                    fact_weight = 0.5*torch.exp(self.fact.weight[0])
-                    return torch.sum((torch.tanh(conv[:,:,:self.lpc2])*fact_weight[:self.lpc2]).reshape(x.shape[0],x.shape[2],2,-1), 2), \
-                            torch.sum((torch.exp(conv[:,:,self.lpc2:self.lpc4])*fact_weight[self.lpc2:self.lpc4]).reshape(x.shape[0],x.shape[2],2,-1), 2), \
-                                torch.sum((F.tanhshrink(conv[:,:,self.lpc4:])*fact_weight[self.lpc4:]).reshape(x.shape[0],x.shape[2],2,-1), 2)
-                else:
-                    return torch.sum((F.tanhshrink(self.conv(x).transpose(1,2))*(0.5*torch.exp(self.fact.weight[0]))).reshape(x.shape[0],x.shape[2],2,-1), 2)
-
-
 class DualFC(nn.Module):
     """Compact Dual Fully Connected layers based on LPCNet"""
 
-    def __init__(self, in_dim=16, out_dim=256, lpc=12, bias=True, n_bands=1, mid_out=None):
+    def __init__(self, in_dim=32, out_dim=512, lpc=6, bias=True, n_bands=5, mid_out=32):
         super(DualFC, self).__init__()
         self.in_dim = in_dim
         self.out_dim = out_dim
@@ -429,15 +336,15 @@ class DualFC(nn.Module):
         self.lpc4bands = self.lpc4*self.n_bands
         self.mid_out = mid_out
 
-        if self.mid_out is None:
-            self.conv = nn.Conv1d(self.in_dim, self.out_dim2*self.n_bands+self.lpc4bands, 1, bias=self.bias)
-            self.fact = EmbeddingZero(1, self.out_dim2+self.lpc4)
-        else:
+        if self.mid_out is not None:
             self.mid_out_bands = self.mid_out*self.n_bands
             self.mid_out_bands2 = self.mid_out_bands*2
             self.conv = nn.Conv1d(self.in_dim, self.mid_out_bands2+self.lpc4bands, 1, bias=self.bias)
             self.fact = EmbeddingZero(1, self.mid_out_bands2+self.lpc4bands)
             self.out = nn.Conv1d(self.mid_out, self.out_dim, 1, bias=self.bias)
+        else:
+            self.conv = nn.Conv1d(self.in_dim, self.out_dim2*self.n_bands+self.lpc4bands, 1, bias=self.bias)
+            self.fact = EmbeddingZero(1, self.out_dim2+self.lpc4)
 
     def forward(self, x):
         """Forward calculation
@@ -454,56 +361,56 @@ class DualFC(nn.Module):
             if self.mid_out is not None:
                 if self.lpc > 0:
                     conv = self.conv(x).transpose(1,2) # B x T x n_bands*(K*4+mid_dim*2)
-                    fact_weight = 0.5*torch.exp(self.fact.weight[0]) # K*4+256*2
+                    fact_weight = 0.5*torch.exp(torch.clamp(self.fact.weight[0], min=-32, max=32)) # K*4+256*2
                     B = x.shape[0]
                     T = x.shape[2]
                     # B x T x n_bands x K*2 --> B x T x n_bands x K
-                    return torch.sum((torch.tanh(conv[:,:,:self.lpc2bands])*fact_weight[:self.lpc2bands]).reshape(B,T,self.n_bands,2,-1), 3), \
-                            torch.sum((torch.exp(conv[:,:,self.lpc2bands:self.lpc4bands])*fact_weight[self.lpc2bands:self.lpc4bands]).reshape(B,T,self.n_bands,2,-1), 3), \
-                                F.tanhshrink(self.out(torch.sum((F.relu(conv[:,:,self.lpc4bands:])
-                                    *fact_weight[self.lpc4bands:]).reshape(B,T,self.n_bands,2,-1), 3).reshape(B,T*self.n_bands,-1).transpose(1,2))).transpose(1,2).reshape(B,T,self.n_bands,-1)
+                    return torch.sum((torch.tanh(torch.clamp(conv[:,:,:self.lpc2bands], min=-32, max=32))*fact_weight[:self.lpc2bands]).reshape(B,T,self.n_bands,2,-1), 3), \
+                            torch.sum((torch.exp(torch.clamp(conv[:,:,self.lpc2bands:self.lpc4bands], min=-32, max=32))*fact_weight[self.lpc2bands:self.lpc4bands]).reshape(B,T,self.n_bands,2,-1), 3), \
+                                F.tanhshrink(torch.clamp(self.out(torch.sum((F.relu(conv[:,:,self.lpc4bands:])
+                                    *fact_weight[self.lpc4bands:]).reshape(B,T,self.n_bands,2,-1), 3).reshape(B,T*self.n_bands,-1).transpose(1,2)), min=-32, max=32)).transpose(1,2).reshape(B,T,self.n_bands,-1)
                     # B x T x n_bands x mid*2 --> B x (T x n_bands) x mid --> B x mid x (T x n_bands) --> B x T x n_bands x 256
                 else:
                     # B x T x n_bands x mid*2 --> B x (T x n_bands) x mid --> B x mid x (T x n_bands) --> B x T x n_bands x 256
                     B = x.shape[0]
                     T = x.shape[2]
-                    return F.tanhshrink(self.out(torch.sum((F.relu(self.conv(x).transpose(1,2))
-                                *(0.5*torch.exp(self.fact.weight[0]))).reshape(B,T,self.n_bands,2,-1), 3).reshape(B,T*self.n_bands,-1).transpose(1,2))).transpose(1,2).reshape(B,T,self.n_bands,-1)
+                    return F.tanhshrink(torch.clamp(self.out(torch.sum((F.relu(self.conv(x).transpose(1,2))
+                                *(0.5*torch.exp(self.fact.weight[0]))).reshape(B,T,self.n_bands,2,-1), 3).reshape(B,T*self.n_bands,-1).transpose(1,2)), min=-32, max=32)).transpose(1,2).reshape(B,T,self.n_bands,-1)
             else:
                 if self.lpc > 0:
                     conv = self.conv(x).transpose(1,2) # B x T x n_bands*(K*4+256*2)
-                    fact_weight = 0.5*torch.exp(self.fact.weight[0]) # K*4+256*2
+                    fact_weight = 0.5*torch.exp(torch.clamp(self.fact.weight[0], min=-32, max=32)) # K*4+256*2
                     B = x.shape[0]
                     T = x.shape[2]
                     # B x T x n_bands x K*2 --> B x T x n_bands x K
-                    return torch.sum((torch.tanh(conv[:,:,:self.lpc2bands]).reshape(B,T,self.n_bands,-1)*fact_weight[:self.lpc2]).reshape(B,T,self.n_bands,2,-1), 3), \
-                            torch.sum((torch.exp(conv[:,:,self.lpc2bands:self.lpc4bands]).reshape(B,T,self.n_bands,-1)*fact_weight[self.lpc2:self.lpc4]).reshape(B,T,self.n_bands,2,-1), 3), \
-                                torch.sum((F.tanhshrink(conv[:,:,self.lpc4bands:]).reshape(B,T,self.n_bands,-1)*fact_weight[self.lpc4:]).reshape(B,T,self.n_bands,2,-1), 3)
+                    return torch.sum((torch.tanh(torch.clamp(conv[:,:,:self.lpc2bands], min=-32, max=32)).reshape(B,T,self.n_bands,-1)*fact_weight[:self.lpc2]).reshape(B,T,self.n_bands,2,-1), 3), \
+                            torch.sum((torch.exp(torch.clamp(conv[:,:,self.lpc2bands:self.lpc4bands], min=-32,max=32)).reshape(B,T,self.n_bands,-1)*fact_weight[self.lpc2:self.lpc4]).reshape(B,T,self.n_bands,2,-1), 3), \
+                                torch.sum((F.tanhshrink(torch.clamp(conv[:,:,self.lpc4bands:], min=-32, max=32)).reshape(B,T,self.n_bands,-1)*fact_weight[self.lpc4:]).reshape(B,T,self.n_bands,2,-1), 3)
                     # B x T x n_bands x 256*2 --> B x T x n_bands x 256
                 else:
                     # B x T x n_bands x 256*2 --> B x T x n_bands x 256
                     B = x.shape[0]
                     T = x.shape[2]
-                    return torch.sum((F.tanhshrink(self.conv(x).transpose(1,2)).reshape(B,T,self.n_bands,-1)*(0.5*torch.exp(self.fact.weight[0]))).reshape(B,T,self.n_bands,2,-1), 3)
+                    return torch.sum((F.tanhshrink(torch.clamp(self.conv(x).transpose(1,2), min=-32, max=32)).reshape(B,T,self.n_bands,-1)*(0.5*torch.exp(torch.clamp(self.fact.weight[0], min=-32, max=32)))).reshape(B,T,self.n_bands,2,-1), 3)
         else:
             if self.mid_out is not None:
                 if self.lpc > 0:
                     conv = self.conv(x).transpose(1,2)
-                    fact_weight = 0.5*torch.exp(self.fact.weight[0])
-                    return torch.sum((torch.tanh(conv[:,:,:self.lpc2])*fact_weight[:self.lpc2]).reshape(x.shape[0],x.shape[2],2,-1), 2), \
-                            torch.sum((torch.exp(conv[:,:,self.lpc2:self.lpc4])*fact_weight[self.lpc2:self.lpc4]).reshape(x.shape[0],x.shape[2],2,-1), 2), \
-                            F.tanhshrink(self.out(torch.sum((F.relu(conv[:,:,self.lpc4:])*fact_weight[self.lpc4:]).reshape(x.shape[0],x.shape[2],2,-1), 2).transpose(1,2))).transpose(1,2)
+                    fact_weight = 0.5*torch.exp(torch.clamp(self.fact.weight[0], min=-32, max=32))
+                    return torch.sum((torch.tanh(torch.clamp(conv[:,:,:self.lpc2], min=-32, max=32))*fact_weight[:self.lpc2]).reshape(x.shape[0],x.shape[2],2,-1), 2), \
+                            torch.sum((torch.exp(torch.clamp(conv[:,:,self.lpc2:self.lpc4], min=-32, max=32))*fact_weight[self.lpc2:self.lpc4]).reshape(x.shape[0],x.shape[2],2,-1), 2), \
+                            F.tanhshrink(torch.clamp(self.out(torch.sum((F.relu(conv[:,:,self.lpc4:])*fact_weight[self.lpc4:]).reshape(x.shape[0],x.shape[2],2,-1), 2).transpose(1,2)), min=-32, max=32)).transpose(1,2)
                 else:
-                    return F.tanhshrink(self.out(torch.sum((F.relu(self.conv(x).transpose(1,2))*(0.5*torch.exp(self.fact.weight[0]))).reshape(x.shape[0],x.shape[2],2,-1), 2).transpose(1,2))).transpose(1,2)
+                    return F.tanhshrink(torch.clamp(self.out(torch.sum((F.relu(self.conv(x).transpose(1,2))*(0.5*torch.exp(torch.clamp(self.fact.weight[0], min=-32, max=32)))).reshape(x.shape[0],x.shape[2],2,-1), 2).transpose(1,2)), min=-32, max=32)).transpose(1,2)
             else:
                 if self.lpc > 0:
                     conv = self.conv(x).transpose(1,2)
-                    fact_weight = 0.5*torch.exp(self.fact.weight[0])
-                    return torch.sum((torch.tanh(conv[:,:,:self.lpc2])*fact_weight[:self.lpc2]).reshape(x.shape[0],x.shape[2],2,-1), 2), \
-                            torch.sum((torch.exp(conv[:,:,self.lpc2:self.lpc4])*fact_weight[self.lpc2:self.lpc4]).reshape(x.shape[0],x.shape[2],2,-1), 2), \
-                                torch.sum((F.tanhshrink(conv[:,:,self.lpc4:])*fact_weight[self.lpc4:]).reshape(x.shape[0],x.shape[2],2,-1), 2)
+                    fact_weight = 0.5*torch.exp(torch.clamp(self.fact.weight[0], min=-32, max=32))
+                    return torch.sum((torch.tanh(torch.clamp(conv[:,:,:self.lpc2], min=-32, max=32))*fact_weight[:self.lpc2]).reshape(x.shape[0],x.shape[2],2,-1), 2), \
+                            torch.sum((torch.exp(torch.clamp(conv[:,:,self.lpc2:self.lpc4], min=-32, max=32))*fact_weight[self.lpc2:self.lpc4]).reshape(x.shape[0],x.shape[2],2,-1), 2), \
+                                torch.sum((F.tanhshrink(torch.clamp(conv[:,:,self.lpc4:], min=-32, max=32))*fact_weight[self.lpc4:]).reshape(x.shape[0],x.shape[2],2,-1), 2)
                 else:
-                    return torch.sum((F.tanhshrink(self.conv(x).transpose(1,2))*(0.5*torch.exp(self.fact.weight[0]))).reshape(x.shape[0],x.shape[2],2,-1), 2)
+                    return torch.sum((F.tanhshrink(torch.clamp(self.conv(x).transpose(1,2), min=-32, max=32))*(0.5*torch.exp(torch.clamp(self.fact.weight[0], min=-32, max=32)))).reshape(x.shape[0],x.shape[2],2,-1), 2)
 
 
 class OutputConv1d(nn.Module):
@@ -1789,13 +1696,13 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
         self.gru_2 = nn.GRU(self.s_dim+self.hidden_units, self.hidden_units_2, 1, batch_first=True)
 
         # Output layers coarse
-        self.out = DualFC_CF(self.hidden_units_2, self.cf_dim, self.lpc, n_bands=self.n_bands, mid_out=self.mid_out)
+        self.out = DualFC(self.hidden_units_2, self.cf_dim, self.lpc, n_bands=self.n_bands, mid_out=self.mid_out)
 
         # GRU layer(s) fine
         self.gru_f = nn.GRU(self.s_dim+self.wav_dim_bands+self.hidden_units_2, self.hidden_units_2, 1, batch_first=True)
 
         # Output layers fine
-        self.out_f = DualFC_CF(self.hidden_units_2, self.cf_dim, self.lpc, n_bands=self.n_bands, mid_out=self.mid_out)
+        self.out_f = DualFC(self.hidden_units_2, self.cf_dim, self.lpc, n_bands=self.n_bands, mid_out=self.mid_out)
 
         # Prev logits if using data-driven lpc
         if self.lpc > 0:
@@ -2175,6 +2082,8 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND(nn.Module):
             signs, scales, logits = self.out(out.transpose(1,2)) # B x T x C -> B x C x T -> B x T x C
             #pred_logits = torch.sum(signs.unsqueeze(-1)*self.logits(x_lpc)*scales.unsqueeze(-1), 2)
             #dist = OneHotCategorical(F.softmax(logits + torch.sum((signs*scales).unsqueeze(-1)*self.logits(x_lpc), 3), dim=-1)) # B x 1 x n_bands x 256, B x 1 x n_bands x K x 256 --> B x 1 x n_bands x 256
+            #logging.info(torch.min(logits))
+            #logging.info(torch.max(logits))
             dist = OneHotCategorical(F.softmax(torch.clamp(logits + torch.sum((signs*scales).unsqueeze(-1)*self.logits(x_lpc), 3), min=-32, max=32), dim=-1)) # B x 1 x n_bands x 256, B x 1 x n_bands x K x 256 --> B x 1 x n_bands x 256
             x_out = x_wav = dist.sample().argmax(dim=-1) # B x 1 x n_bands
             #u = torch.empty_like(logits)
@@ -2210,6 +2119,8 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND(nn.Module):
                 signs, scales, logits = self.out(out.transpose(1,2)) # B x T x C -> B x C x T -> B x T x C
                 #pred_logits = torch.sum(signs.unsqueeze(-1)*self.logits(x_lpc)*scales.unsqueeze(-1), 2)
                 #dist = OneHotCategorical(F.softmax(logits + torch.sum((signs*scales).unsqueeze(-1)*self.logits(x_lpc), 3), dim=-1)) # B x 1 x n_bands x 256, B x 1 x n_bands x K x 256 --> B x 1 x n_bands x 256
+                #logging.info(torch.min(logits))
+                #logging.info(torch.max(logits))
                 dist = OneHotCategorical(F.softmax(torch.clamp(logits + torch.sum((signs*scales).unsqueeze(-1)*self.logits(x_lpc), 3), min=-32, max=32), dim=-1)) # B x 1 x n_bands x 256, B x 1 x n_bands x K x 256 --> B x 1 x n_bands x 256
                 x_wav = dist.sample().argmax(dim=-1) # B x 1 x n_bands
                 #logits += torch.sum((signs*scales).unsqueeze(-1)*self.logits(x_lpc), 3) - torch.log(-torch.log(torch.clamp(u.uniform_(), eps, eps_1)))

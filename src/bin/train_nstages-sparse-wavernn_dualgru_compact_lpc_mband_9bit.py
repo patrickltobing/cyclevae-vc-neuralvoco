@@ -702,9 +702,9 @@ def main():
                             batch_x_output, h_x, h_x_2 = model_waveform(batch_feat, batch_x_prev)
 
                     # samples check
-                    i = np.random.randint(0, batch_x_output.shape[0])
-                    logging.info("%s" % (os.path.join(os.path.basename(os.path.dirname(featfile[i])),os.path.basename(featfile[i]))))
-                    logging.info("%lf %lf" % (torch.min(batch_x_output), torch.max(batch_x_output)))
+                    #i = np.random.randint(0, batch_x_output.shape[0])
+                    #logging.info("%s" % (os.path.join(os.path.basename(os.path.dirname(featfile[i])),os.path.basename(featfile[i]))))
+                    #logging.info("%lf %lf" % (torch.min(batch_x_output), torch.max(batch_x_output)))
                     #i = np.random.randint(0, batch_sc_output.shape[0])
                     #i_spk = spk_list.index(os.path.basename(os.path.dirname(featfile[i])))
                     #logging.info("%s %d" % (os.path.join(os.path.basename(os.path.dirname(featfile[i])),os.path.basename(featfile[i])), i_spk+1))
@@ -914,9 +914,9 @@ def main():
                         = model_waveform(batch_feat, batch_x_prev, do=True)
 
             # samples check
-            i = np.random.randint(0, batch_x_output.shape[0])
-            logging.info("%s" % (os.path.join(os.path.basename(os.path.dirname(featfile[i])),os.path.basename(featfile[i]))))
-            logging.info("%lf %lf" % (torch.min(batch_x_output), torch.max(batch_x_output)))
+            #i = np.random.randint(0, batch_x_output.shape[0])
+            #logging.info("%s" % (os.path.join(os.path.basename(os.path.dirname(featfile[i])),os.path.basename(featfile[i]))))
+            #logging.info("%lf %lf" % (torch.min(batch_x_output), torch.max(batch_x_output)))
             #with torch.no_grad():
             #    i = np.random.randint(0, batch_sc_output.shape[0])
             #    i_spk = spk_list.index(os.path.basename(os.path.dirname(featfile[i])))

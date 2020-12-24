@@ -15,6 +15,7 @@ import sys
 
 import numpy as np
 import soundfile as sf
+from scipy.signal import lfilter
 
 import torch
 
@@ -29,7 +30,13 @@ FS = 24000
 ##FS = 44100
 ##FS = 48000
 ALPHA = 0.85
-N_BANDS = 10
+N_BANDS = 5
+
+
+def deemphasis(x, alpha=ALPHA):
+    b = np.array([1.], x.dtype)
+    a = np.array([1., -alpha], x.dtype)
+    return lfilter(b, a, x)
 
 
 def main():
@@ -51,6 +58,9 @@ def main():
     parser.add_argument(
         "--n_bands", default=N_BANDS,
         type=int, help="number of bands for multiband analysis")
+    parser.add_argument(
+        "--alpha", default=ALPHA,
+        type=float, help="coefficient of pre-emphasis")
     parser.add_argument(
         "--verbose", default=1,
         type=int, help="log message level")
@@ -87,7 +97,7 @@ def main():
             x_bands_syn = pqmf.synthesis(x_bands_ana)
             print(x_bands_syn.shape)
             for i in range(args.n_bands):
-                wav = np.clip(x_bands_ana[0,i].data.numpy(), -1, 1)
+                wav = np.clip(x_bands_ana[0,i].data.numpy(), -1, 0.999969482421875)
                 if args.n_bands < 10:
                     wavpath = os.path.join(args.writedir, os.path.basename(wav_name).split(".")[0]+"_B-"+str(i+1)+".wav")
                 else:
@@ -97,7 +107,8 @@ def main():
                         wavpath = os.path.join(args.writedir, os.path.basename(wav_name).split(".")[0]+"_B-"+str(i+1)+".wav")
                 print(wavpath)
                 sf.write(wavpath, wav, fs, 'PCM_16')
-            wav = np.clip(x_bands_syn[0,0].data.numpy(), -1, 1)
+            wav = np.clip(x_bands_syn[0,0].data.numpy(), -1, 0.999969482421875)
+            wav = deemphasis(wav, alpha=args.alpha)
             wavpath = os.path.join(args.writesyndir, os.path.basename(wav_name))
             print(wavpath)
             sf.write(wavpath, wav, fs, 'PCM_16')
