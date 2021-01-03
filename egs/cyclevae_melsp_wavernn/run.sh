@@ -301,10 +301,10 @@ n_interp=0
 
 gv_coeff=`awk '{if ($1 == "gv_coeff:") print $2}' conf/config.yml`
 
-if [ $mdl_name_post == "cycmelspxlf0capvae-post-smpl-laplace" ]; then
+if [ $mdl_name_post == "cycmelspxlf0capspkvae-post-smpl-laplace" ]; then
     string_path_rec=/feat_rec_${mdl_name_post}-${mdl_name}-${epoch_count}-${lat_dim}-${lat_dim_e}-${spkidtr_dim}-${n_half_cyc}-${min_idx_cycvae}-${min_idx}
     string_path_cv=/feat_cv_${mdl_name_post}-${mdl_name}-${epoch_count}-${lat_dim}-${lat_dim_e}-${spkidtr_dim}-${n_half_cyc}-${min_idx_cycvae}-${min_idx}
-elif [ $mdl_name == "cycmelspxlf0capvae-laplace" ]; then
+elif [ $mdl_name == "cycmelspxlf0capspkvae-laplace" ]; then
     string_path_rec=/feat_rec_${mdl_name}-${epoch_count}-${lat_dim}-${lat_dim_e}-${spkidtr_dim}-${n_half_cyc}-${min_idx_cycvae}
     string_path_cv=/feat_cv_${mdl_name}-${epoch_count}-${lat_dim}-${lat_dim_e}-${spkidtr_dim}-${n_half_cyc}-${min_idx_cycvae}
 fi
@@ -1019,7 +1019,7 @@ spk_list="$(IFS="@"; echo "${spks[*]}")"
 echo ${spk_list}
 
 echo $mdl_name
-if [ $mdl_name == "cycmelspxlf0capvae-laplace" ]; then
+if [ $mdl_name == "cycmelspxlf0capspkvae-laplace" ]; then
     setting=${mdl_name}_${data_name}_lr${lr}_bs${batch_size}_bsu${batch_size_utt}_bsue${batch_size_utt_eval}_lat${lat_dim}_late${lat_dim_e}_hue${hidden_units_enc}_hud${hidden_units_dec}_huf${hidden_units_lf0}_kse${kernel_size_enc}_ksd${kernel_size_dec}_ksf${kernel_size_lf0}_rse${right_size_enc}_rsd${right_size_dec}_rsf${right_size_lf0}_do${do_prob}_ep${epoch_count}_mel${mel_dim}_nhcyc${n_half_cyc}_s${spkidtr_dim}
 fi
 
@@ -1033,11 +1033,11 @@ if [ `echo ${stage} | grep 4` ];then
     echo "###########################################################"
     echo $expdir
 
-    if [ $mdl_name == "cycmelspxlf0capvae-laplace" ];then
+    if [ $mdl_name == "cycmelspxlf0capspkvae-laplace" ];then
         feats=data/${trn}/feats.scp
         if [ $idx_resume_cycvae -gt 0 ]; then
             ${cuda_cmd} ${expdir}/log/train_resume-${idx_resume_cycvae}.log \
-                train_gru-cycle-melsp-x-lf0cap-vae-laplace_noar.py \
+                train_gru-cycle-melsp-x-lf0cap-spk-vae-laplace_noar.py \
                     --feats ${feats} \
                     --feats_eval_list $feats_list_eval_list \
                     --stats data/${trn}/stats_jnt.h5 \
@@ -1080,7 +1080,7 @@ if [ `echo ${stage} | grep 4` ];then
                     --GPU_device ${GPU_device}
         else
             ${cuda_cmd} ${expdir}/log/train.log \
-                train_gru-cycle-melsp-x-lf0cap-vae-laplace_noar.py \
+                train_gru-cycle-melsp-x-lf0cap-spk-vae-laplace_noar.py \
                     --feats ${feats} \
                     --feats_eval_list $feats_list_eval_list \
                     --stats data/${trn}/stats_jnt.h5 \
@@ -1129,7 +1129,7 @@ fi
 echo $min_idx_cycvae $setting
 echo $mdl_name_post
 setting_cycvae=${setting}
-if [ $mdl_name_post == "cycmelspxlf0capvae-post-smpl-laplace" ]; then
+if [ $mdl_name_post == "cycmelspxlf0capspkvae-post-smpl-laplace" ]; then
     setting=${mdl_name_post}_${data_name}_lr${lr}_bs${batch_size}_bsu${batch_size_utt}_bsue${batch_size_utt_eval}_lat${lat_dim}_late${lat_dim_e}_hue${hidden_units_enc}_hud${hidden_units_dec}_huf${hidden_units_lf0}_hup${hidden_units_post}_kse${kernel_size_enc}_ksd${kernel_size_dec}_ksf${kernel_size_lf0}_ksp${kernel_size_post}_rse${right_size_enc}_rsd${right_size_dec}_rsf${right_size_lf0}_rsp${right_size_post}_do${do_prob}_ep${epoch_count}_mel${mel_dim}_nhcyc${n_half_cyc}_s${spkidtr_dim}_c${min_idx_cycvae}
 fi
 
@@ -1144,11 +1144,11 @@ if [ `echo ${stage} | grep post` ];then
     echo "###########################################################"
     echo $expdir
 
-    if [ $mdl_name_post == "cycmelspxlf0capvae-post-smpl-laplace" ];then
+    if [ $mdl_name_post == "cycmelspxlf0capspkvae-post-smpl-laplace" ];then
         feats=data/${trn}/feats.scp
         if [ $idx_resume -gt 0 ]; then
             ${cuda_cmd} ${expdir}/log/train_resume-${idx_resume}.log \
-                train_gru-cycle-melsp-x-lf0cap-vae-post-smpl-laplace_noar.py \
+                train_gru-cycle-melsp-x-lf0cap-spk-vae-post-smpl-laplace_noar.py \
                     --feats ${feats} \
                     --feats_eval_list $feats_list_eval_list \
                     --stats data/${trn}/stats_jnt.h5 \
@@ -1200,7 +1200,7 @@ if [ `echo ${stage} | grep post` ];then
                     --GPU_device ${GPU_device}
         else
             ${cuda_cmd} ${expdir}/log/train.log \
-                train_gru-cycle-melsp-x-lf0cap-vae-post-smpl-laplace_noar.py \
+                train_gru-cycle-melsp-x-lf0cap-spk-vae-post-smpl-laplace_noar.py \
                     --feats ${feats} \
                     --feats_eval_list $feats_list_eval_list \
                     --stats data/${trn}/stats_jnt.h5 \
@@ -1280,10 +1280,10 @@ if [ `echo ${stage} | grep 5` ];then
                 if [ $n_feats_dev -gt 0 ]; then
                     cat ${feats_dv} | grep "\/${spk_trg}\/" >> ${feats_scp}
                 fi
-                if [ $mdl_name_post == "cycmelspxlf0capvae-post-smpl-laplace" ];then
+                if [ $mdl_name_post == "cycmelspxlf0capspkvae-post-smpl-laplace" ];then
                     model=${expdir}/checkpoint-${min_idx}.pkl
                     ${cuda_cmd} ${expdir}/log/decode_rec-cycrec_${spk_trg}_${min_idx_cycvae}-${min_idx}.log \
-                        calc_rec-cycrec-gv_gru-cycle-melspxlf0capvae-post-smpl-laplace_noar.py \
+                        calc_rec-cycrec-gv_gru-cycle-melspxlf0capspkvae-post-smpl-laplace_noar.py \
                             --feats ${feats_scp} \
                             --spk ${spk_trg} \
                             --outdir ${outdir} \
@@ -1293,10 +1293,10 @@ if [ `echo ${stage} | grep 5` ];then
                             --string_path ${string_path_rec} \
                             --n_gpus ${n_gpus}
                             #--GPU_device ${GPU_device} \
-                elif [ $mdl_name == "cycmelspxlf0capvae-laplace" ];then
+                elif [ $mdl_name == "cycmelspxlf0capspkvae-laplace" ];then
                     model=${expdir}/checkpoint-${min_idx_cycvae}.pkl
                     ${cuda_cmd} ${expdir}/log/decode_rec-cycrec_${spk_trg}_${min_idx_cycvae}.log \
-                        calc_rec-cycrec-gv_gru-cycle-melspxlf0capvae-laplace_noar.py \
+                        calc_rec-cycrec-gv_gru-cycle-melspxlf0capspkvae-laplace_noar.py \
                             --feats ${feats_scp} \
                             --spk ${spk_trg} \
                             --outdir ${outdir} \
@@ -1368,14 +1368,14 @@ if [ $spkr != $spk_trg ]; then
     echo "######################################################"
     echo "#                DECODING CONV. FEAT DEV             #"
     echo "######################################################"
-    if [ $mdl_name_post == "cycmelspxlf0capvae-post-smpl-laplace" ]; then
+    if [ $mdl_name_post == "cycmelspxlf0capspkvae-post-smpl-laplace" ]; then
         model=${expdir}/checkpoint-${min_idx}.pkl
         if [ $spkidtr_dim != "0" ]; then
             outdir=${expdir}/wav_cv_${mdl_name_post}-${data_name}-${lat_dim}-${lat_dim_e}-${spkidtr_dim}-${n_half_cyc}-${epoch_count}-${batch_size}-${batch_size_utt}-${min_idx_cycvae}-${min_idx}_${spkr}-${spk_trg}-${n_interp}_dev
         else
             outdir=${expdir}/wav_cv_${mdl_name_post}-${data_name}-${lat_dim}-${lat_dim_e}-${spkidtr_dim}-${n_half_cyc}-${epoch_count}-${batch_size}-${batch_size_utt}-${min_idx_cycvae}-${min_idx}_${spkr}-${spk_trg}_dev
         fi
-    elif [ $mdl_name == "cycmelspxlf0capvae-laplace" ]; then
+    elif [ $mdl_name == "cycmelspxlf0capspkvae-laplace" ]; then
         model=${expdir}/checkpoint-${min_idx_cycvae}.pkl
         if [ $spkidtr_dim != "0" ]; then
             outdir=${expdir}/wav_cv_${mdl_name}-${data_name}-${lat_dim}-${lat_dim_e}-${spkidtr_dim}-${n_half_cyc}-${epoch_count}-${batch_size}-${batch_size_utt}-${min_idx_cycvae}_${spkr}-${spk_trg}-${n_interp}_dev
@@ -1386,10 +1386,10 @@ if [ $spkr != $spk_trg ]; then
     mkdir -p ${outdir}
     feats_scp=${outdir}/feats.scp
     cat data/${dev}/feats.scp | grep "\/${spkr}\/" > ${feats_scp}
-    if [ $mdl_name_post == "cycmelspxlf0capvae-post-smpl-laplace" ]; then
+    if [ $mdl_name_post == "cycmelspxlf0capspkvae-post-smpl-laplace" ]; then
         if [ $spkidtr_dim != "0" ]; then
             ${cuda_cmd} ${expdir}/log/decode_dev_${min_idx_cycvae}-${min_idx}_${spkr}-${spk_trg}-${n_interp}.log \
-                decode_gru-cycle-melspxlf0capvae-post-smpl-laplace_noar.py \
+                decode_gru-cycle-melspxlf0capspkvae-post-smpl-laplace_noar.py \
                     --feats ${feats_scp} \
                     --spk_trg ${spk_trg} \
                     --outdir ${outdir} \
@@ -1406,7 +1406,7 @@ if [ $spkr != $spk_trg ]; then
                     #--GPU_device ${GPU_device} \
         else
             ${cuda_cmd} ${expdir}/log/decode_dev_${min_idx_cycvae}-${min_idx}_${spkr}-${spk_trg}.log \
-                decode_gru-cycle-melspxlf0capvae-post-smpl-laplace_noar.py \
+                decode_gru-cycle-melspxlf0capspkvae-post-smpl-laplace_noar.py \
                     --feats ${feats_scp} \
                     --spk_trg ${spk_trg} \
                     --outdir ${outdir} \
@@ -1421,10 +1421,10 @@ if [ $spkr != $spk_trg ]; then
                     --GPU_device_str ${GPU_device_str}
                     #--GPU_device ${GPU_device} \
         fi
-    elif [ $mdl_name == "cycmelspxlf0capvae-laplace" ]; then
+    elif [ $mdl_name == "cycmelspxlf0capspkvae-laplace" ]; then
         if [ $spkidtr_dim != "0" ]; then
             ${cuda_cmd} ${expdir}/log/decode_dev_${min_idx_cycvae}_${spkr}-${spk_trg}-${n_interp}.log \
-                decode_gru-cycle-melspxlf0capvae-laplace_noar.py \
+                decode_gru-cycle-melspxlf0capspkvae-laplace_noar.py \
                     --feats ${feats_scp} \
                     --spk_trg ${spk_trg} \
                     --outdir ${outdir} \
@@ -1441,7 +1441,7 @@ if [ $spkr != $spk_trg ]; then
                     #--GPU_device ${GPU_device} \
         else
             ${cuda_cmd} ${expdir}/log/decode_dev_${min_idx_cycvae}_${spkr}-${spk_trg}.log \
-                decode_gru-cycle-melspxlf0capvae-laplace_noar.py \
+                decode_gru-cycle-melspxlf0capspkvae-laplace_noar.py \
                     --feats ${feats_scp} \
                     --spk_trg ${spk_trg} \
                     --outdir ${outdir} \
@@ -1467,14 +1467,14 @@ if [ $spkr != $spk_trg ]; then
     echo "######################################################"
     echo "#                DECODING CONV. FEAT TST             #"
     echo "######################################################"
-    if [ $mdl_name_post == "cycmelspxlf0capvae-post-smpl-laplace" ]; then
+    if [ $mdl_name_post == "cycmelspxlf0capspkvae-post-smpl-laplace" ]; then
         model=${expdir}/checkpoint-${min_idx}.pkl
         if [ $spkidtr_dim != "0" ]; then
             outdir=${expdir}/wav_cv_${mdl_name_post}-${data_name}-${lat_dim}-${lat_dim_e}-${spkidtr_dim}-${n_half_cyc}-${epoch_count}-${batch_size}-${batch_size_utt}-${min_idx_cycvae}-${min_idx}_${spkr}-${spk_trg}-${n_interp}_tst
         else
             outdir=${expdir}/wav_cv_${mdl_name_post}-${data_name}-${lat_dim}-${lat_dim_e}-${spkidtr_dim}-${n_half_cyc}-${epoch_count}-${batch_size}-${batch_size_utt}-${min_idx_cycvae}-${min_idx}_${spkr}-${spk_trg}_tst
         fi
-    elif [ $mdl_name == "cycmelspxlf0capvae-laplace" ]; then
+    elif [ $mdl_name == "cycmelspxlf0capspkvae-laplace" ]; then
         model=${expdir}/checkpoint-${min_idx_cycvae}.pkl
         if [ $spkidtr_dim != "0" ]; then
             outdir=${expdir}/wav_cv_${mdl_name}-${data_name}-${lat_dim}-${lat_dim_e}-${spkidtr_dim}-${n_half_cyc}-${epoch_count}-${batch_size}-${batch_size_utt}-${min_idx_cycvae}_${spkr}-${spk_trg}-${n_interp}_tst
@@ -1485,10 +1485,10 @@ if [ $spkr != $spk_trg ]; then
     mkdir -p ${outdir}
     feats_scp=${outdir}/feats.scp
     cat data/${tst}/feats.scp | grep "\/${spkr}\/" > ${feats_scp}
-    if [ $mdl_name_post == "cycmelspxlf0capvae-post-smpl-laplace" ]; then
+    if [ $mdl_name_post == "cycmelspxlf0capspkvae-post-smpl-laplace" ]; then
         if [ $spkidtr_dim != "0" ]; then
             ${cuda_cmd} ${expdir}/log/decode_tst_${min_idx_cycvae}-${min_idx}_${spkr}-${spk_trg}-${n_interp}.log \
-                decode_gru-cycle-melspxlf0capvae-post-smpl-laplace_noar.py \
+                decode_gru-cycle-melspxlf0capspkvae-post-smpl-laplace_noar.py \
                     --feats ${feats_scp} \
                     --spk_trg ${spk_trg} \
                     --outdir ${outdir} \
@@ -1505,7 +1505,7 @@ if [ $spkr != $spk_trg ]; then
                     #--GPU_device ${GPU_device} \
         else
             ${cuda_cmd} ${expdir}/log/decode_tst_${min_idx_cycvae}-${min_idx}_${spkr}-${spk_trg}.log \
-                decode_gru-cycle-melspxlf0capvae-post-smpl-laplace_noar.py \
+                decode_gru-cycle-melspxlf0capspkvae-post-smpl-laplace_noar.py \
                     --feats ${feats_scp} \
                     --spk_trg ${spk_trg} \
                     --outdir ${outdir} \
@@ -1520,10 +1520,10 @@ if [ $spkr != $spk_trg ]; then
                     --GPU_device_str ${GPU_device_str}
                     #--GPU_device ${GPU_device} \
         fi
-    elif [ $mdl_name == "cycmelspxlf0capvae-laplace" ]; then
+    elif [ $mdl_name == "cycmelspxlf0capspkvae-laplace" ]; then
         if [ $spkidtr_dim != "0" ]; then
             ${cuda_cmd} ${expdir}/log/decode_tst_${min_idx_cycvae}_${spkr}-${spk_trg}-${n_interp}.log \
-                decode_gru-cycle-melspxlf0capvae-laplace_noar.py \
+                decode_gru-cycle-melspxlf0capspkvae-laplace_noar.py \
                     --feats ${feats_scp} \
                     --spk_trg ${spk_trg} \
                     --outdir ${outdir} \
@@ -1540,7 +1540,7 @@ if [ $spkr != $spk_trg ]; then
                     #--GPU_device ${GPU_device} \
         else
             ${cuda_cmd} ${expdir}/log/decode_tst_${min_idx_cycvae}_${spkr}-${spk_trg}.log \
-                decode_gru-cycle-melspxlf0capvae-laplace_noar.py \
+                decode_gru-cycle-melspxlf0capspkvae-laplace_noar.py \
                     --feats ${feats_scp} \
                     --spk_trg ${spk_trg} \
                     --outdir ${outdir} \

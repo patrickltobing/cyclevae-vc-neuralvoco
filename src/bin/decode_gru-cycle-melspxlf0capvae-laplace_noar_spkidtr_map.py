@@ -33,7 +33,7 @@ from vcneuvoco import SPKID_TRANSFORM_LAYER
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-#np.set_printoptions(threshold=np.inf)
+np.set_printoptions(threshold=np.inf)
 
 VERBOSE = 1
 
@@ -127,7 +127,7 @@ def main():
                         'VCC2SF1', 'VCC2SF2', 'VCC2SF3', 'VCC2TF1', 'VCC2TF2', 'VCC2SF4', \
                             'taga', 'takada', 'mizokuchi', 'tts'] #30
         gender = []
-        for i in range(len(spk_list)):
+        for i in range(n_spk):
             if spk_list[i] in male:
                 gender.append(0)
             elif spk_list[i] in female:
@@ -136,7 +136,8 @@ def main():
                 logging.info('error %s not in gender list' % (spk_list[i]))
                 exit()
 
-        z = model_spkidtr.conv(F.one_hot(feat, num_classes=n_spk).float().transpose(1,2)).transpose(1,2)
+        z = F.tanhshrink(model_spkidtr.conv(F.one_hot(feat, num_classes=n_spk).float().transpose(1,2))).transpose(1,2).cpu().data.numpy().astype(np.float64)
+        #z = F.tanhshrink(torch.clamp(model_spkidtr.conv(F.one_hot(feat, num_classes=self.n_spk).float().transpose(1,2)), min=-32, max=32)).transpose(1,2)
         logging.info(z)
 
         logging.info(args.outdir)
@@ -145,8 +146,12 @@ def main():
         plt.rcParams["figure.figsize"] = (11.25,11.25) #1080x1080
         #plt.rcParams["figure.figsize"] = (14.229166667,14.229166667) #1366x1366
 
+        logging.info("spk-id spk-name x-coord y-coord")
+        for i in range(n_spk):
+            logging.info("%d %s %lf %lf", i+1, spk_list[i], z[0,i,0], z[0,i,1])
+
         #z = z.cpu().data.numpy()
-        z = z.data.numpy()
+        #z = z.data.numpy()
         logging.info(z.shape)
         x = z[0,:,0]
         y = z[0,:,1]

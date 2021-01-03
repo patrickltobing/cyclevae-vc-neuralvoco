@@ -1853,7 +1853,6 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND(nn.Module):
         self.s_dim = 320
         #self.wav_dim = self.s_dim // self.n_bands
         self.wav_dim = 64
-        self.mid_out = 32
         self.wav_dim_bands = self.wav_dim * self.n_bands
         self.use_weight_norm = use_weight_norm
         self.lpc = lpc
@@ -1890,7 +1889,7 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND(nn.Module):
         self.gru_2 = nn.GRU(self.s_dim+self.hidden_units, self.hidden_units_2, 1, batch_first=True)
 
         # Output layers
-        self.out = DualFC(self.hidden_units_2, self.n_quantize, self.lpc, n_bands=self.n_bands, mid_out=self.mid_out)
+        self.out = DualFC(self.hidden_units_2, self.n_quantize, self.lpc, n_bands=self.n_bands, mid_out=32)
 
         # Prev logits if using data-driven lpc
         if self.lpc > 0:

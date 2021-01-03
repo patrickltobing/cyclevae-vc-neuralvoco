@@ -260,10 +260,12 @@ def main():
 
                     #batch_feat = F.pad(batch_feat.transpose(1,2), (model_waveform.pad_left,model_waveform.pad_right), "replicate").transpose(1,2)
                     samples = model_waveform.generate(batch_feat)
+                    #gru, conv, samples = model_waveform.generate(batch_feat)
+                    #logging.info(gru.shape) # B x n_bands x T//n_bands
                     logging.info(samples.shape) # B x n_bands x T//n_bands
                     samples = pqmf.synthesis(samples)[:,0].cpu().data.numpy() # B x 1 x T --> B x T
                     logging.info(samples.shape)
-
+ 
                     samples_list = samples
 
                     time_sample.append(time.time()-start)
@@ -271,6 +273,43 @@ def main():
                     n_samples_t.append(max(n_samples_list)*len(n_samples_list))
 
                     for feat_id, samples, samples_len in zip(feat_ids, samples_list, n_samples_list):
+                    #for feat_id, samples, samples_len, c, h in zip(feat_ids, samples_list, n_samples_list, conv, gru):
+                    #    logging.info("write conv")
+                    #    outTxt = os.path.join(args.outdir, feat_id+"_conv.txt")
+                    #    logging.info(outTxt)
+                    #    g = open(outTxt, "wt")
+                    #    idx_frm = 0 
+                    #    c = c[:(samples_len//config.upsampling_factor)]
+                    #    nfrm = c.shape[0]
+                    #    dim = c.shape[1]
+                    #    while idx_frm < nfrm:
+                    #        idx_elmt = 1 
+                    #        for elmt in c[idx_frm]:
+                    #            if idx_elmt < dim:
+                    #                g.write("%lf " % (elmt))
+                    #            else:
+                    #                g.write("%lf\n" % (elmt))
+                    #            idx_elmt += 1
+                    #        idx_frm += 1
+                    #    g.close()
+                    #    logging.info("write gru")
+                    #    outTxt = os.path.join(args.outdir, feat_id+"_gru.txt")
+                    #    logging.info(outTxt)
+                    #    g = open(outTxt, "wt")
+                    #    idx_frm = 0 
+                    #    #h = h[:(samples_len//config.upsampling_factor)]
+                    #    nfrm = h.shape[0]
+                    #    dim = h.shape[1]
+                    #    while idx_frm < nfrm:
+                    #        idx_elmt = 1 
+                    #        for elmt in h[idx_frm]:
+                    #            if idx_elmt < dim:
+                    #                g.write("%lf " % (elmt))
+                    #            else:
+                    #                g.write("%lf\n" % (elmt))
+                    #            idx_elmt += 1
+                    #        idx_frm += 1
+                    #    g.close()
                         #wav = np.clip(samples[:samples_len], -1, 1)
                         wav = np.clip(samples[:samples_len], -1, 0.999969482421875)
                         outpath = os.path.join(args.outdir, feat_id+".wav")
