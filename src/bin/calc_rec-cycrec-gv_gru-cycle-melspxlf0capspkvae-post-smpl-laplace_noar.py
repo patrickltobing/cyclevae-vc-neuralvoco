@@ -196,6 +196,11 @@ def main():
                 model_spk = GRU_SPK(
                     n_spk=n_spk,
                     feat_dim=config.lat_dim+config.lat_dim_e,
+                    kernel_size=config.kernel_size_spk,
+                    dilation_size=config.dilation_size_spk,
+                    causal_conv=config.causal_conv_spk,
+                    pad_first=True,
+                    right_size=config.right_size_spk,
                     hidden_units=32)
                 logging.info(model_spk)
                 model_post = GRU_POST_NET(
@@ -253,24 +258,28 @@ def main():
                     for param in model_spkidtr.parameters():
                         param.requires_grad = False
             count = 0
-            pad_left = (model_encoder_melsp.pad_left + model_decoder_excit.pad_left + model_decoder_melsp.pad_left + model_post.pad_left)*2
-            pad_right = (model_encoder_melsp.pad_right + model_decoder_excit.pad_right + model_decoder_melsp.pad_right + model_post.pad_right)*2
-            outpad_lefts = [None]*7
-            outpad_rights = [None]*7
+            pad_left = (model_encoder_melsp.pad_left + model_spk.pad_left + model_decoder_excit.pad_left + model_decoder_melsp.pad_left + model_post.pad_left)*2
+            pad_right = (model_encoder_melsp.pad_right + model_spk.pad_right + model_decoder_excit.pad_right + model_decoder_melsp.pad_right + model_post.pad_right)*2
+            outpad_lefts = [None]*9
+            outpad_rights = [None]*9
             outpad_lefts[0] = pad_left-model_encoder_melsp.pad_left
             outpad_rights[0] = pad_right-model_encoder_melsp.pad_right
-            outpad_lefts[1] = outpad_lefts[0]-model_decoder_excit.pad_left
-            outpad_rights[1] = outpad_rights[0]-model_decoder_excit.pad_right
-            outpad_lefts[2] = outpad_lefts[1]-model_decoder_melsp.pad_left
-            outpad_rights[2] = outpad_rights[1]-model_decoder_melsp.pad_right
-            outpad_lefts[3] = outpad_lefts[2]-model_post.pad_left
-            outpad_rights[3] = outpad_rights[2]-model_post.pad_right
-            outpad_lefts[4] = outpad_lefts[3]-model_encoder_melsp.pad_left
-            outpad_rights[4] = outpad_rights[3]-model_encoder_melsp.pad_right
-            outpad_lefts[5] = outpad_lefts[4]-model_decoder_excit.pad_left
-            outpad_rights[5] = outpad_rights[4]-model_decoder_excit.pad_right
-            outpad_lefts[6] = outpad_lefts[5]-model_decoder_melsp.pad_left
-            outpad_rights[6] = outpad_rights[5]-model_decoder_melsp.pad_right
+            outpad_lefts[1] = outpad_lefts[0]-model_spk.pad_left
+            outpad_rights[1] = outpad_rights[0]-model_spk.pad_right
+            outpad_lefts[2] = outpad_lefts[1]-model_decoder_excit.pad_left
+            outpad_rights[2] = outpad_rights[1]-model_decoder_excit.pad_right
+            outpad_lefts[3] = outpad_lefts[2]-model_decoder_melsp.pad_left
+            outpad_rights[3] = outpad_rights[2]-model_decoder_melsp.pad_right
+            outpad_lefts[4] = outpad_lefts[3]-model_post.pad_left
+            outpad_rights[4] = outpad_rights[3]-model_post.pad_right
+            outpad_lefts[5] = outpad_lefts[4]-model_encoder_melsp.pad_left
+            outpad_rights[5] = outpad_rights[4]-model_encoder_melsp.pad_right
+            outpad_lefts[6] = outpad_lefts[5]-model_spk.pad_left
+            outpad_rights[6] = outpad_rights[5]-model_spk.pad_right
+            outpad_lefts[7] = outpad_lefts[6]-model_decoder_excit.pad_left
+            outpad_rights[7] = outpad_rights[6]-model_decoder_excit.pad_right
+            outpad_lefts[8] = outpad_lefts[7]-model_decoder_melsp.pad_left
+            outpad_rights[8] = outpad_rights[7]-model_decoder_melsp.pad_right
             logging.info(outpad_lefts)
             logging.info(outpad_rights)
             for feat_file in feat_list:
@@ -303,6 +312,15 @@ def main():
                         src_code = (torch.ones((1, lat_src_e.shape[1]))*spk_idx).cuda().long()
                     lat_cat = torch.cat((lat_src_e, lat_src), 2)
                     trj_src_code, _ = model_spk(src_code, z=lat_cat)
+
+                    if model_spk.pad_right > 0:
+                        lat_cat = lat_cat[:,model_spk.pad_left:-model_spk.pad_right]
+                        lat_src_e = lat_src_e[:,model_spk.pad_left:-model_spk.pad_right]
+                        src_code = src_code[:,model_spk.pad_left:-model_spk.pad_right]
+                    else:
+                        lat_cat = lat_cat[:,model_spk.pad_left:]
+                        lat_src_e = lat_src_e[:,model_spk.pad_left:]
+                        src_code = src_code[:,model_spk.pad_left:]
                     cvlf0_src, _ = model_decoder_excit(lat_src_e, y=src_code, aux=trj_src_code)
 
                     if model_decoder_excit.pad_right > 0:
@@ -334,15 +352,15 @@ def main():
                     spk_logits, _, lat_rec, _ = model_encoder_melsp(cvmelsp_src, sampling=False)
                     spk_logits_e, _, lat_rec_e, _ = model_encoder_excit(cvmelsp_src, sampling=False)
                     logging.info('rec spkpost')
-                    if outpad_rights[4] > 0:
-                        logging.info(torch.mean(F.softmax(spk_logits[:,outpad_lefts[4]:-outpad_rights[4]], dim=-1), 1))
+                    if outpad_rights[5] > 0:
+                        logging.info(torch.mean(F.softmax(spk_logits[:,outpad_lefts[5]:-outpad_rights[5]], dim=-1), 1))
                     else:
-                        logging.info(torch.mean(F.softmax(spk_logits[:,outpad_lefts[4]:], dim=-1), 1))
+                        logging.info(torch.mean(F.softmax(spk_logits[:,outpad_lefts[5]:], dim=-1), 1))
                     logging.info('rec spkpost_e')
-                    if outpad_rights[4] > 0:
-                        logging.info(torch.mean(F.softmax(spk_logits_e[:,outpad_lefts[4]:-outpad_rights[4]], dim=-1), 1))
+                    if outpad_rights[5] > 0:
+                        logging.info(torch.mean(F.softmax(spk_logits_e[:,outpad_lefts[5]:-outpad_rights[5]], dim=-1), 1))
                     else:
-                        logging.info(torch.mean(F.softmax(spk_logits_e[:,outpad_lefts[4]:], dim=-1), 1))
+                        logging.info(torch.mean(F.softmax(spk_logits_e[:,outpad_lefts[5]:], dim=-1), 1))
 
                     if config.spkidtr_dim > 0:
                         src_code = model_spkidtr((torch.ones((1, lat_rec_e.shape[1]))*spk_idx).cuda().long())
@@ -350,6 +368,15 @@ def main():
                         src_code = (torch.ones((1, lat_rec_e.shape[1]))*spk_idx).cuda().long()
                     lat_cat = torch.cat((lat_rec_e, lat_rec), 2)
                     trj_src_code, _ = model_spk(src_code, z=lat_cat)
+
+                    if model_spk.pad_right > 0:
+                        lat_cat = lat_cat[:,model_spk.pad_left:-model_spk.pad_right]
+                        lat_rec_e = lat_rec_e[:,model_spk.pad_left:-model_spk.pad_right]
+                        src_code = src_code[:,model_spk.pad_left:-model_spk.pad_right]
+                    else:
+                        lat_cat = lat_cat[:,model_spk.pad_left:]
+                        lat_rec_e = lat_rec_e[:,model_spk.pad_left:]
+                        src_code = src_code[:,model_spk.pad_left:]
                     cvlf0_cyc, _ = model_decoder_excit(lat_rec_e, y=src_code, aux=trj_src_code)
 
                     if model_decoder_excit.pad_right > 0:
@@ -373,18 +400,18 @@ def main():
                     pdf, cvmelsp_cyc_post, _ = model_post(cvmelsp_cyc, y=src_code, aux=trj_src_code, e=e_post)
                     #cvmelsp_cyc_post = pdf[:,:,:config.mel_dim]
 
-                    if outpad_rights[1] > 0:
-                        cvlf0_src = cvlf0_src[:,outpad_lefts[1]:-outpad_rights[1]]
+                    if outpad_rights[2] > 0:
+                        cvlf0_src = cvlf0_src[:,outpad_lefts[2]:-outpad_rights[2]]
                     else:
-                        cvlf0_src = cvlf0_src[:,outpad_lefts[1]:]
-                    if outpad_rights[3] > 0:
-                        cvmelsp_src_post = cvmelsp_src_post[:,outpad_lefts[3]:-outpad_rights[3]]
+                        cvlf0_src = cvlf0_src[:,outpad_lefts[2]:]
+                    if outpad_rights[4] > 0:
+                        cvmelsp_src_post = cvmelsp_src_post[:,outpad_lefts[4]:-outpad_rights[4]]
                     else:
-                        cvmelsp_src_post = cvmelsp_src_post[:,outpad_lefts[3]:]
-                    if outpad_rights[5] > 0:
-                        cvlf0_cyc = cvlf0_cyc[:,outpad_lefts[5]:-outpad_rights[5]]
+                        cvmelsp_src_post = cvmelsp_src_post[:,outpad_lefts[4]:]
+                    if outpad_rights[7] > 0:
+                        cvlf0_cyc = cvlf0_cyc[:,outpad_lefts[7]:-outpad_rights[7]]
                     else:
-                        cvlf0_cyc = cvlf0_cyc[:,outpad_lefts[5]:]
+                        cvlf0_cyc = cvlf0_cyc[:,outpad_lefts[7]:]
 
                     feat_rec = cvmelsp_src_post[0].cpu().data.numpy()
                     feat_cyc = cvmelsp_cyc_post[0].cpu().data.numpy()

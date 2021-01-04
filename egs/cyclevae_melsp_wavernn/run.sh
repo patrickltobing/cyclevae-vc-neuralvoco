@@ -1,7 +1,8 @@
 #!/bin/bash
-##################################################################################################
-#   SCRIPT FOR NON-PARALLEL VOICE CONVERSION based on CycleVAE/CycleVQVAE and WaveRNN/WaveNet    #
-##################################################################################################
+###################################################################################################
+#   SCRIPT FOR NON-PARALLEL VOICE CONVERSION based on Cyclic Variational Autoencoder (CycleVAE)   #
+#                              and Multiband WaveRNN with Data-driven Linear Prediction (MWDLP)   #
+###################################################################################################
 
 # Copyright 2020 Patrick Lumban Tobing (Nagoya University)
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
@@ -15,7 +16,7 @@
 #######################################
 # {{{
 # 0: data preparation step
-# init: feature extraction with initial speaker config
+# init: feature extraction with initial speaker config for f0 and power histogram calculation to obtain correct speaker config
 # 1: feature extraction step
 # 2: statistics calculation step
 # 3: apply noise shaping [pre-emphasis] and multiband processing [neural vocoder waveform train. data]
@@ -79,8 +80,8 @@ n_jobs=60
 #spks_open=(morikawa mizokuchi okada takada otake taga)
 #spks_open=(morikawa mizokuchi okada takada otake taga p276)
 #spks_open=(morikawa mizokuchi okada takada otake)
+#spks=(SEF1 SEF2 SEM1 SEM2 TFM1 TGM1 TMM1 TEF1 TEM1 TEF2 TEM2 TFF1 TGF1 TMF1)
 spks=(SEF1 TEF1)
-spks=(SEF1 SEF2 SEM1 SEM2 TFM1 TGM1 TMM1 TEF1 TEM1 TEF2 TEM2 TFF1 TGF1 TMF1)
 data_name=vcc2020
 #spks=(VCC2SF1 VCC2SF2 VCC2SF3 VCC2SF4 VCC2SM1 VCC2SM2 VCC2SM3 VCC2SM4 VCC2TF1 VCC2TF2 VCC2TM1 VCC2TM2)
 #data_name=vcc18
@@ -179,7 +180,7 @@ GPU_device=0
 GPU_device=2
 #GPU_device=3
 GPU_device=4
-#GPU_device=5
+GPU_device=5
 #GPU_device=6
 #GPU_device=7
 #GPU_device=8
@@ -271,23 +272,23 @@ right_size_wave=`awk '{if ($1 == "right_size_wave:") print $2}' conf/config.yml`
 #     DECODING/FINE-TUNING SETTING    #
 #######################################
 
-#idx_resume_cycvae=1 #for resume cyclevae
-idx_resume_cycvae=0 #set <= 0 for not resume
+idx_resume_cycvae=1 #for resume cyclevae
+#idx_resume_cycvae=0 #set <= 0 for not resume
 
-#idx_resume=1 #for resume post-net
-idx_resume=0 #set <= 0 for not resume
+idx_resume=1 #for resume post-net
+#idx_resume=0 #set <= 0 for not resume
 
 #idx_resume_wave=1 #for resume wavernn
 idx_resume_wave=0 #set <= 0 for not resume
 
-min_idx_cycvae= #for raw cyclevae
-#min_idx_cycvae=2
+#min_idx_cycvae= #for raw cyclevae
+min_idx_cycvae=2
 
 if [ $mdl_name_post == none ]; then
     min_idx= #for cyclevae without post-net
 else
-    min_idx= #for cyclevae with post-net
-    #min_idx=2
+    #min_idx= #for cyclevae with post-net
+    min_idx=2
 fi
 
 min_idx_wave= #for wavernn model
@@ -315,17 +316,19 @@ GPU_device_str="0"
 #GPU_device_str="0,1,2"
 #GPU_device_str="7,8,9"
 #GPU_device_str="2,8,9"
-GPU_device_str="5,6,7"
+GPU_device_str="5,6"
+#GPU_device_str="5,6,7"
 #GPU_device_str="0,2,8,9"
 #GPU_device_str="9,2,8,0"
 #GPU_device_str="8,9"
 #GPU_device_str="0,4,7,8,9"
+GPU_device_str="5,6,7,8,9"
 #GPU_device_str="2,0,3,4,1"
-GPU_device_str="3,2,0,4,1"
+#GPU_device_str="3,2,0,4,1"
 
 n_gpus=1
-#n_gpus=2
-n_gpus=3
+n_gpus=2
+#n_gpus=3
 #n_gpus=4
 n_gpus=5
 ###
@@ -339,7 +342,7 @@ spks_trg_rec=(SEF1 SEF2 SEM1 SEM2 TFM1 TGM1 TMM1 TEF1 TEM1 TEF2 TEM2 TFF1 TGF1 T
 #spks_trg_rec=(TEM2 TMF1 TFF1 TEF1)
 #spks_trg_rec=(TMM1 TGM1 TFM1 TEM1)
 #spks_trg_rec=(TEF1)
-#spks_trg_rec=(SEF1 TEF1)
+spks_trg_rec=(SEF1 TEF1)
 
 #spks_trg_rec=(p237 p245 p251 p252 p259 p274)
 #spks_trg_rec=(p266 p276 p304 p311 p326 p345)
@@ -1266,9 +1269,9 @@ if [ `echo ${stage} | grep 5` ];then
     for spk_trg in ${spks_trg_rec[@]};do
         if true; then
         #if false; then
-                echo "########################################################"
-                echo "#          DECODING RECONST. FEAT and GV stat          #"
-                echo "########################################################"
+                echo "############################################"
+                echo "#          DECODING RECONST. FEAT          #"
+                echo "############################################"
                 echo $spk_trg $min_idx
                 outdir=${expdir}/rec-cycrec_${spk_trg}_${min_idx}
                 mkdir -p $outdir
@@ -1881,6 +1884,18 @@ if [ `echo ${stage} | grep 8` ];then
                     --batch_size ${decode_batch_size} \
                     --n_gpus ${n_gpus} \
                     --GPU_device_str ${GPU_device_str}
+        elif [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf" ]; then
+            #${cuda_cmd} ${expdir_wave}/log/decode_tst_${min_idx_wave}_${spk_src}.log \
+            ${cuda_cmd} ${expdir_wave}/log/decode_dev_${min_idx_wave}_${spk_src}.log \
+                decode_wavernn_dualgru_compact_lpc_mband_10bit_cf.py \
+                    --feats ${feats_scp} \
+                    --outdir ${outdir} \
+                    --checkpoint ${checkpoint} \
+                    --config ${config} \
+                    --fs ${fs} \
+                    --batch_size ${decode_batch_size} \
+                    --n_gpus ${n_gpus} \
+                    --GPU_device_str ${GPU_device_str}
         elif [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_16bit" ]; then
             #${cuda_cmd} ${expdir_wave}/log/decode_tst_${min_idx_wave}_${spk_src}.log \
             ${cuda_cmd} ${expdir_wave}/log/decode_dev_${min_idx_wave}_${spk_src}.log \
@@ -2017,4 +2032,3 @@ fi
 done
 done
 fi
-

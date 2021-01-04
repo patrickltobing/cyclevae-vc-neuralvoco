@@ -29,10 +29,8 @@ from utils import write_hdf5
 
 import soundfile as sf
 
-#from vcneuvoco import GRU_VAE_ENCODER, GRU_SPEC_DECODER, GRU_SPK
-#from vcneuvoco import GRU_EXCIT_DECODER, SPKID_TRANSFORM_LAYER
-from vcneuvoco_32 import GRU_VAE_ENCODER, GRU_SPEC_DECODER, GRU_SPK
-from vcneuvoco_32 import GRU_EXCIT_DECODER, SPKID_TRANSFORM_LAYER
+from vcneuvoco import GRU_VAE_ENCODER, GRU_SPEC_DECODER, GRU_SPK
+from vcneuvoco import GRU_EXCIT_DECODER, SPKID_TRANSFORM_LAYER
 from feature_extract import convert_f0
 from dtw_c import dtw_c as dtw
 

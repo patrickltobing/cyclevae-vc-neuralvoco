@@ -198,11 +198,11 @@ mdl_name: cycmelspxlf0capspkvae-laplace
 mdl_name_post: cycmelspxlf0capspkvae-post-smpl-laplace
 
 ##[8 kHz, 16 kHz, 22.05 kHz, 24 kHz]
-mdl_name_wave: wavernn_dualgru_compact_lpc_mband_9bit
+#mdl_name_wave: wavernn_dualgru_compact_lpc_mband_9bit
 ##[8 kHz, 16 kHz, 22.05 kHz, 24 kHz, 44.1 kHz, 48 kHz]
 #mdl_name_wave: wavernn_dualgru_compact_lpc_mband_10bit_cf
 ##[8 kHz, 16 kHz, 22.05 kHz, 24 kHz]
-#mdl_name_wave: wavernn_dualgru_compact_lpc_mband_16bit
+mdl_name_wave: wavernn_dualgru_compact_lpc_mband_16bit
 
 ## sparsification scheduling settings for wavernn
 t_start: 20000
