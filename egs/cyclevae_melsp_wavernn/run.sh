@@ -272,23 +272,23 @@ right_size_wave=`awk '{if ($1 == "right_size_wave:") print $2}' conf/config.yml`
 #     DECODING/FINE-TUNING SETTING    #
 #######################################
 
-idx_resume_cycvae=1 #for resume cyclevae
-#idx_resume_cycvae=0 #set <= 0 for not resume
+#idx_resume_cycvae=1 #for resume cyclevae
+idx_resume_cycvae=0 #set <= 0 for not resume
 
-idx_resume=1 #for resume post-net
-#idx_resume=0 #set <= 0 for not resume
+#idx_resume=1 #for resume post-net
+idx_resume=0 #set <= 0 for not resume
 
 #idx_resume_wave=1 #for resume wavernn
 idx_resume_wave=0 #set <= 0 for not resume
 
-#min_idx_cycvae= #for raw cyclevae
-min_idx_cycvae=2
+min_idx_cycvae= #for raw cyclevae
+#min_idx_cycvae=2
 
 if [ $mdl_name_post == none ]; then
     min_idx= #for cyclevae without post-net
 else
-    #min_idx= #for cyclevae with post-net
-    min_idx=2
+    min_idx= #for cyclevae with post-net
+    #min_idx=2
 fi
 
 min_idx_wave= #for wavernn model
