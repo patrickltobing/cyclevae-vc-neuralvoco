@@ -549,6 +549,7 @@ def main():
         causal_conv=args.causal_conv_dec,
         pad_first=True,
         right_size=args.right_size_dec,
+        red_dim=args.mel_dim,
         do_prob=args.do_prob)
     logging.info(model_decoder_melsp)
     model_encoder_excit = GRU_VAE_ENCODER(
@@ -576,6 +577,7 @@ def main():
         causal_conv=args.causal_conv_lf0,
         pad_first=True,
         right_size=args.right_size_lf0,
+        red_dim=args.mel_dim,
         do_prob=args.do_prob)
     logging.info(model_decoder_excit)
     if (args.spkidtr_dim > 0):
@@ -601,6 +603,7 @@ def main():
         causal_conv=args.causal_conv_spk,
         pad_first=True,
         right_size=args.right_size_spk,
+        red_dim=args.mel_dim,
         do_prob=args.do_prob)
     logging.info(model_spk)
     criterion_ms = ModulationSpectrumLoss(args.fftsize)
@@ -730,16 +733,17 @@ def main():
     module_list = list(model_encoder_melsp.conv.parameters())
     module_list += list(model_encoder_melsp.gru.parameters()) + list(model_encoder_melsp.out.parameters())
 
-    module_list += list(model_decoder_melsp.conv.parameters())
+    module_list += list(model_decoder_melsp.in_red.parameters()) + list(model_decoder_melsp.conv.parameters())
     module_list += list(model_decoder_melsp.gru.parameters()) + list(model_decoder_melsp.out.parameters())
 
     module_list += list(model_encoder_excit.conv.parameters())
     module_list += list(model_encoder_excit.gru.parameters()) + list(model_encoder_excit.out.parameters())
 
-    module_list += list(model_decoder_excit.conv.parameters())
+    module_list += list(model_decoder_excit.in_red.parameters()) + list(model_decoder_excit.conv.parameters())
     module_list += list(model_decoder_excit.gru.parameters()) + list(model_decoder_excit.out.parameters())
 
-    module_list += list(model_spk.conv.parameters()) + list(model_spk.gru.parameters()) + list(model_spk.out.parameters())
+    module_list += list(model_spk.in_red.parameters()) + list(model_spk.conv.parameters())
+    module_list += list(model_spk.gru.parameters()) + list(model_spk.out.parameters())
 
     module_list += list(model_classifier.conv_lat.parameters()) + list(model_classifier.conv_feat.parameters())
     module_list += list(model_classifier.gru.parameters()) + list(model_classifier.out.parameters())
@@ -793,7 +797,7 @@ def main():
     dataset = FeatureDatasetCycMceplf0WavVAE(feat_list, pad_feat_transform, spk_list, stats_list,
                     args.n_half_cyc, args.string_path, excit_dim=args.full_excit_dim)
     dataloader = DataLoader(dataset, batch_size=args.batch_size_utt, shuffle=True, num_workers=args.n_workers)
-    #generator = train_generator(dataloader, device, args.batch_size, n_cv, limit_count=1)
+    #generator = train_generator(dataloader, device, args.batch_size, n_cv, limit_count=20)
     generator = train_generator(dataloader, device, args.batch_size, n_cv, limit_count=None)
 
     # define generator evaluation
@@ -2421,7 +2425,7 @@ def main():
                         eval_loss_uv[i], eval_loss_uv_std[i], eval_loss_f0[i], eval_loss_f0_std[i],
                         eval_loss_uvcap[i], eval_loss_uvcap_std[i], eval_loss_cap[i], eval_loss_cap_std[i])
             logging.info("%s (%.3f min., %.3f sec / batch)" % (text_log, total / 60.0, total / iter_count))
-            if (round(eval_loss_gv_src_trg-0.02,2) <= round(min_eval_loss_gv_src_trg,2)) and ((pair_exist and \
+            if (round(eval_loss_gv_src_trg-0.05,2) <= round(min_eval_loss_gv_src_trg,2)) and ((pair_exist and \
                     (round(eval_loss_melsp_dB_src_trg-0.01,2) <= round(min_eval_loss_melsp_dB_src_trg,2) \
                     or round(eval_loss_melsp_dB_src_trg+eval_loss_melsp_dB_src_trg_std-0.01,2) <= round(min_eval_loss_melsp_dB_src_trg+min_eval_loss_melsp_dB_src_trg_std,2) \
                     or (round(eval_loss_melsp_dB_src_trg+eval_loss_melsp_dB_src_trg_std-0.04,2) <= round(min_eval_loss_melsp_dB_src_trg+min_eval_loss_melsp_dB_src_trg_std,2)

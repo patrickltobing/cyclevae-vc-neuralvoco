@@ -2226,7 +2226,7 @@ def main():
                         eval_loss_melsp_post[i], eval_loss_melsp_post_std[i], eval_loss_melsp_dB_post[i], eval_loss_melsp_dB_post_std[i],
                         eval_loss_magsp_post[i], eval_loss_magsp_post_std[i], eval_loss_magsp_dB_post[i], eval_loss_magsp_dB_post_std[i])
             logging.info("%s (%.3f min., %.3f sec / batch)" % (text_log, total / 60.0, total / iter_count))
-            if (round(eval_loss_gv_src_trg_post-0.02,2) <= round(min_eval_loss_gv_src_trg_post,2)) and ((pair_exist and \
+            if (round(eval_loss_gv_src_trg_post-0.05,2) <= round(min_eval_loss_gv_src_trg_post,2)) and ((pair_exist and \
                     (round(eval_loss_melsp_dB_src_trg_post-0.01,2) <= round(min_eval_loss_melsp_dB_src_trg_post,2) \
                     or round(eval_loss_melsp_dB_src_trg_post+eval_loss_melsp_dB_src_trg_post_std-0.01,2) <= round(min_eval_loss_melsp_dB_src_trg_post+min_eval_loss_melsp_dB_src_trg_post_std,2) \
                     or (round(eval_loss_melsp_dB_src_trg_post+eval_loss_melsp_dB_src_trg_post_std-0.04,2) <= round(min_eval_loss_melsp_dB_src_trg_post+min_eval_loss_melsp_dB_src_trg_post_std,2)
