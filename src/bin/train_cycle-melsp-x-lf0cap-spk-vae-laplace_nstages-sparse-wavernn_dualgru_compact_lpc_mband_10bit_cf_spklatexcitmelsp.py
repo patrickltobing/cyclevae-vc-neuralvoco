@@ -559,9 +559,9 @@ def main():
     assert(n_spk == len(feat_eval_src_list))
     assert(n_spk == len(wav_eval_src_list))
 
-    mean_excit = torch.FloatTensor(read_hdf5(args.stats, "/mean_feat_mceplf0cap")[:args.full_excit_dim])
-    scale_excit = torch.FloatTensor(read_hdf5(args.stats, "/scale_feat_mceplf0cap")[:args.full_excit_dim])
-    args.cap_dim = mean_excit[3:args.full_excit_dim].shape[0]
+    mean_stats = torch.FloatTensor(np.r_[read_hdf5(args.stats, "/mean_feat_mceplf0cap")[:args.full_excit_dim], read_hdf5(args.stats, "/mean_melsp")])
+    scale_stats = torch.FloatTensor(np.r_[read_hdf5(args.stats, "/scale_feat_mceplf0cap")[:args.full_excit_dim], read_hdf5(args.stats, "/scale_melsp")])
+    args.cap_dim = mean_stats[3:args.full_excit_dim].shape[0]
 
     # save args as conf
     args.string_path = "/log_1pmelmagsp"
@@ -650,7 +650,7 @@ def main():
         do_prob=args.do_prob)
     logging.info(model_spk)
     model_waveform = GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(
-        feat_dim=n_spk*2+args.lat_dim+args.lat_dim_e+args.full_excit_dim,
+        feat_dim=n_spk*2+args.lat_dim+args.lat_dim_e+args.full_excit_dim+args.mel_dim,
         upsampling_factor=args.upsampling_factor,
         hidden_units=args.hidden_units_wave,
         hidden_units_2=args.hidden_units_wave_2,
@@ -663,7 +663,7 @@ def main():
         n_bands=args.n_bands,
         pad_first=True,
         n_spk=n_spk,
-        scale_in_aux_dim=args.full_excit_dim,
+        scale_in_aux_dim=args.full_excit_dim+args.mel_dim,
         red_dim=args.mel_dim,
         do_prob=args.do_prob)
     logging.info(model_waveform)
@@ -684,8 +684,8 @@ def main():
         criterion_ce.cuda()
         criterion_l1.cuda()
         criterion_l2.cuda()
-        mean_excit = mean_excit.cuda()
-        scale_excit = scale_excit.cuda()
+        mean_stats = mean_stats.cuda()
+        scale_stats = scale_stats.cuda()
     else:
         logging.error("gpu is not available. please check the setting.")
         sys.exit(1)
@@ -699,8 +699,8 @@ def main():
         model_spkidtr.train()
     model_waveform.train()
 
-    model_waveform.scale_in.weight = torch.nn.Parameter(torch.unsqueeze(torch.diag(1.0/scale_excit.data),2))
-    model_waveform.scale_in.bias = torch.nn.Parameter(-(mean_excit.data/scale_excit.data))
+    model_waveform.scale_in.weight = torch.nn.Parameter(torch.unsqueeze(torch.diag(1.0/scale_stats.data),2))
+    model_waveform.scale_in.bias = torch.nn.Parameter(-(mean_stats.data/scale_stats.data))
 
     parameters = filter(lambda p: p.requires_grad, model_encoder_melsp.parameters())
     parameters = sum([np.prod(p.size()) for p in parameters]) / 1000000
@@ -924,18 +924,18 @@ def main():
     lf0_pad_right = model_decoder_excit.pad_right
     logging.info(f'lf0_pad_left: {lf0_pad_left}')
     logging.info(f'lf0_pad_right: {lf0_pad_right}')
-    wav_pad_left = model_waveform.pad_left
-    wav_pad_right = model_waveform.pad_right
-    logging.info(f'wav_pad_left: {wav_pad_left}')
-    logging.info(f'wav_pad_right: {wav_pad_right}')
     dec_pad_left = model_decoder_melsp.pad_left
     dec_pad_right = model_decoder_melsp.pad_right
     logging.info(f'dec_pad_left: {dec_pad_left}')
     logging.info(f'dec_pad_right: {dec_pad_right}')
-    dec_enc_pad_left = dec_pad_left + enc_pad_left
-    dec_enc_pad_right = dec_pad_right + enc_pad_right
-    first_pad_left = (enc_pad_left + spk_pad_left + lf0_pad_left + wav_pad_left + dec_pad_left)*args.n_half_cyc
-    first_pad_right = (enc_pad_right + spk_pad_right + lf0_pad_right + wav_pad_right + dec_pad_right)*args.n_half_cyc
+    wav_pad_left = model_waveform.pad_left
+    wav_pad_right = model_waveform.pad_right
+    logging.info(f'wav_pad_left: {wav_pad_left}')
+    logging.info(f'wav_pad_right: {wav_pad_right}')
+    dec_enc_pad_left = wav_pad_left + enc_pad_left
+    dec_enc_pad_right = wav_pad_right + enc_pad_right
+    first_pad_left = (enc_pad_left + spk_pad_left + lf0_pad_left + dec_pad_left + wav_pad_left)*args.n_half_cyc
+    first_pad_right = (enc_pad_right + spk_pad_right + lf0_pad_right + dec_pad_right + wav_pad_right)*args.n_half_cyc
     logging.info(f'first_pad_left: {first_pad_left}')
     logging.info(f'first_pad_right: {first_pad_right}')
     outpad_lefts = [None]*args.n_half_cyc*5
@@ -944,11 +944,11 @@ def main():
     outpad_rights[0] = first_pad_right-enc_pad_right
     for i in range(1,args.n_half_cyc*5):
         if i % 5 == 4:
-            outpad_lefts[i] = outpad_lefts[i-1]-dec_pad_left
-            outpad_rights[i] = outpad_rights[i-1]-dec_pad_right
-        elif i % 5 == 3:
             outpad_lefts[i] = outpad_lefts[i-1]-wav_pad_left
             outpad_rights[i] = outpad_rights[i-1]-wav_pad_right
+        elif i % 5 == 3:
+            outpad_lefts[i] = outpad_lefts[i-1]-dec_pad_left
+            outpad_rights[i] = outpad_rights[i-1]-dec_pad_right
         elif i % 5 == 2:
             outpad_lefts[i] = outpad_lefts[i-1]-lf0_pad_left
             outpad_rights[i] = outpad_rights[i-1]-lf0_pad_right
@@ -1045,8 +1045,8 @@ def main():
     n_half_cyc_eval = min(2,args.n_half_cyc)
     n_rec_eval = n_half_cyc_eval + n_half_cyc_eval%2
     n_cv_eval = int(n_half_cyc_eval/2+n_half_cyc_eval%2)
-    first_pad_left_eval = (enc_pad_left + spk_pad_left + lf0_pad_left + wav_pad_left + dec_pad_left)*n_half_cyc_eval
-    first_pad_right_eval = (enc_pad_right + spk_pad_right + lf0_pad_right + wav_pad_right + dec_pad_right)*n_half_cyc_eval
+    first_pad_left_eval = (enc_pad_left + spk_pad_left + lf0_pad_left + dec_pad_left + wav_pad_left)*n_half_cyc_eval
+    first_pad_right_eval = (enc_pad_right + spk_pad_right + lf0_pad_right + dec_pad_right + wav_pad_right)*n_half_cyc_eval
     logging.info(f'first_pad_left_eval: {first_pad_left_eval}')
     logging.info(f'first_pad_right_eval: {first_pad_right_eval}')
     first_pad_left_eval_utt_dec = spk_pad_left + lf0_pad_left
@@ -1364,20 +1364,22 @@ def main():
                                                                     del_index_utt, axis=1)).to(device)
                                     h_lf0[j] = torch.FloatTensor(np.delete(h_lf0[j].cpu().data.numpy(),
                                                                     del_index_utt, axis=1)).to(device)
+                                    h_melsp[j] = torch.FloatTensor(np.delete(h_melsp[j].cpu().data.numpy(),
+                                                                    del_index_utt, axis=1)).to(device)
                                     h_x[j] = torch.FloatTensor(np.delete(h_x[j].cpu().data.numpy(),
                                                                     del_index_utt, axis=1)).to(device)
                                     h_x_2[j] = torch.FloatTensor(np.delete(h_x_2[j].cpu().data.numpy(),
                                                                     del_index_utt, axis=1)).to(device)
                                     h_f[j] = torch.FloatTensor(np.delete(h_f[j].cpu().data.numpy(),
                                                                     del_index_utt, axis=1)).to(device)
-                                    if n_half_cyc_eval > 2:
-                                        h_melsp[j] = torch.FloatTensor(np.delete(h_melsp[j].cpu().data.numpy(),
-                                                                        del_index_utt, axis=1)).to(device)
                             ## latent infer.
                             if i > 0:
                                 idx_in += 1
                                 i_cv_in += 1
-                                cyc_rec_feat = batch_melsp_rec[i-1]
+                                if wav_pad_right > 0:
+                                    cyc_rec_feat = batch_melsp_rec[i-1][:,wav_pad_left:-wav_pad_right]
+                                else:
+                                    cyc_rec_feat = batch_melsp_rec[i-1][:,wav_pad_left:]
                                 _, _, z[i], h_z[i] = model_encoder_melsp(cyc_rec_feat, outpad_right=outpad_rights[idx_in], h=h_z[i], sampling=False)
                                 _, _, z_e[i], h_z_e[i] = model_encoder_excit(cyc_rec_feat, outpad_right=outpad_rights[idx_in], h=h_z_e[i], sampling=False)
                             else:
@@ -1419,8 +1421,9 @@ def main():
                                         = model_decoder_excit(z_e[i], y=batch_sc_in[idx_in], aux=batch_spk, outpad_right=outpad_rights[idx_in], h=h_lf0[i])
                                 batch_lf0_cv[i_cv], h_lf0_cv[i_cv] \
                                         = model_decoder_excit(z_e[i], y=batch_sc_cv_in[i_cv_in], aux=batch_spk_cv, outpad_right=outpad_rights[idx_in], h=h_lf0_cv[i_cv])
-                            ## waveform reconstruction
+                            ## melsp reconstruction & conversion
                             idx_in += 1
+                            i_cv_in += 1
                             if lf0_pad_right > 0:
                                 z_cat = z_cat[:,lf0_pad_left:-lf0_pad_right]
                                 if args.spkidtr_dim > 0:
@@ -1435,63 +1438,59 @@ def main():
                                     spk_cv_code_in = spk_cv_code_in[:,lf0_pad_left:]
                                 batch_spk = batch_spk[:,lf0_pad_left:]
                                 batch_spk_cv = batch_spk_cv[:,lf0_pad_left:]
+                            if args.spkidtr_dim > 0:
+                                batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
+                                                    e=batch_lf0_rec[i][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], h=h_melsp[i])
+                                batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=spk_cv_code_in, aux=batch_spk_cv,
+                                                    e=batch_lf0_cv[i_cv][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], h=h_melsp_cv[i_cv])
+                            else:
+                                batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in], aux=batch_spk,
+                                                    e=batch_lf0_rec[i][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], h=h_melsp[i])
+                                batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=batch_sc_cv_in[i_cv_in], aux=batch_spk_cv,
+                                                    e=batch_lf0_cv[i_cv][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], h=h_melsp_cv[i_cv])
+                            ## waveform reconstruction
+                            idx_in += 1
+                            if dec_pad_right > 0:
+                                z_cat = z_cat[:,dec_pad_left:-dec_pad_right]
+                                aux_in = torch.cat((batch_lf0_rec[i][:,dec_pad_left:-dec_pad_right], batch_melsp_rec[i]), 2)
+                                if args.spkidtr_dim > 0:
+                                    spk_code_in = spk_code_in[:,dec_pad_left:-dec_pad_right]
+                                batch_spk = batch_spk[:,dec_pad_left:-dec_pad_right]
+                            else:
+                                z_cat = z_cat[:,dec_pad_left:]
+                                aux_in = torch.cat((batch_lf0_rec[i][:,dec_pad_left:], batch_melsp_rec[i]), 2)
+                                if args.spkidtr_dim > 0:
+                                    spk_code_in = spk_code_in[:,dec_pad_left:]
+                                batch_spk = batch_spk[:,dec_pad_left:]
                             if args.lpc > 0:
                                 if args.spkidtr_dim > 0:
                                     batch_x_c_output[i], batch_x_f_output[i], h_x[i], h_x_2[i], h_f[i] \
                                         = model_waveform(z_cat, batch_x_c_prev, batch_x_f_prev, batch_x_c,
-                                            spk_code=spk_code_in, spk_aux=batch_spk, aux=batch_lf0_rec[i], x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc,
+                                            spk_code=spk_code_in, spk_aux=batch_spk, aux=aux_in, x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc,
                                                 h=h_x[i], h_2=h_x_2[i], h_f=h_f[i], outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in])
                                 else:
                                     batch_x_c_output[i], batch_x_f_output[i], h_x[i], h_x_2[i], h_f[i] \
                                         = model_waveform(z_cat, batch_x_c_prev, batch_x_f_prev, batch_x_c,
-                                            spk_code=batch_sc_in[idx_in], spk_aux=batch_spk, aux=batch_lf0_rec[i], x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc,
+                                            spk_code=batch_sc_in[idx_in], spk_aux=batch_spk, aux=aux_in, x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc,
                                                 h=h_x[i], h_2=h_x_2[i], h_f=h_f[i], outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in])
                             else:
                                 if args.spkidtr_dim > 0:
                                     batch_x_c_output[i], batch_x_f_output[i], h_x[i], h_x_2[i], h_f[i] \
                                         = model_waveform(z_cat, batch_x_c_prev, batch_x_f_prev, batch_x_c,
-                                            spk_code=spk_code_in, spk_aux=batch_spk, aux=batch_lf0_rec[i],
+                                            spk_code=spk_code_in, spk_aux=batch_spk, aux=aux_in,
                                                 h=h_x[i], h_2=h_x_2[i], h_f=h_f[i], outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in])
                                 else:
                                     batch_x_c_output[i], batch_x_f_output[i], h_x[i], h_x_2[i], h_f[i] \
                                         = model_waveform(z_cat, batch_x_c_prev, batch_x_f_prev, batch_x_c,
-                                            spk_code=batch_sc_in[idx_in], spk_aux=batch_spk, aux=batch_lf0_rec[i],
+                                            spk_code=batch_sc_in[idx_in], spk_aux=batch_spk, aux=aux_in,
                                                 h=h_x[i], h_2=h_x_2[i], h_f=h_f[i], outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in])
-                            ## melsp reconstruction & conversion
-                            idx_in += 1
-                            i_cv_in += 1
-                            if wav_pad_right > 0:
-                                z_cat = z_cat[:,wav_pad_left:-wav_pad_right]
-                                e_in = batch_lf0_rec[i][:,wav_pad_left:-wav_pad_right,:args.excit_dim]
-                                e_cv_in = batch_lf0_cv[i_cv][:,wav_pad_left:-wav_pad_right,:args.excit_dim]
-                                if args.spkidtr_dim > 0:
-                                    spk_code_in = spk_code_in[:,wav_pad_left:-wav_pad_right]
-                                    spk_cv_code_in = spk_cv_code_in[:,wav_pad_left:-wav_pad_right]
-                                batch_spk = batch_spk[:,wav_pad_left:-wav_pad_right]
-                                batch_spk_cv = batch_spk_cv[:,wav_pad_left:-wav_pad_right]
-                            else:
-                                z_cat = z_cat[:,wav_pad_left:]
-                                e_in = batch_lf0_rec[i][:,wav_pad_left:,:args.excit_dim]
-                                e_cv_in = batch_lf0_cv[i_cv][:,wav_pad_left:,:args.excit_dim]
-                                if args.spkidtr_dim > 0:
-                                    spk_code_in = spk_code_in[:,wav_pad_left:]
-                                    spk_cv_code_in = spk_cv_code_in[:,wav_pad_left:]
-                                batch_spk = batch_spk[:,wav_pad_left:]
-                                batch_spk_cv = batch_spk_cv[:,wav_pad_left:]
-                            if args.spkidtr_dim > 0:
-                                batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
-                                                    e=e_in, outpad_right=outpad_rights[idx_in], h=h_melsp[i])
-                                batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=spk_cv_code_in, aux=batch_spk_cv,
-                                                    e=e_cv_in, outpad_right=outpad_rights[idx_in], h=h_melsp_cv[i_cv])
-                            else:
-                                batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in], aux=batch_spk,
-                                                    e=e_in, outpad_right=outpad_rights[idx_in], h=h_melsp[i])
-                                batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=batch_sc_cv_in[i_cv_in], aux=batch_spk_cv,
-                                                    e=e_cv_in, outpad_right=outpad_rights[idx_in], h=h_melsp_cv[i_cv])
                             ## cyclic reconstruction, latent infer.
                             if n_half_cyc_eval > 1:
                                 idx_in += 1
-                                cv_feat = batch_melsp_cv[i_cv]
+                                if wav_pad_right > 0:
+                                    cv_feat = batch_melsp_cv[i_cv][:,wav_pad_left:-wav_pad_right]
+                                else:
+                                    cv_feat = batch_melsp_cv[i_cv][:,wav_pad_left:]
                                 _, _, z[j], h_z[j] = model_encoder_melsp(cv_feat, outpad_right=outpad_rights[idx_in], h=h_z[j], sampling=False)
                                 _, _, z_e[j], h_z_e[j] = model_encoder_excit(cv_feat, outpad_right=outpad_rights[idx_in], h=h_z_e[j], sampling=False)
                                 ## time-varying speaker conditionings
@@ -1521,7 +1520,7 @@ def main():
                                     batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(z_e[j], y=spk_code_in, aux=batch_spk, outpad_right=outpad_rights[idx_in], h=h_lf0[j])
                                 else:
                                     batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(z_e[j], y=batch_sc_in[idx_in], aux=batch_spk, outpad_right=outpad_rights[idx_in], h=h_lf0[j])
-                                ## waveform cyclic reconstruction
+                                ## melsp cyclic reconstruction
                                 idx_in += 1
                                 if lf0_pad_right > 0:
                                     z_cat = z_cat[:,lf0_pad_left:-lf0_pad_right]
@@ -1533,49 +1532,48 @@ def main():
                                     if args.spkidtr_dim > 0:
                                         spk_code_in = spk_code_in[:,lf0_pad_left:]
                                     batch_spk = batch_spk[:,lf0_pad_left:]
+                                if args.spkidtr_dim > 0:
+                                    batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
+                                                            e=batch_lf0_rec[j][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], h=h_melsp[j])
+                                else:
+                                    batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in], aux=batch_spk,
+                                                            e=batch_lf0_rec[j][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], h=h_melsp[j])
+                                ## waveform cyclic reconstruction
+                                idx_in += 1
+                                if dec_pad_right > 0:
+                                    z_cat = z_cat[:,dec_pad_left:-dec_pad_right]
+                                    aux_in = torch.cat((batch_lf0_rec[j][:,dec_pad_left:-dec_pad_right], batch_melsp_rec[j]), 2)
+                                    if args.spkidtr_dim > 0:
+                                        spk_code_in = spk_code_in[:,dec_pad_left:-dec_pad_right]
+                                    batch_spk = batch_spk[:,dec_pad_left:-dec_pad_right]
+                                else:
+                                    z_cat = z_cat[:,dec_pad_left:]
+                                    aux_in = torch.cat((batch_lf0_rec[j][:,dec_pad_left:], batch_melsp_rec[j]), 2)
+                                    if args.spkidtr_dim > 0:
+                                        spk_code_in = spk_code_in[:,dec_pad_left:]
+                                    batch_spk = batch_spk[:,dec_pad_left:]
                                 if args.lpc > 0:
                                     if args.spkidtr_dim > 0:
                                         batch_x_c_output[j], batch_x_f_output[j], h_x[j], h_x_2[j], h_f[j] \
                                             = model_waveform(z_cat, batch_x_c_prev, batch_x_f_prev, batch_x_c,
-                                                 spk_code=spk_code_in, spk_aux=batch_spk, aux=batch_lf0_rec[j], x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc,
+                                                 spk_code=spk_code_in, spk_aux=batch_spk, aux=aux_in, x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc,
                                                     h=h_x[j], h_2=h_x_2[j], h_f=h_f[j], outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in])
                                     else:
                                         batch_x_c_output[j], batch_x_f_output[j], h_x[j], h_x_2[j], h_f[j] \
                                             = model_waveform(z_cat, batch_x_c_prev, batch_x_f_prev, batch_x_c,
-                                                 spk_code=batch_sc_in[idx_in], spk_aux=batch_spk, aux=batch_lf0_rec[j], x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc,
+                                                 spk_code=batch_sc_in[idx_in], spk_aux=batch_spk, aux=aux_in, x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc,
                                                     h=h_x[j], h_2=h_x_2[j], h_f=h_f[j], outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in])
                                 else:
                                     if args.spkidtr_dim > 0:
                                         batch_x_c_output[j], batch_x_f_output[j], h_x[j], h_x_2[j], h_f[j] \
                                             = model_waveform(z_cat, batch_x_c_prev, batch_x_f_prev, batch_x_c,
-                                                 spk_code=spk_code_in, spk_aux=batch_spk, aux=batch_lf0_rec[j],
+                                                 spk_code=spk_code_in, spk_aux=batch_spk, aux=aux_in,
                                                     h=h_x[j], h_2=h_x_2[j], h_f=h_f[j], outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in])
                                     else:
                                         batch_x_c_output[j], batch_x_f_output[j], h_x[j], h_x_2[j], h_f[j] \
                                             = model_waveform(z_cat, batch_x_c_prev, batch_x_f_prev, batch_x_c,
-                                                 spk_code=batch_sc_in[idx_in], spk_aux=batch_spk, aux=batch_lf0_rec[j],
+                                                 spk_code=batch_sc_in[idx_in], spk_aux=batch_spk, aux=aux_in,
                                                     h=h_x[j], h_2=h_x_2[j], h_f=h_f[j], outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in])
-                                ## melsp cyclic reconstruction
-                                if n_half_cyc_eval > 2:
-                                    idx_in += 1
-                                    if wav_pad_right > 0:
-                                        z_cat = z_cat[:,wav_pad_left:-wav_pad_right]
-                                        e_in = batch_lf0_rec[j][:,wav_pad_left:-wav_pad_right,:args.excit_dim]
-                                        if args.spkidtr_dim > 0:
-                                            spk_code_in = spk_code_in[:,wav_pad_left:-wav_pad_right]
-                                        batch_spk = batch_spk[:,wav_pad_left:-wav_pad_right]
-                                    else:
-                                        z_cat = z_cat[:,wav_pad_left:]
-                                        e_in = batch_lf0_rec[j][:,wav_pad_left:,:args.excit_dim]
-                                        if args.spkidtr_dim > 0:
-                                            spk_code_in = spk_code_in[:,wav_pad_left:]
-                                        batch_spk = batch_spk[:,wav_pad_left:]
-                                    if args.spkidtr_dim > 0:
-                                        batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
-                                                                e=e_in, outpad_right=outpad_rights[idx_in], h=h_melsp[j])
-                                    else:
-                                        batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in], aux=batch_spk,
-                                                                e=e_in, outpad_right=outpad_rights[idx_in], h=h_melsp[j])
                     else:
                         pair_flag = False
                         for k in range(n_batch_utt):
@@ -1694,7 +1692,10 @@ def main():
                             if i > 0:
                                 idx_in += 1
                                 i_cv_in += 1
-                                cyc_rec_feat = batch_melsp_rec[i-1]
+                                if wav_pad_right > 0:
+                                    cyc_rec_feat = batch_melsp_rec[i-1][:,wav_pad_left:-wav_pad_right]
+                                else:
+                                    cyc_rec_feat = batch_melsp_rec[i-1][:,wav_pad_left:]
                                 _, _, z[i], h_z[i] = model_encoder_melsp(cyc_rec_feat, outpad_right=outpad_rights[idx_in], sampling=False)
                                 _, _, z_e[i], h_z_e[i] = model_encoder_excit(cyc_rec_feat, outpad_right=outpad_rights[idx_in], sampling=False)
                             else:
@@ -1736,8 +1737,9 @@ def main():
                                         = model_decoder_excit(z_e[i], y=batch_sc_in[idx_in], aux=batch_spk, outpad_right=outpad_rights[idx_in])
                                 batch_lf0_cv[i_cv], h_lf0_cv[i_cv] \
                                         = model_decoder_excit(z_e[i], y=batch_sc_cv_in[i_cv_in], aux=batch_spk_cv, outpad_right=outpad_rights[idx_in])
-                            ## waveform reconstruction
+                            ## melsp reconstruction & conversion
                             idx_in += 1
+                            i_cv_in += 1
                             if lf0_pad_right > 0:
                                 z_cat = z_cat[:,lf0_pad_left:-lf0_pad_right]
                                 if args.spkidtr_dim > 0:
@@ -1752,63 +1754,59 @@ def main():
                                     spk_cv_code_in = spk_cv_code_in[:,lf0_pad_left:]
                                 batch_spk = batch_spk[:,lf0_pad_left:]
                                 batch_spk_cv = batch_spk_cv[:,lf0_pad_left:]
+                            if args.spkidtr_dim > 0:
+                                batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
+                                                    e=batch_lf0_rec[i][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in])
+                                batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=spk_cv_code_in, aux=batch_spk_cv,
+                                                    e=batch_lf0_cv[i_cv][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in])
+                            else:
+                                batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in], aux=batch_spk,
+                                                    e=batch_lf0_rec[i][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in])
+                                batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=batch_sc_cv_in[i_cv_in], aux=batch_spk_cv,
+                                                    e=batch_lf0_cv[i_cv][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in])
+                            ## waveform reconstruction
+                            idx_in += 1
+                            if dec_pad_right > 0:
+                                z_cat = z_cat[:,dec_pad_left:-dec_pad_right]
+                                aux_in = torch.cat((batch_lf0_rec[i][:,dec_pad_left:-dec_pad_right], batch_melsp_rec[i]), 2)
+                                if args.spkidtr_dim > 0:
+                                    spk_code_in = spk_code_in[:,dec_pad_left:-dec_pad_right]
+                                batch_spk = batch_spk[:,dec_pad_left:-dec_pad_right]
+                            else:
+                                z_cat = z_cat[:,dec_pad_left:]
+                                aux_in = torch.cat((batch_lf0_rec[i][:,dec_pad_left:], batch_melsp_rec[i]), 2)
+                                if args.spkidtr_dim > 0:
+                                    spk_code_in = spk_code_in[:,dec_pad_left:]
+                                batch_spk = batch_spk[:,dec_pad_left:]
                             if args.lpc > 0:
                                 if args.spkidtr_dim > 0:
                                     batch_x_c_output[i], batch_x_f_output[i], h_x[i], h_x_2[i], h_f[i] \
                                         = model_waveform(z_cat, batch_x_c_prev, batch_x_f_prev, batch_x_c,
-                                            spk_code=spk_code_in, spk_aux=batch_spk, aux=batch_lf0_rec[i], x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc,
+                                            spk_code=spk_code_in, spk_aux=batch_spk, aux=aux_in, x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc,
                                                 outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in])
                                 else:
                                     batch_x_c_output[i], batch_x_f_output[i], h_x[i], h_x_2[i], h_f[i] \
                                         = model_waveform(z_cat, batch_x_c_prev, batch_x_f_prev, batch_x_c,
-                                            spk_code=batch_sc_in[idx_in], spk_aux=batch_spk, aux=batch_lf0_rec[i], x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc,
+                                            spk_code=batch_sc_in[idx_in], spk_aux=batch_spk, aux=aux_in, x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc,
                                                 outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in])
                             else:
                                 if args.spkidtr_dim > 0:
                                     batch_x_c_output[i], batch_x_f_output[i], h_x[i], h_x_2[i], h_f[i] \
                                         = model_waveform(z_cat, batch_x_c_prev, batch_x_f_prev, batch_x_c,
-                                            spk_code=spk_code_in, spk_aux=batch_spk, aux=batch_lf0_rec[i],
+                                            spk_code=spk_code_in, spk_aux=batch_spk, aux=aux_in,
                                                 outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in])
                                 else:
                                     batch_x_c_output[i], batch_x_f_output[i], h_x[i], h_x_2[i], h_f[i] \
                                         = model_waveform(z_cat, batch_x_c_prev, batch_x_f_prev, batch_x_c,
-                                            spk_code=batch_sc_in[idx_in], spk_aux=batch_spk, aux=batch_lf0_rec[i],
+                                            spk_code=batch_sc_in[idx_in], spk_aux=batch_spk, aux=aux_in,
                                                 outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in])
-                            ## melsp reconstruction & conversion
-                            idx_in += 1
-                            i_cv_in += 1
-                            if wav_pad_right > 0:
-                                z_cat = z_cat[:,wav_pad_left:-wav_pad_right]
-                                e_in = batch_lf0_rec[i][:,wav_pad_left:-wav_pad_right,:args.excit_dim]
-                                e_cv_in = batch_lf0_cv[i_cv][:,wav_pad_left:-wav_pad_right,:args.excit_dim]
-                                if args.spkidtr_dim > 0:
-                                    spk_code_in = spk_code_in[:,wav_pad_left:-wav_pad_right]
-                                    spk_cv_code_in = spk_cv_code_in[:,wav_pad_left:-wav_pad_right]
-                                batch_spk = batch_spk[:,wav_pad_left:-wav_pad_right]
-                                batch_spk_cv = batch_spk_cv[:,wav_pad_left:-wav_pad_right]
-                            else:
-                                z_cat = z_cat[:,wav_pad_left:]
-                                e_in = batch_lf0_rec[i][:,wav_pad_left:,:args.excit_dim]
-                                e_cv_in = batch_lf0_cv[i_cv][:,wav_pad_left:,:args.excit_dim]
-                                if args.spkidtr_dim > 0:
-                                    spk_code_in = spk_code_in[:,wav_pad_left:]
-                                    spk_cv_code_in = spk_cv_code_in[:,wav_pad_left:]
-                                batch_spk = batch_spk[:,wav_pad_left:]
-                                batch_spk_cv = batch_spk_cv[:,wav_pad_left:]
-                            if args.spkidtr_dim > 0:
-                                batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
-                                                    e=e_in, outpad_right=outpad_rights[idx_in])
-                                batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=spk_cv_code_in, aux=batch_spk_cv,
-                                                    e=e_cv_in, outpad_right=outpad_rights[idx_in])
-                            else:
-                                batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in], aux=batch_spk,
-                                                    e=e_in, outpad_right=outpad_rights[idx_in])
-                                batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=batch_sc_cv_in[i_cv_in], aux=batch_spk_cv,
-                                                    e=e_cv_in, outpad_right=outpad_rights[idx_in])
                             ## cyclic reconstruction, latent infer.
                             if n_half_cyc_eval > 1:
                                 idx_in += 1
-                                cv_feat = batch_melsp_cv[i_cv]
+                                if wav_pad_right > 0:
+                                    cv_feat = batch_melsp_cv[i_cv][:,wav_pad_left:-wav_pad_right]
+                                else:
+                                    cv_feat = batch_melsp_cv[i_cv][:,wav_pad_left:]
                                 _, _, z[j], h_z[j] = model_encoder_melsp(cv_feat, outpad_right=outpad_rights[idx_in], sampling=False)
                                 _, _, z_e[j], h_z_e[j] = model_encoder_excit(cv_feat, outpad_right=outpad_rights[idx_in], sampling=False)
                                 ## time-varying speaker conditionings
@@ -1838,7 +1836,7 @@ def main():
                                     batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(z_e[j], y=spk_code_in, aux=batch_spk, outpad_right=outpad_rights[idx_in])
                                 else:
                                     batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(z_e[j], y=batch_sc_in[idx_in], aux=batch_spk, outpad_right=outpad_rights[idx_in])
-                                ## waveform cyclic reconstruction
+                                ## melsp cyclic reconstruction
                                 idx_in += 1
                                 if lf0_pad_right > 0:
                                     z_cat = z_cat[:,lf0_pad_left:-lf0_pad_right]
@@ -1850,49 +1848,48 @@ def main():
                                     if args.spkidtr_dim > 0:
                                         spk_code_in = spk_code_in[:,lf0_pad_left:]
                                     batch_spk = batch_spk[:,lf0_pad_left:]
+                                if args.spkidtr_dim > 0:
+                                    batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
+                                                            e=batch_lf0_rec[j][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in])
+                                else:
+                                    batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in], aux=batch_spk,
+                                                            e=batch_lf0_rec[j][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in])
+                                ## waveform cyclic reconstruction
+                                idx_in += 1
+                                if dec_pad_right > 0:
+                                    z_cat = z_cat[:,dec_pad_left:-dec_pad_right]
+                                    aux_in = torch.cat((batch_lf0_rec[j][:,dec_pad_left:-dec_pad_right], batch_melsp_rec[j]), 2)
+                                    if args.spkidtr_dim > 0:
+                                        spk_code_in = spk_code_in[:,dec_pad_left:-dec_pad_right]
+                                    batch_spk = batch_spk[:,dec_pad_left:-dec_pad_right]
+                                else:
+                                    z_cat = z_cat[:,dec_pad_left:]
+                                    aux_in = torch.cat((batch_lf0_rec[j][:,dec_pad_left:], batch_melsp_rec[j]), 2)
+                                    if args.spkidtr_dim > 0:
+                                        spk_code_in = spk_code_in[:,dec_pad_left:]
+                                    batch_spk = batch_spk[:,dec_pad_left:]
                                 if args.lpc > 0:
                                     if args.spkidtr_dim > 0:
                                         batch_x_c_output[j], batch_x_f_output[j], h_x[j], h_x_2[j], h_f[j] \
                                             = model_waveform(z_cat, batch_x_c_prev, batch_x_f_prev, batch_x_c,
-                                                 spk_code=spk_code_in, spk_aux=batch_spk, aux=batch_lf0_rec[j], x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc,
+                                                 spk_code=spk_code_in, spk_aux=batch_spk, aux=aux_in, x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc,
                                                     outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in])
                                     else:
                                         batch_x_c_output[j], batch_x_f_output[j], h_x[j], h_x_2[j], h_f[j] \
                                             = model_waveform(z_cat, batch_x_c_prev, batch_x_f_prev, batch_x_c,
-                                                 spk_code=batch_sc_in[idx_in], spk_aux=batch_spk, aux=batch_lf0_rec[j], x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc,
+                                                 spk_code=batch_sc_in[idx_in], spk_aux=batch_spk, aux=aux_in, x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc,
                                                     outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in])
                                 else:
                                     if args.spkidtr_dim > 0:
                                         batch_x_c_output[j], batch_x_f_output[j], h_x[j], h_x_2[j], h_f[j] \
                                             = model_waveform(z_cat, batch_x_c_prev, batch_x_f_prev, batch_x_c,
-                                                 spk_code=spk_code_in, spk_aux=batch_spk, aux=batch_lf0_rec[j],
+                                                 spk_code=spk_code_in, spk_aux=batch_spk, aux=aux_in,
                                                     outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in])
                                     else:
                                         batch_x_c_output[j], batch_x_f_output[j], h_x[j], h_x_2[j], h_f[j] \
                                             = model_waveform(z_cat, batch_x_c_prev, batch_x_f_prev, batch_x_c,
-                                                 spk_code=batch_sc_in[idx_in], spk_aux=batch_spk, aux=batch_lf0_rec[j],
+                                                 spk_code=batch_sc_in[idx_in], spk_aux=batch_spk, aux=aux_in,
                                                     outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in])
-                                ## melsp cyclic reconstruction
-                                if n_half_cyc_eval > 2:
-                                    idx_in += 1
-                                    if wav_pad_right > 0:
-                                        z_cat = z_cat[:,wav_pad_left:-wav_pad_right]
-                                        e_in = batch_lf0_rec[j][:,wav_pad_left:-wav_pad_right,:args.excit_dim]
-                                        if args.spkidtr_dim > 0:
-                                            spk_code_in = spk_code_in[:,wav_pad_left:-wav_pad_right]
-                                        batch_spk = batch_spk[:,wav_pad_left:-wav_pad_right]
-                                    else:
-                                        z_cat = z_cat[:,wav_pad_left:]
-                                        e_in = batch_lf0_rec[j][:,wav_pad_left:,:args.excit_dim]
-                                        if args.spkidtr_dim > 0:
-                                            spk_code_in = spk_code_in[:,wav_pad_left:]
-                                        batch_spk = batch_spk[:,wav_pad_left:]
-                                    if args.spkidtr_dim > 0:
-                                        batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
-                                                                e=e_in, outpad_right=outpad_rights[idx_in])
-                                    else:
-                                        batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in], aux=batch_spk,
-                                                                e=e_in, outpad_right=outpad_rights[idx_in])
 
                     # samples check
                     i = np.random.randint(0, batch_melsp_rec[0].shape[0])
@@ -2373,20 +2370,22 @@ def main():
                                                             del_index_utt, axis=1)).to(device)
                             h_lf0[j] = torch.FloatTensor(np.delete(h_lf0[j].cpu().data.numpy(),
                                                             del_index_utt, axis=1)).to(device)
+                            h_melsp[j] = torch.FloatTensor(np.delete(h_melsp[j].cpu().data.numpy(),
+                                                            del_index_utt, axis=1)).to(device)
                             h_x[j] = torch.FloatTensor(np.delete(h_x[j].cpu().data.numpy(),
                                                             del_index_utt, axis=1)).to(device)
                             h_x_2[j] = torch.FloatTensor(np.delete(h_x_2[j].cpu().data.numpy(),
                                                             del_index_utt, axis=1)).to(device)
                             h_f[j] = torch.FloatTensor(np.delete(h_f[j].cpu().data.numpy(),
                                                             del_index_utt, axis=1)).to(device)
-                            if args.n_half_cyc > 2:
-                                h_melsp[j] = torch.FloatTensor(np.delete(h_melsp[j].cpu().data.numpy(),
-                                                                del_index_utt, axis=1)).to(device)
                     ## latent infer.
                     if i > 0:
                         idx_in += 1
                         i_cv_in += 1
-                        cyc_rec_feat = batch_melsp_rec[i-1].detach()
+                        if wav_pad_right > 0:
+                            cyc_rec_feat = batch_melsp_rec[i-1][:,wav_pad_left:-wav_pad_right].detach()
+                        else:
+                            cyc_rec_feat = batch_melsp_rec[i-1][:,wav_pad_left:].detach()
                         _, _, z[i], h_z[i] = model_encoder_melsp(cyc_rec_feat, outpad_right=outpad_rights[idx_in], h=h_z[i], do=True)
                         _, _, z_e[i], h_z_e[i] = model_encoder_excit(cyc_rec_feat, outpad_right=outpad_rights[idx_in], h=h_z_e[i], do=True)
                     else:
@@ -2428,8 +2427,9 @@ def main():
                                 = model_decoder_excit(z_e[i], y=batch_sc_in[idx_in], aux=batch_spk, outpad_right=outpad_rights[idx_in], h=h_lf0[i], do=True)
                         batch_lf0_cv[i_cv], h_lf0_cv[i_cv] \
                                 = model_decoder_excit(z_e[i], y=batch_sc_cv_in[i_cv_in], aux=batch_spk_cv, outpad_right=outpad_rights[idx_in], h=h_lf0_cv[i_cv], do=True)
-                    ## waveform reconstruction
+                    ## melsp reconstruction & conversion
                     idx_in += 1
+                    i_cv_in += 1
                     if lf0_pad_right > 0:
                         z_cat = z_cat[:,lf0_pad_left:-lf0_pad_right]
                         if args.spkidtr_dim > 0:
@@ -2444,63 +2444,59 @@ def main():
                             spk_cv_code_in = spk_cv_code_in[:,lf0_pad_left:]
                         batch_spk = batch_spk[:,lf0_pad_left:]
                         batch_spk_cv = batch_spk_cv[:,lf0_pad_left:]
+                    if args.spkidtr_dim > 0:
+                        batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
+                                            e=batch_lf0_rec[i][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], h=h_melsp[i], do=True)
+                        batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=spk_cv_code_in, aux=batch_spk_cv,
+                                            e=batch_lf0_cv[i_cv][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], h=h_melsp_cv[i_cv], do=True)
+                    else:
+                        batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in], aux=batch_spk,
+                                            e=batch_lf0_rec[i][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], h=h_melsp[i], do=True)
+                        batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=batch_sc_cv_in[i_cv_in], aux=batch_spk_cv,
+                                            e=batch_lf0_cv[i_cv][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], h=h_melsp_cv[i_cv], do=True)
+                    ## waveform reconstruction
+                    idx_in += 1
+                    if dec_pad_right > 0:
+                        z_cat = z_cat[:,dec_pad_left:-dec_pad_right]
+                        aux_in = torch.cat((batch_lf0_rec[i][:,dec_pad_left:-dec_pad_right], batch_melsp_rec[i]), 2)
+                        if args.spkidtr_dim > 0:
+                            spk_code_in = spk_code_in[:,dec_pad_left:-dec_pad_right]
+                        batch_spk = batch_spk[:,dec_pad_left:-dec_pad_right]
+                    else:
+                        z_cat = z_cat[:,dec_pad_left:]
+                        aux_in = torch.cat((batch_lf0_rec[i][:,dec_pad_left:], batch_melsp_rec[i]), 2)
+                        if args.spkidtr_dim > 0:
+                            spk_code_in = spk_code_in[:,dec_pad_left:]
+                        batch_spk = batch_spk[:,dec_pad_left:]
                     if args.lpc > 0:
                         if args.spkidtr_dim > 0:
                             batch_x_c_output[i], batch_x_f_output[i], h_x[i], h_x_2[i], h_f[i] \
                                 = model_waveform(z_cat, batch_x_c_prev, batch_x_f_prev, batch_x_c,
-                                    spk_code=spk_code_in, spk_aux=batch_spk, aux=batch_lf0_rec[i], x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc,
+                                    spk_code=spk_code_in, spk_aux=batch_spk, aux=aux_in, x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc,
                                         h=h_x[i], h_2=h_x_2[i], h_f=h_f[i], outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in], do=True)
                         else:
                             batch_x_c_output[i], batch_x_f_output[i], h_x[i], h_x_2[i], h_f[i] \
                                 = model_waveform(z_cat, batch_x_c_prev, batch_x_f_prev, batch_x_c,
-                                    spk_code=batch_sc_in[idx_in], spk_aux=batch_spk, aux=batch_lf0_rec[i], x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc,
+                                    spk_code=batch_sc_in[idx_in], spk_aux=batch_spk, aux=aux_in, x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc,
                                         h=h_x[i], h_2=h_x_2[i], h_f=h_f[i], outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in], do=True)
                     else:
                         if args.spkidtr_dim > 0:
                             batch_x_c_output[i], batch_x_f_output[i], h_x[i], h_x_2[i], h_f[i] \
                                 = model_waveform(z_cat, batch_x_c_prev, batch_x_f_prev, batch_x_c,
-                                    spk_code=spk_code_in, spk_aux=batch_spk, aux=batch_lf0_rec[i],
+                                    spk_code=spk_code_in, spk_aux=batch_spk, aux=aux_in,
                                         h=h_x[i], h_2=h_x_2[i], h_f=h_f[i], outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in], do=True)
                         else:
                             batch_x_c_output[i], batch_x_f_output[i], h_x[i], h_x_2[i], h_f[i] \
                                 = model_waveform(z_cat, batch_x_c_prev, batch_x_f_prev, batch_x_c,
-                                    spk_code=batch_sc_in[idx_in], spk_aux=batch_spk, aux=batch_lf0_rec[i],
+                                    spk_code=batch_sc_in[idx_in], spk_aux=batch_spk, aux=aux_in,
                                         h=h_x[i], h_2=h_x_2[i], h_f=h_f[i], outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in], do=True)
-                    ## melsp reconstruction & conversion
-                    idx_in += 1
-                    i_cv_in += 1
-                    if wav_pad_right > 0:
-                        z_cat = z_cat[:,wav_pad_left:-wav_pad_right]
-                        e_in = batch_lf0_rec[i][:,wav_pad_left:-wav_pad_right,:args.excit_dim]
-                        e_cv_in = batch_lf0_cv[i_cv][:,wav_pad_left:-wav_pad_right,:args.excit_dim]
-                        if args.spkidtr_dim > 0:
-                            spk_code_in = spk_code_in[:,wav_pad_left:-wav_pad_right]
-                            spk_cv_code_in = spk_cv_code_in[:,wav_pad_left:-wav_pad_right]
-                        batch_spk = batch_spk[:,wav_pad_left:-wav_pad_right]
-                        batch_spk_cv = batch_spk_cv[:,wav_pad_left:-wav_pad_right]
-                    else:
-                        z_cat = z_cat[:,wav_pad_left:]
-                        e_in = batch_lf0_rec[i][:,wav_pad_left:,:args.excit_dim]
-                        e_cv_in = batch_lf0_cv[i_cv][:,wav_pad_left:,:args.excit_dim]
-                        if args.spkidtr_dim > 0:
-                            spk_code_in = spk_code_in[:,wav_pad_left:]
-                            spk_cv_code_in = spk_cv_code_in[:,wav_pad_left:]
-                        batch_spk = batch_spk[:,wav_pad_left:]
-                        batch_spk_cv = batch_spk_cv[:,wav_pad_left:]
-                    if args.spkidtr_dim > 0:
-                        batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
-                                            e=e_in, outpad_right=outpad_rights[idx_in], h=h_melsp[i], do=True)
-                        batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=spk_cv_code_in, aux=batch_spk_cv,
-                                            e=e_cv_in, outpad_right=outpad_rights[idx_in], h=h_melsp_cv[i_cv], do=True)
-                    else:
-                        batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in], aux=batch_spk,
-                                            e=e_in, outpad_right=outpad_rights[idx_in], h=h_melsp[i], do=True)
-                        batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=batch_sc_cv_in[i_cv_in], aux=batch_spk_cv,
-                                            e=e_cv_in, outpad_right=outpad_rights[idx_in], h=h_melsp_cv[i_cv], do=True)
                     ## cyclic reconstruction, latent infer.
                     if args.n_half_cyc > 1:
                         idx_in += 1
-                        cv_feat = batch_melsp_cv[i_cv].detach()
+                        if wav_pad_right > 0:
+                            cv_feat = batch_melsp_cv[i_cv][:,wav_pad_left:-wav_pad_right].detach()
+                        else:
+                            cv_feat = batch_melsp_cv[i_cv][:,wav_pad_left:].detach()
                         _, _, z[j], h_z[j] = model_encoder_melsp(cv_feat, outpad_right=outpad_rights[idx_in], h=h_z[j], do=True)
                         _, _, z_e[j], h_z_e[j] = model_encoder_excit(cv_feat, outpad_right=outpad_rights[idx_in], h=h_z_e[j], do=True)
                         ## time-varying speaker conditionings
@@ -2530,7 +2526,7 @@ def main():
                             batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(z_e[j], y=spk_code_in, aux=batch_spk, outpad_right=outpad_rights[idx_in], h=h_lf0[j], do=True)
                         else:
                             batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(z_e[j], y=batch_sc_in[idx_in], aux=batch_spk, outpad_right=outpad_rights[idx_in], h=h_lf0[j], do=True)
-                        ## waveform cyclic reconstruction
+                        ## melsp cyclic reconstruction
                         idx_in += 1
                         if lf0_pad_right > 0:
                             z_cat = z_cat[:,lf0_pad_left:-lf0_pad_right]
@@ -2542,49 +2538,48 @@ def main():
                             if args.spkidtr_dim > 0:
                                 spk_code_in = spk_code_in[:,lf0_pad_left:]
                             batch_spk = batch_spk[:,lf0_pad_left:]
+                        if args.spkidtr_dim > 0:
+                            batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
+                                                    e=batch_lf0_rec[j][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], h=h_melsp[j], do=True)
+                        else:
+                            batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in], aux=batch_spk,
+                                                    e=batch_lf0_rec[j][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], h=h_melsp[j], do=True)
+                        ## waveform cyclic reconstruction
+                        idx_in += 1
+                        if dec_pad_right > 0:
+                            z_cat = z_cat[:,dec_pad_left:-dec_pad_right]
+                            aux_in = torch.cat((batch_lf0_rec[j][:,dec_pad_left:-dec_pad_right], batch_melsp_rec[j]), 2)
+                            if args.spkidtr_dim > 0:
+                                spk_code_in = spk_code_in[:,dec_pad_left:-dec_pad_right]
+                            batch_spk = batch_spk[:,dec_pad_left:-dec_pad_right]
+                        else:
+                            z_cat = z_cat[:,dec_pad_left:]
+                            aux_in = torch.cat((batch_lf0_rec[j][:,dec_pad_left:], batch_melsp_rec[j]), 2)
+                            if args.spkidtr_dim > 0:
+                                spk_code_in = spk_code_in[:,dec_pad_left:]
+                            batch_spk = batch_spk[:,dec_pad_left:]
                         if args.lpc > 0:
                             if args.spkidtr_dim > 0:
                                 batch_x_c_output[j], batch_x_f_output[j], h_x[j], h_x_2[j], h_f[j] \
                                     = model_waveform(z_cat, batch_x_c_prev, batch_x_f_prev, batch_x_c,
-                                         spk_code=spk_code_in, spk_aux=batch_spk, aux=batch_lf0_rec[j], x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc,
+                                         spk_code=spk_code_in, spk_aux=batch_spk, aux=aux_in, x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc,
                                             h=h_x[j], h_2=h_x_2[j], h_f=h_f[j], outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in], do=True)
                             else:
                                 batch_x_c_output[j], batch_x_f_output[j], h_x[j], h_x_2[j], h_f[j] \
                                     = model_waveform(z_cat, batch_x_c_prev, batch_x_f_prev, batch_x_c,
-                                         spk_code=batch_sc_in[idx_in], spk_aux=batch_spk, aux=batch_lf0_rec[j], x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc,
+                                         spk_code=batch_sc_in[idx_in], spk_aux=batch_spk, aux=aux_in, x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc,
                                             h=h_x[j], h_2=h_x_2[j], h_f=h_f[j], outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in], do=True)
                         else:
                             if args.spkidtr_dim > 0:
                                 batch_x_c_output[j], batch_x_f_output[j], h_x[j], h_x_2[j], h_f[j] \
                                     = model_waveform(z_cat, batch_x_c_prev, batch_x_f_prev, batch_x_c,
-                                         spk_code=spk_code_in, spk_aux=batch_spk, aux=batch_lf0_rec[j],
+                                         spk_code=spk_code_in, spk_aux=batch_spk, aux=aux_in,
                                             h=h_x[j], h_2=h_x_2[j], h_f=h_f[j], outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in], do=True)
                             else:
                                 batch_x_c_output[j], batch_x_f_output[j], h_x[j], h_x_2[j], h_f[j] \
                                     = model_waveform(z_cat, batch_x_c_prev, batch_x_f_prev, batch_x_c,
-                                         spk_code=batch_sc_in[idx_in], spk_aux=batch_spk, aux=batch_lf0_rec[j],
+                                         spk_code=batch_sc_in[idx_in], spk_aux=batch_spk, aux=aux_in,
                                             h=h_x[j], h_2=h_x_2[j], h_f=h_f[j], outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in], do=True)
-                        ## melsp cyclic reconstruction
-                        if args.n_half_cyc > 2:
-                            idx_in += 1
-                            if wav_pad_right > 0:
-                                z_cat = z_cat[:,wav_pad_left:-wav_pad_right]
-                                e_in = batch_lf0_rec[j][:,wav_pad_left:-wav_pad_right,:args.excit_dim]
-                                if args.spkidtr_dim > 0:
-                                    spk_code_in = spk_code_in[:,wav_pad_left:-wav_pad_right]
-                                batch_spk = batch_spk[:,wav_pad_left:-wav_pad_right]
-                            else:
-                                z_cat = z_cat[:,wav_pad_left:]
-                                e_in = batch_lf0_rec[j][:,wav_pad_left:,:args.excit_dim]
-                                if args.spkidtr_dim > 0:
-                                    spk_code_in = spk_code_in[:,wav_pad_left:]
-                                batch_spk = batch_spk[:,wav_pad_left:]
-                            if args.spkidtr_dim > 0:
-                                batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
-                                                        e=e_in, outpad_right=outpad_rights[idx_in], h=h_melsp[j], do=True)
-                            else:
-                                batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in], aux=batch_spk,
-                                                        e=e_in, outpad_right=outpad_rights[idx_in], h=h_melsp[j], do=True)
             else:
                 idx_in = 0
                 i_cv_in = 0
@@ -2595,7 +2590,10 @@ def main():
                     if i > 0:
                         idx_in += 1
                         i_cv_in += 1
-                        cyc_rec_feat = batch_melsp_rec[i-1].detach()
+                        if wav_pad_right > 0:
+                            cyc_rec_feat = batch_melsp_rec[i-1][:,wav_pad_left:-wav_pad_right].detach()
+                        else:
+                            cyc_rec_feat = batch_melsp_rec[i-1][:,wav_pad_left:].detach()
                         _, _, z[i], h_z[i] = model_encoder_melsp(cyc_rec_feat, outpad_right=outpad_rights[idx_in], do=True)
                         _, _, z_e[i], h_z_e[i] = model_encoder_excit(cyc_rec_feat, outpad_right=outpad_rights[idx_in], do=True)
                     else:
@@ -2637,8 +2635,9 @@ def main():
                                 = model_decoder_excit(z_e[i], y=batch_sc_in[idx_in], aux=batch_spk, outpad_right=outpad_rights[idx_in], do=True)
                         batch_lf0_cv[i_cv], h_lf0_cv[i_cv] \
                                 = model_decoder_excit(z_e[i], y=batch_sc_cv_in[i_cv_in], aux=batch_spk_cv, outpad_right=outpad_rights[idx_in], do=True)
-                    ## waveform reconstruction
+                    ## melsp reconstruction & conversion
                     idx_in += 1
+                    i_cv_in += 1
                     if lf0_pad_right > 0:
                         z_cat = z_cat[:,lf0_pad_left:-lf0_pad_right]
                         if args.spkidtr_dim > 0:
@@ -2653,63 +2652,59 @@ def main():
                             spk_cv_code_in = spk_cv_code_in[:,lf0_pad_left:]
                         batch_spk = batch_spk[:,lf0_pad_left:]
                         batch_spk_cv = batch_spk_cv[:,lf0_pad_left:]
+                    if args.spkidtr_dim > 0:
+                        batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
+                                            e=batch_lf0_rec[i][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], do=True)
+                        batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=spk_cv_code_in, aux=batch_spk_cv,
+                                            e=batch_lf0_cv[i_cv][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], do=True)
+                    else:
+                        batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in], aux=batch_spk,
+                                            e=batch_lf0_rec[i][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], do=True)
+                        batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=batch_sc_cv_in[i_cv_in], aux=batch_spk_cv,
+                                            e=batch_lf0_cv[i_cv][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], do=True)
+                    ## waveform reconstruction
+                    idx_in += 1
+                    if dec_pad_right > 0:
+                        z_cat = z_cat[:,dec_pad_left:-dec_pad_right]
+                        aux_in = torch.cat((batch_lf0_rec[i][:,dec_pad_left:-dec_pad_right], batch_melsp_rec[i]), 2)
+                        if args.spkidtr_dim > 0:
+                            spk_code_in = spk_code_in[:,dec_pad_left:-dec_pad_right]
+                        batch_spk = batch_spk[:,dec_pad_left:-dec_pad_right]
+                    else:
+                        z_cat = z_cat[:,dec_pad_left:]
+                        aux_in = torch.cat((batch_lf0_rec[i][:,dec_pad_left:], batch_melsp_rec[i]), 2)
+                        if args.spkidtr_dim > 0:
+                            spk_code_in = spk_code_in[:,dec_pad_left:]
+                        batch_spk = batch_spk[:,dec_pad_left:]
                     if args.lpc > 0:
                         if args.spkidtr_dim > 0:
                             batch_x_c_output[i], batch_x_f_output[i], h_x[i], h_x_2[i], h_f[i] \
                                 = model_waveform(z_cat, batch_x_c_prev, batch_x_f_prev, batch_x_c,
-                                    spk_code=spk_code_in, spk_aux=batch_spk, aux=batch_lf0_rec[i], x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc,
+                                    spk_code=spk_code_in, spk_aux=batch_spk, aux=aux_in, x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc,
                                         outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in], do=True)
                         else:
                             batch_x_c_output[i], batch_x_f_output[i], h_x[i], h_x_2[i], h_f[i] \
                                 = model_waveform(z_cat, batch_x_c_prev, batch_x_f_prev, batch_x_c,
-                                    spk_code=batch_sc_in[idx_in], spk_aux=batch_spk, aux=batch_lf0_rec[i], x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc,
+                                    spk_code=batch_sc_in[idx_in], spk_aux=batch_spk, aux=aux_in, x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc,
                                         outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in], do=True)
                     else:
                         if args.spkidtr_dim > 0:
                             batch_x_c_output[i], batch_x_f_output[i], h_x[i], h_x_2[i], h_f[i] \
                                 = model_waveform(z_cat, batch_x_c_prev, batch_x_f_prev, batch_x_c,
-                                    spk_code=spk_code_in, spk_aux=batch_spk, aux=batch_lf0_rec[i],
+                                    spk_code=spk_code_in, spk_aux=batch_spk, aux=aux_in,
                                         outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in], do=True)
                         else:
                             batch_x_c_output[i], batch_x_f_output[i], h_x[i], h_x_2[i], h_f[i] \
                                 = model_waveform(z_cat, batch_x_c_prev, batch_x_f_prev, batch_x_c,
-                                    spk_code=batch_sc_in[idx_in], spk_aux=batch_spk, aux=batch_lf0_rec[i],
+                                    spk_code=batch_sc_in[idx_in], spk_aux=batch_spk, aux=aux_in,
                                         outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in], do=True)
-                    ## melsp reconstruction & conversion
-                    idx_in += 1
-                    i_cv_in += 1
-                    if wav_pad_right > 0:
-                        z_cat = z_cat[:,wav_pad_left:-wav_pad_right]
-                        e_in = batch_lf0_rec[i][:,wav_pad_left:-wav_pad_right,:args.excit_dim]
-                        e_cv_in = batch_lf0_cv[i_cv][:,wav_pad_left:-wav_pad_right,:args.excit_dim]
-                        if args.spkidtr_dim > 0:
-                            spk_code_in = spk_code_in[:,wav_pad_left:-wav_pad_right]
-                            spk_cv_code_in = spk_cv_code_in[:,wav_pad_left:-wav_pad_right]
-                        batch_spk = batch_spk[:,wav_pad_left:-wav_pad_right]
-                        batch_spk_cv = batch_spk_cv[:,wav_pad_left:-wav_pad_right]
-                    else:
-                        z_cat = z_cat[:,wav_pad_left:]
-                        e_in = batch_lf0_rec[i][:,wav_pad_left:,:args.excit_dim]
-                        e_cv_in = batch_lf0_cv[i_cv][:,wav_pad_left:,:args.excit_dim]
-                        if args.spkidtr_dim > 0:
-                            spk_code_in = spk_code_in[:,wav_pad_left:]
-                            spk_cv_code_in = spk_cv_code_in[:,wav_pad_left:]
-                        batch_spk = batch_spk[:,wav_pad_left:]
-                        batch_spk_cv = batch_spk_cv[:,wav_pad_left:]
-                    if args.spkidtr_dim > 0:
-                        batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
-                                            e=e_in, outpad_right=outpad_rights[idx_in], do=True)
-                        batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=spk_cv_code_in, aux=batch_spk_cv,
-                                            e=e_cv_in, outpad_right=outpad_rights[idx_in], do=True)
-                    else:
-                        batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in], aux=batch_spk,
-                                            e=e_in, outpad_right=outpad_rights[idx_in], do=True)
-                        batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=batch_sc_cv_in[i_cv_in], aux=batch_spk_cv,
-                                            e=e_cv_in, outpad_right=outpad_rights[idx_in], do=True)
                     ## cyclic reconstruction, latent infer.
                     if args.n_half_cyc > 1:
                         idx_in += 1
-                        cv_feat = batch_melsp_cv[i_cv].detach()
+                        if wav_pad_right > 0:
+                            cv_feat = batch_melsp_cv[i_cv][:,wav_pad_left:-wav_pad_right].detach()
+                        else:
+                            cv_feat = batch_melsp_cv[i_cv][:,wav_pad_left:].detach()
                         _, _, z[j], h_z[j] = model_encoder_melsp(cv_feat, outpad_right=outpad_rights[idx_in], do=True)
                         _, _, z_e[j], h_z_e[j] = model_encoder_excit(cv_feat, outpad_right=outpad_rights[idx_in], do=True)
                         ## time-varying speaker conditionings
@@ -2739,7 +2734,7 @@ def main():
                             batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(z_e[j], y=spk_code_in, aux=batch_spk, outpad_right=outpad_rights[idx_in], do=True)
                         else:
                             batch_lf0_rec[j], h_lf0[j] = model_decoder_excit(z_e[j], y=batch_sc_in[idx_in], aux=batch_spk, outpad_right=outpad_rights[idx_in], do=True)
-                        ## waveform cyclic reconstruction
+                        ## melsp cyclic reconstruction
                         idx_in += 1
                         if lf0_pad_right > 0:
                             z_cat = z_cat[:,lf0_pad_left:-lf0_pad_right]
@@ -2751,49 +2746,48 @@ def main():
                             if args.spkidtr_dim > 0:
                                 spk_code_in = spk_code_in[:,lf0_pad_left:]
                             batch_spk = batch_spk[:,lf0_pad_left:]
+                        if args.spkidtr_dim > 0:
+                            batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
+                                                    e=batch_lf0_rec[j][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], do=True)
+                        else:
+                            batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in], aux=batch_spk,
+                                                    e=batch_lf0_rec[j][:,:,:args.excit_dim], outpad_right=outpad_rights[idx_in], do=True)
+                        ## waveform cyclic reconstruction
+                        idx_in += 1
+                        if dec_pad_right > 0:
+                            z_cat = z_cat[:,dec_pad_left:-dec_pad_right]
+                            aux_in = torch.cat((batch_lf0_rec[j][:,dec_pad_left:-dec_pad_right], batch_melsp_rec[j]), 2)
+                            if args.spkidtr_dim > 0:
+                                spk_code_in = spk_code_in[:,dec_pad_left:-dec_pad_right]
+                            batch_spk = batch_spk[:,dec_pad_left:-dec_pad_right]
+                        else:
+                            z_cat = z_cat[:,dec_pad_left:]
+                            aux_in = torch.cat((batch_lf0_rec[j][:,dec_pad_left:], batch_melsp_rec[j]), 2)
+                            if args.spkidtr_dim > 0:
+                                spk_code_in = spk_code_in[:,dec_pad_left:]
+                            batch_spk = batch_spk[:,dec_pad_left:]
                         if args.lpc > 0:
                             if args.spkidtr_dim > 0:
                                 batch_x_c_output[j], batch_x_f_output[j], h_x[j], h_x_2[j], h_f[j] \
                                     = model_waveform(z_cat, batch_x_c_prev, batch_x_f_prev, batch_x_c,
-                                         spk_code=spk_code_in, spk_aux=batch_spk, aux=batch_lf0_rec[j], x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc,
+                                         spk_code=spk_code_in, spk_aux=batch_spk, aux=aux_in, x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc,
                                             outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in], do=True)
                             else:
                                 batch_x_c_output[j], batch_x_f_output[j], h_x[j], h_x_2[j], h_f[j] \
                                     = model_waveform(z_cat, batch_x_c_prev, batch_x_f_prev, batch_x_c,
-                                         spk_code=batch_sc_in[idx_in], spk_aux=batch_spk, aux=batch_lf0_rec[j], x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc,
+                                         spk_code=batch_sc_in[idx_in], spk_aux=batch_spk, aux=aux_in, x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc,
                                             outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in], do=True)
                         else:
                             if args.spkidtr_dim > 0:
                                 batch_x_c_output[j], batch_x_f_output[j], h_x[j], h_x_2[j], h_f[j] \
                                     = model_waveform(z_cat, batch_x_c_prev, batch_x_f_prev, batch_x_c,
-                                         spk_code=spk_code_in, spk_aux=batch_spk, aux=batch_lf0_rec[j],
+                                         spk_code=spk_code_in, spk_aux=batch_spk, aux=aux_in,
                                             outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in], do=True)
                             else:
                                 batch_x_c_output[j], batch_x_f_output[j], h_x[j], h_x_2[j], h_f[j] \
                                     = model_waveform(z_cat, batch_x_c_prev, batch_x_f_prev, batch_x_c,
-                                         spk_code=batch_sc_in[idx_in], spk_aux=batch_spk, aux=batch_lf0_rec[j],
+                                         spk_code=batch_sc_in[idx_in], spk_aux=batch_spk, aux=aux_in,
                                             outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in], do=True)
-                        ## melsp cyclic reconstruction
-                        if args.n_half_cyc > 2:
-                            idx_in += 1
-                            if wav_pad_right > 0:
-                                z_cat = z_cat[:,wav_pad_left:-wav_pad_right]
-                                e_in = batch_lf0_rec[j][:,wav_pad_left:-wav_pad_right,:args.excit_dim]
-                                if args.spkidtr_dim > 0:
-                                    spk_code_in = spk_code_in[:,wav_pad_left:-wav_pad_right]
-                                batch_spk = batch_spk[:,wav_pad_left:-wav_pad_right]
-                            else:
-                                z_cat = z_cat[:,wav_pad_left:]
-                                e_in = batch_lf0_rec[j][:,wav_pad_left:,:args.excit_dim]
-                                if args.spkidtr_dim > 0:
-                                    spk_code_in = spk_code_in[:,wav_pad_left:]
-                                batch_spk = batch_spk[:,wav_pad_left:]
-                            if args.spkidtr_dim > 0:
-                                batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
-                                                        e=e_in, outpad_right=outpad_rights[idx_in], do=True)
-                            else:
-                                batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in], aux=batch_spk,
-                                                        e=e_in, outpad_right=outpad_rights[idx_in], do=True)
 
             # samples check
             with torch.no_grad():

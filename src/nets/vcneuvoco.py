@@ -1821,8 +1821,8 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
             logits_c = self.out(out.transpose(1,2))
             logits_f = self.out_f(out_f.transpose(1,2))
             return torch.clamp(logits_c, -32, 32), torch.clamp(logits_f, -32, 32), h.detach(), h_2.detach(), h_f.detach()
-
-    def generate(self, c, intervals=4000):
+ 
+    def generate(self, c, intervals=4000, spk_code=None, spk_aux=None, aux=None, outpad_left=None, outpad_right=None):
         start = time.time()
         time_sample = []
         intervals /= self.n_bands
@@ -1833,8 +1833,71 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
         f_pad = (self.n_quantize // 2) % self.cf_dim
 
         B = c.shape[0]
-        c = F.pad(c.transpose(1,2), (self.pad_left,self.pad_right), "replicate").transpose(1,2)
-        c = self.conv_s_c(self.conv(self.scale_in(c.transpose(1,2)))).transpose(1,2)
+
+        # Input
+        if outpad_left is None and outpad_right is None:
+            c = F.pad(c.transpose(1,2), (self.pad_left,self.pad_right), "replicate").transpose(1,2)
+            if spk_code is not None:
+                if len(spk_code.shape) == 2:
+                    spk_code = F.pad(spk_code, (self.pad_left,self.pad_right), "replicate")
+                else:
+                    spk_code = F.pad(spk_code.transpose(1,2), (self.pad_left,self.pad_right), "replicate").transpose(1,2)
+            if spk_aux is not None:
+                spk_aux = F.pad(spk_aux.transpose(1,2), (self.pad_left,self.pad_right), "replicate").transpose(1,2)
+            if aux is not None:
+                aux = F.pad(aux.transpose(1,2), (self.pad_left,self.pad_right), "replicate").transpose(1,2)
+        if spk_code is not None:
+            if len(spk_code.shape) == 2:
+                spk_code = F.one_hot(spk_code, num_classes=self.n_spk).float()
+            if spk_aux is not None:
+                if aux is not None:
+                    c_aux = torch.cat((spk_code, spk_aux, c, self.scale_in(aux.transpose(1,2)).transpose(1,2)), 2)
+                else:
+                    c_aux = torch.cat((spk_code, spk_aux, self.scale_in(c.transpose(1,2)).transpose(1,2)), 2)
+            else:
+                if aux is not None:
+                    c_aux = torch.cat((spk_code, c, self.scale_in(aux.transpose(1,2)).transpose(1,2)), 2)
+                else:
+                    c_aux = torch.cat((spk_code, self.scale_in(c.transpose(1,2)).transpose(1,2)), 2)
+        elif spk_aux is not None:
+            if aux is not None:
+                c_aux = torch.cat((spk_aux, c, self.scale_in(aux.transpose(1,2)).transpose(1,2)), 2)
+            else:
+                c_aux = torch.cat((spk_aux, self.scale_in(c.transpose(1,2)).transpose(1,2)), 2)
+        elif aux is not None:
+            c_aux = torch.cat((c, self.scale_in(aux.transpose(1,2)).transpose(1,2)), 2)
+        else:
+            c_aux = None
+        if c_aux is not None:
+            if self.red_dim is not None:
+                if outpad_left is not None:
+                    if outpad_right is not None and outpad_right > 0:
+                        c = self.conv_s_c(self.conv(self.in_red(c_aux.transpose(1,2)))[:,:,outpad_left:-outpad_right]).transpose(1,2)
+                    else:
+                        c = self.conv_s_c(self.conv(self.in_red(c_aux.transpose(1,2)))[:,:,outpad_left:]).transpose(1,2)
+                elif outpad_right is not None and outpad_right > 0:
+                    c = self.conv_s_c(self.conv(self.in_red(c_aux.transpose(1,2)))[:,:,:-outpad_right]).transpose(1,2)
+                else:
+                    c = self.conv_s_c(self.conv(self.in_red(c_aux.transpose(1,2)))).transpose(1,2)
+            else:
+                if outpad_left is not None:
+                    if outpad_right is not None and outpad_right > 0:
+                        c = self.conv_s_c(self.conv(c_aux.transpose(1,2))[:,:,outpad_left:-outpad_right]).transpose(1,2)
+                    else:
+                        c = self.conv_s_c(self.conv(c_aux.transpose(1,2))[:,:,outpad_left:]).transpose(1,2)
+                elif outpad_right is not None and outpad_right > 0:
+                    c = self.conv_s_c(self.conv(c_aux.transpose(1,2))[:,:,:-outpad_right]).transpose(1,2)
+                else:
+                    c = self.conv_s_c(self.conv(c_aux.transpose(1,2))).transpose(1,2)
+        else:
+            if self.red_dim is None:
+                c = self.conv_s_c(self.conv(self.scale_in(c.transpose(1,2)))).transpose(1,2)
+            else:
+                c = self.conv_s_c(self.conv(self.in_red(self.scale_in(c.transpose(1,2))))).transpose(1,2)
+
+        #c = F.pad(c.transpose(1,2), (self.pad_left,self.pad_right), "replicate").transpose(1,2)
+        #c = self.conv_s_c(self.conv(self.scale_in(c.transpose(1,2)))).transpose(1,2)
+
         if self.lpc > 0:
             x_c_lpc = torch.empty(B,1,self.n_bands,self.lpc).cuda().fill_(c_pad).long() # B x 1 x n_bands x K
             x_f_lpc = torch.empty(B,1,self.n_bands,self.lpc).cuda().fill_(f_pad).long() # B x 1 x n_bands x K
