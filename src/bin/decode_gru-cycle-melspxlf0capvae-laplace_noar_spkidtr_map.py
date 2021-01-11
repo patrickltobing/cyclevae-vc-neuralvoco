@@ -143,7 +143,8 @@ def main():
         logging.info(args.outdir)
 
         #plt.rcParams["figure.figsize"] = (20,11.25) #1920x1080
-        plt.rcParams["figure.figsize"] = (11.25,11.25) #1080x1080
+        plt.rcParams["figure.figsize"] = (14.229166667,11.25) #1366x1080
+        #plt.rcParams["figure.figsize"] = (11.25,11.25) #1080x1080
         #plt.rcParams["figure.figsize"] = (14.229166667,14.229166667) #1366x1366
 
         logging.info("spk-id spk-name x-coord y-coord")
@@ -159,6 +160,7 @@ def main():
         ax.scatter(x, y, s=40, c=colormap[gender])
         for i, txt in enumerate(spk_list):
             ax.annotate(txt, (x[i], y[i]))
+        #plt.xlim([-0.35, 0.05])
         plt.savefig(os.path.join(args.outdir, 'spk62.png'))
         plt.close()
 

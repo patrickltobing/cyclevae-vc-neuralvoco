@@ -1598,7 +1598,7 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
     def __init__(self, feat_dim=80, upsampling_factor=120, hidden_units=640, hidden_units_2=32, n_quantize=65536,
             kernel_size=7, dilation_size=1, do_prob=0, causal_conv=False, use_weight_norm=True, lpc=6,
                 right_size=2, n_bands=5, excit_dim=0, pad_first=False, mid_out_flag=True, red_dim=None,
-                    scale_in_aux_dim=None, n_spk=None):
+                    scale_in_aux_dim=None, n_spk=None, scale_in_flag=True):
         super(GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF, self).__init__()
         self.feat_dim = feat_dim
         self.in_dim = self.feat_dim
@@ -1639,13 +1639,15 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
             self.mid_out = None
         self.red_dim = red_dim
         self.scale_in_aux_dim = scale_in_aux_dim
+        self.scale_in_flag = scale_in_flag
         self.n_spk = n_spk
 
         # Norm. layer
-        if self.scale_in_aux_dim is not None:
-            self.scale_in = nn.Conv1d(self.scale_in_aux_dim, self.scale_in_aux_dim, 1)
-        else:
-            self.scale_in = nn.Conv1d(self.in_dim, self.in_dim, 1)
+        if self.scale_in_flag:
+            if self.scale_in_aux_dim is not None:
+                self.scale_in = nn.Conv1d(self.scale_in_aux_dim, self.scale_in_aux_dim, 1)
+            else:
+                self.scale_in = nn.Conv1d(self.in_dim, self.in_dim, 1)
 
         # Reduction layers
         if self.red_dim is not None:
@@ -1702,7 +1704,8 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
         # apply weight norm
         if self.use_weight_norm:
             self.apply_weight_norm()
-            torch.nn.utils.remove_weight_norm(self.scale_in)
+            if self.scale_in_flag:
+                torch.nn.utils.remove_weight_norm(self.scale_in)
         else:
             self.apply(initialize)
 
@@ -1715,17 +1718,26 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
                 if aux is not None:
                     c_aux = torch.cat((spk_code, spk_aux, c, self.scale_in(aux.transpose(1,2)).transpose(1,2)), 2)
                 else:
-                    c_aux = torch.cat((spk_code, spk_aux, self.scale_in(c.transpose(1,2)).transpose(1,2)), 2)
+                    if self.scale_in_flag:
+                        c_aux = torch.cat((spk_code, spk_aux, self.scale_in(c.transpose(1,2)).transpose(1,2)), 2)
+                    else:
+                        c_aux = torch.cat((spk_code, spk_aux, c), 2)
             else:
                 if aux is not None:
                     c_aux = torch.cat((spk_code, c, self.scale_in(aux.transpose(1,2)).transpose(1,2)), 2)
                 else:
-                    c_aux = torch.cat((spk_code, self.scale_in(c.transpose(1,2)).transpose(1,2)), 2)
+                    if self.scale_in_flag:
+                        c_aux = torch.cat((spk_code, self.scale_in(c.transpose(1,2)).transpose(1,2)), 2)
+                    else:
+                        c_aux = torch.cat((spk_code, c), 2)
         elif spk_aux is not None:
             if aux is not None:
                 c_aux = torch.cat((spk_aux, c, self.scale_in(aux.transpose(1,2)).transpose(1,2)), 2)
             else:
-                c_aux = torch.cat((spk_aux, self.scale_in(c.transpose(1,2)).transpose(1,2)), 2)
+                if self.scale_in_flag:
+                    c_aux = torch.cat((spk_aux, self.scale_in(c.transpose(1,2)).transpose(1,2)), 2)
+                else:
+                    c_aux = torch.cat((spk_aux, c), 2)
         elif aux is not None:
             c_aux = torch.cat((c, self.scale_in(aux.transpose(1,2)).transpose(1,2)), 2)
         else:
