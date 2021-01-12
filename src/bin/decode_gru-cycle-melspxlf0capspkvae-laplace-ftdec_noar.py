@@ -31,12 +31,8 @@ import soundfile as sf
 
 from vcneuvoco import GRU_VAE_ENCODER, GRU_SPEC_DECODER, GRU_SPK
 from vcneuvoco import GRU_EXCIT_DECODER, SPKID_TRANSFORM_LAYER
-from vcneuvoco import GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF
 from feature_extract import convert_f0
 from dtw_c import dtw_c as dtw
-from noise_shaping_emph import deemphasis
-
-from pqmf import PQMF
 
 #import pysptk as ps
 #import pyworld as pw
@@ -57,7 +53,6 @@ FFTL = 2048
 IRLEN = 1024
 VERBOSE = 1
 GV_COEFF = 0.9
-ALPHA = 0.85
 
 
 def main():
@@ -73,14 +68,12 @@ def main():
                         type=str, help="directory to save generated samples")
     parser.add_argument("--fs", default=FS,
                         type=int, help="sampling rate")
-    parser.add_argument("--alpha", default=ALPHA,
-                        type=float, help="sampling rate")
     parser.add_argument("--spk_trg", required=True,
                         type=str, help="speaker target")
     parser.add_argument("--n_gpus", default=N_GPUS,
                         type=int, help="number of gpus")
-    #parser.add_argument("--string_path", required=True,
-    #                    type=str, help="directory to save generated samples")
+    parser.add_argument("--string_path", required=True,
+                        type=str, help="directory to save generated samples")
     # other setting
     parser.add_argument("--n_interp", default=0,
                         type=int, help="number of interpolation points if using cont. spk-code (if 0, just rec. and cv.)")
@@ -206,6 +199,21 @@ def main():
                     pad_first=True,
                     right_size=config.right_size_enc)
                 logging.info(model_encoder_melsp)
+                model_decoder_melsp_fix = GRU_SPEC_DECODER(
+                    feat_dim=config.lat_dim+config.lat_dim_e,
+                    excit_dim=config.excit_dim,
+                    out_dim=config.mel_dim,
+                    n_spk=n_spk,
+                    aux_dim=n_spk,
+                    hidden_layers=config.hidden_layers_dec,
+                    hidden_units=config.hidden_units_dec,
+                    kernel_size=config.kernel_size_dec,
+                    dilation_size=config.dilation_size_dec,
+                    causal_conv=config.causal_conv_dec,
+                    pad_first=True,
+                    right_size=config.right_size_dec,
+                    red_dim=config.mel_dim)
+                logging.info(model_decoder_melsp_fix)
                 model_decoder_melsp = GRU_SPEC_DECODER(
                     feat_dim=config.lat_dim+config.lat_dim_e,
                     excit_dim=config.excit_dim,
@@ -263,57 +271,41 @@ def main():
                     hidden_units=32,
                     red_dim=config.mel_dim)
                 logging.info(model_spk)
-                model_waveform = GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(
-                    feat_dim=n_spk*2+config.lat_dim+config.lat_dim_e+config.full_excit_dim+config.mel_dim,
-                    upsampling_factor=config.upsampling_factor,
-                    hidden_units=config.hidden_units_wave,
-                    hidden_units_2=config.hidden_units_wave_2,
-                    kernel_size=config.kernel_size_wave,
-                    dilation_size=config.dilation_size_wave,
-                    n_quantize=config.n_quantize,
-                    causal_conv=config.causal_conv_wave,
-                    lpc=config.lpc,
-                    right_size=config.right_size_wave,
-                    n_bands=config.n_bands,
-                    pad_first=True,
-                    n_spk=n_spk,
-                    scale_in_aux_dim=config.full_excit_dim+config.mel_dim,
-                    red_dim=config.mel_dim)
-                logging.info(model_waveform)
                 model_encoder_melsp.load_state_dict(torch.load(args.model)["model_encoder_melsp"])
+                model_decoder_melsp_fix.load_state_dict(torch.load(args.model)["model_decoder_melsp_fix"])
                 model_decoder_melsp.load_state_dict(torch.load(args.model)["model_decoder_melsp"])
                 model_encoder_excit.load_state_dict(torch.load(args.model)["model_encoder_excit"])
                 model_decoder_excit.load_state_dict(torch.load(args.model)["model_decoder_excit"])
                 if (config.spkidtr_dim > 0):
                     model_spkidtr.load_state_dict(torch.load(args.model)["model_spkidtr"])
                 model_spk.load_state_dict(torch.load(args.model)["model_spk"])
-                model_waveform.load_state_dict(torch.load(args.model)["model_waveform"])
                 model_encoder_melsp.cuda()
+                model_decoder_melsp_fix.cuda()
                 model_decoder_melsp.cuda()
                 model_encoder_excit.cuda()
                 model_decoder_excit.cuda()
                 if (config.spkidtr_dim > 0):
                     model_spkidtr.cuda()
                 model_spk.cuda()
-                model_waveform.cuda()
-                pqmf = PQMF(config.n_bands).cuda()
                 model_encoder_melsp.eval()
+                model_decoder_melsp_fix.eval()
                 model_decoder_melsp.eval()
                 model_encoder_excit.eval()
                 model_decoder_excit.eval()
                 if (config.spkidtr_dim > 0):
                     model_spkidtr.eval()
                 model_spk.eval()
-                model_waveform.eval()
                 model_encoder_melsp.remove_weight_norm()
+                model_decoder_melsp_fix.remove_weight_norm()
                 model_decoder_melsp.remove_weight_norm()
                 model_encoder_excit.remove_weight_norm()
                 model_decoder_excit.remove_weight_norm()
                 if (config.spkidtr_dim > 0):
                     model_spkidtr.remove_weight_norm()
                 model_spk.remove_weight_norm()
-                model_waveform.remove_weight_norm()
                 for param in model_encoder_melsp.parameters():
+                    param.requires_grad = False
+                for param in model_decoder_melsp_fix.parameters():
                     param.requires_grad = False
                 for param in model_decoder_melsp.parameters():
                     param.requires_grad = False
@@ -325,8 +317,6 @@ def main():
                     for param in model_spkidtr.parameters():
                         param.requires_grad = False
                 for param in model_spk.parameters():
-                    param.requires_grad = False
-                for param in model_waveform.parameters():
                     param.requires_grad = False
             # interpolated spk-code
             #if args.n_interp > 0:
@@ -356,10 +346,10 @@ def main():
             #    logging.info(delta_z)
             #    logging.info(delta_z_e)
             count = 0
-            pad_left = (model_encoder_melsp.pad_left + model_spk.pad_left + model_decoder_excit.pad_left + model_decoder_melsp.pad_left)*2+model_waveform.pad_left
-            pad_right = (model_encoder_melsp.pad_right + model_spk.pad_right + model_decoder_excit.pad_right + model_decoder_melsp.pad_right)*2+model_waveform.pad_right
-            outpad_lefts = [None]*8
-            outpad_rights = [None]*8
+            pad_left = (model_encoder_melsp.pad_left + model_spk.pad_left + model_decoder_excit.pad_left + model_decoder_melsp.pad_left)*2
+            pad_right = (model_encoder_melsp.pad_right + model_spk.pad_right + model_decoder_excit.pad_right + model_decoder_melsp.pad_right)*2
+            outpad_lefts = [None]*7
+            outpad_rights = [None]*7
             outpad_lefts[0] = pad_left-model_encoder_melsp.pad_left
             outpad_rights[0] = pad_right-model_encoder_melsp.pad_right
             outpad_lefts[1] = outpad_lefts[0]-model_spk.pad_left
@@ -368,14 +358,12 @@ def main():
             outpad_rights[2] = outpad_rights[1]-model_decoder_excit.pad_right
             outpad_lefts[3] = outpad_lefts[2]-model_decoder_melsp.pad_left
             outpad_rights[3] = outpad_rights[2]-model_decoder_melsp.pad_right
-            outpad_lefts[4] = outpad_lefts[3]-model_waveform.pad_left
-            outpad_rights[4] = outpad_rights[3]-model_waveform.pad_right
-            outpad_lefts[5] = outpad_lefts[4]-model_encoder_melsp.pad_left
-            outpad_rights[5] = outpad_rights[4]-model_encoder_melsp.pad_right
-            outpad_lefts[6] = outpad_lefts[5]-model_spk.pad_left
-            outpad_rights[6] = outpad_rights[5]-model_spk.pad_right
-            outpad_lefts[7] = outpad_lefts[6]-model_decoder_excit.pad_left
-            outpad_rights[7] = outpad_rights[6]-model_decoder_excit.pad_right
+            outpad_lefts[4] = outpad_lefts[3]-model_encoder_melsp.pad_left
+            outpad_rights[4] = outpad_rights[3]-model_encoder_melsp.pad_right
+            outpad_lefts[5] = outpad_lefts[4]-model_spk.pad_left
+            outpad_rights[5] = outpad_rights[4]-model_spk.pad_right
+            outpad_lefts[6] = outpad_lefts[5]-model_decoder_excit.pad_left
+            outpad_rights[6] = outpad_rights[5]-model_decoder_excit.pad_right
             melfb_t = np.linalg.pinv(librosa.filters.mel(args.fs, args.fftl, n_mels=config.mel_dim))
             for feat_file in feat_list:
                 # convert melsp
@@ -462,58 +450,36 @@ def main():
                             trg_code = trg_code[:,model_decoder_excit.pad_left:]
                             trj_src_code = trj_src_code[:,model_decoder_excit.pad_left:]
                             trj_trg_code = trj_trg_code[:,model_decoder_excit.pad_left:]
+                        cvmelsp_src_fix, _ = model_decoder_melsp_fix(lat_cat, y=src_code, aux=trj_src_code, e=cvlf0_src[:,:,:config.excit_dim])
                         cvmelsp_src, _ = model_decoder_melsp(lat_cat, y=src_code, aux=trj_src_code, e=cvlf0_src[:,:,:config.excit_dim])
+                        cvmelsp_fix, _ = model_decoder_melsp_fix(lat_cat, y=trg_code, aux=trj_trg_code, e=cvlf0[:,:,:config.excit_dim])
                         cvmelsp, _ = model_decoder_melsp(lat_cat, y=trg_code, aux=trj_trg_code, e=cvlf0[:,:,:config.excit_dim])
 
-                        if model_decoder_melsp.pad_right > 0:
-                            lat_cat = lat_cat[:,model_decoder_melsp.pad_left:-model_decoder_melsp.pad_right]
-                            trg_code = trg_code[:,model_decoder_melsp.pad_left:-model_decoder_melsp.pad_right]
-                            trj_trg_code = trj_trg_code[:,model_decoder_melsp.pad_left:-model_decoder_melsp.pad_right]
-                            cvlf0_src = cvlf0_src[:,model_decoder_melsp.pad_left:-model_decoder_melsp.pad_right]
-                            cvlf0 = cvlf0[:,model_decoder_melsp.pad_left:-model_decoder_melsp.pad_right]
-                        else:
-                            lat_cat = lat_cat[:,model_decoder_melsp.pad_left:]
-                            trg_code = trg_code[:,model_decoder_melsp.pad_left:]
-                            trj_trg_code = trj_trg_code[:,model_decoder_melsp.pad_left:]
-                            cvlf0_src = cvlf0_src[:,model_decoder_melsp.pad_left:]
-                            cvlf0 = cvlf0[:,model_decoder_melsp.pad_left:]
-                        cv_samples = model_waveform.generate(lat_cat, spk_code=trg_code, spk_aux=trj_trg_code, aux=torch.cat((cvlf0, cvmelsp), 2),
-                                        outpad_left=outpad_lefts[4], outpad_right=outpad_rights[4])
-                        logging.info(cv_samples.shape)
-                        cv_samples = pqmf.synthesis(cv_samples)[:,0].cpu().data.numpy() # B x 1 x T --> B x T
-                        logging.info(cv_samples.shape)
-
-                        if model_waveform.pad_right > 0:
-                            cvmelsp_src = cvmelsp_src[:,model_waveform.pad_left:-model_waveform.pad_right]
-                            cvmelsp = cvmelsp[:,model_waveform.pad_left:-model_waveform.pad_right]
-                        else:
-                            cvmelsp_src = cvmelsp_src[:,model_waveform.pad_left:]
-                            cvmelsp = cvmelsp[:,model_waveform.pad_left:]
-                        spk_logits, _, lat_rec, _ = model_encoder_melsp(cvmelsp_src, sampling=False)
-                        spk_logits_e, _, lat_rec_e, _ = model_encoder_excit(cvmelsp_src, sampling=False)
+                        spk_logits, _, lat_rec, _ = model_encoder_melsp(cvmelsp_src_fix, sampling=False)
+                        spk_logits_e, _, lat_rec_e, _ = model_encoder_excit(cvmelsp_src_fix, sampling=False)
                         logging.info('rec spkpost')
-                        if outpad_rights[5] > 0:
-                            logging.info(torch.mean(F.softmax(spk_logits[:,outpad_lefts[5]:-outpad_rights[5]], dim=-1), 1))
+                        if outpad_rights[4] > 0:
+                            logging.info(torch.mean(F.softmax(spk_logits[:,outpad_lefts[4]:-outpad_rights[4]], dim=-1), 1))
                         else:
-                            logging.info(torch.mean(F.softmax(spk_logits[:,outpad_lefts[5]:], dim=-1), 1))
+                            logging.info(torch.mean(F.softmax(spk_logits[:,outpad_lefts[4]:], dim=-1), 1))
                         logging.info('rec spkpost_e')
-                        if outpad_rights[5] > 0:
-                            logging.info(torch.mean(F.softmax(spk_logits_e[:,outpad_lefts[5]:-outpad_rights[5]], dim=-1), 1))
+                        if outpad_rights[4] > 0:
+                            logging.info(torch.mean(F.softmax(spk_logits_e[:,outpad_lefts[4]:-outpad_rights[4]], dim=-1), 1))
                         else:
-                            logging.info(torch.mean(F.softmax(spk_logits_e[:,outpad_lefts[5]:], dim=-1), 1))
+                            logging.info(torch.mean(F.softmax(spk_logits_e[:,outpad_lefts[4]:], dim=-1), 1))
 
-                        spk_logits, _, lat_cv, _ = model_encoder_melsp(cvmelsp, sampling=False)
-                        spk_logits_e, _, lat_cv_e, _ = model_encoder_excit(cvmelsp, sampling=False)
+                        spk_logits, _, lat_cv, _ = model_encoder_melsp(cvmelsp_fix, sampling=False)
+                        spk_logits_e, _, lat_cv_e, _ = model_encoder_excit(cvmelsp_fix, sampling=False)
                         logging.info('cv spkpost')
-                        if outpad_rights[5] > 0:
-                            logging.info(torch.mean(F.softmax(spk_logits[:,outpad_lefts[5]:-outpad_rights[5]], dim=-1), 1))
+                        if outpad_rights[4] > 0:
+                            logging.info(torch.mean(F.softmax(spk_logits[:,outpad_lefts[4]:-outpad_rights[4]], dim=-1), 1))
                         else:
-                            logging.info(torch.mean(F.softmax(spk_logits[:,outpad_lefts[5]:], dim=-1), 1))
+                            logging.info(torch.mean(F.softmax(spk_logits[:,outpad_lefts[4]:], dim=-1), 1))
                         logging.info('cv spkpost_e')
-                        if outpad_rights[5] > 0:
-                            logging.info(torch.mean(F.softmax(spk_logits_e[:,outpad_lefts[5]:-outpad_rights[5]], dim=-1), 1))
+                        if outpad_rights[4] > 0:
+                            logging.info(torch.mean(F.softmax(spk_logits_e[:,outpad_lefts[4]:-outpad_rights[4]], dim=-1), 1))
                         else:
-                            logging.info(torch.mean(F.softmax(spk_logits_e[:,outpad_lefts[5]:], dim=-1), 1))
+                            logging.info(torch.mean(F.softmax(spk_logits_e[:,outpad_lefts[4]:], dim=-1), 1))
 
                         if config.spkidtr_dim > 0:
                             src_code = model_spkidtr((torch.ones((1, lat_cv_e.shape[1]))*src_idx).cuda().long())
@@ -670,22 +636,22 @@ def main():
                     #    src_code = torch.repeat_interleave(z_e_src, lat_cv_e.shape[1], dim=1)
                     #    cvlf0_cyc, _ = model_decoder_excit(src_code, lat_cv_e)
 
+                    if outpad_rights[2] > 0:
+                        cvlf0_src = cvlf0_src[:,outpad_lefts[2]:-outpad_rights[2]]
+                        cvlf0 = cvlf0[:,outpad_lefts[2]:-outpad_rights[2]]
+                    else:
+                        cvlf0_src = cvlf0_src[:,outpad_lefts[2]:]
+                        cvlf0 = cvlf0[:,outpad_lefts[2]:]
                     if outpad_rights[3] > 0:
-                        cvlf0_src = cvlf0_src[:,outpad_lefts[3]:-outpad_rights[3]]
-                        cvlf0 = cvlf0[:,outpad_lefts[3]:-outpad_rights[3]]
+                        cvmelsp_src = cvmelsp_src[:,outpad_lefts[3]:-outpad_rights[3]]
+                        cvmelsp = cvmelsp[:,outpad_lefts[3]:-outpad_rights[3]]
                     else:
-                        cvlf0_src = cvlf0_src[:,outpad_lefts[3]:]
-                        cvlf0 = cvlf0[:,outpad_lefts[3]:]
-                    if outpad_rights[4] > 0:
-                        cvmelsp_src = cvmelsp_src[:,outpad_lefts[4]:-outpad_rights[4]]
-                        cvmelsp = cvmelsp[:,outpad_lefts[4]:-outpad_rights[4]]
+                        cvmelsp_src = cvmelsp_src[:,outpad_lefts[3]:]
+                        cvmelsp = cvmelsp[:,outpad_lefts[3]:]
+                    if outpad_rights[6] > 0:
+                        cvlf0_cyc = cvlf0_cyc[:,outpad_lefts[6]:-outpad_rights[6]]
                     else:
-                        cvmelsp_src = cvmelsp_src[:,outpad_lefts[4]:]
-                        cvmelsp = cvmelsp[:,outpad_lefts[4]:]
-                    if outpad_rights[7] > 0:
-                        cvlf0_cyc = cvlf0_cyc[:,outpad_lefts[7]:-outpad_rights[7]]
-                    else:
-                        cvlf0_cyc = cvlf0_cyc[:,outpad_lefts[7]:]
+                        cvlf0_cyc = cvlf0_cyc[:,outpad_lefts[6]:]
 
                     feat_cv = cvmelsp[0].cpu().data.numpy()
 
@@ -954,13 +920,6 @@ def main():
                     logging.info(wavpath)
                     sf.write(wavpath, wav, args.fs, 'PCM_16')
 
-                    samples = deemphasis(cv_samples[0], alpha=args.alpha)
-                    logging.info(samples.shape)
-                    wav = np.clip(samples, -1, 0.999969482421875)
-                    outpath = os.path.join(args.outdir, os.path.basename(feat_file).replace(".h5", "_cv_spklatexcitmelsp-mwdlp.wav"))
-                    sf.write(outpath, wav, args.fs, "PCM_16")
-                    logging.info("wrote %s." % (outpath))
-
                     #logging.info("synth gf cv GV")
                     #datamean = np.mean(melsp_cv_rest, axis=0)
                     #cvmelsp_gv =  args.gv_coeff*(np.sqrt(gv_mean_trg/cvgv_mean) * \
@@ -1111,16 +1070,16 @@ def main():
                 #        idx_frm += 1
                 #g.close()
 
-                #logging.info('write to h5')
-                #outh5dir = os.path.join(os.path.dirname(os.path.dirname(feat_file)), spk_src+"-"+args.spk_trg)
-                #if not os.path.exists(outh5dir):
-                #    os.makedirs(outh5dir)
-                #feat_file = os.path.join(outh5dir, os.path.basename(feat_file))
-                ## cv
-                #write_path = args.string_path
-                #logging.info(feat_file + ' ' + write_path)
-                #logging.info(feat_cv.shape)
-                #write_hdf5(feat_file, write_path, feat_cv)
+                logging.info('write to h5')
+                outh5dir = os.path.join(os.path.dirname(os.path.dirname(feat_file)), spk_src+"-"+args.spk_trg)
+                if not os.path.exists(outh5dir):
+                    os.makedirs(outh5dir)
+                feat_file = os.path.join(outh5dir, os.path.basename(feat_file))
+                # cv
+                write_path = args.string_path
+                logging.info(feat_file + ' ' + write_path)
+                logging.info(feat_cv.shape)
+                write_hdf5(feat_file, write_path, feat_cv)
 
                 count += 1
                 #if count >= 3:

@@ -1865,17 +1865,26 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
                 if aux is not None:
                     c_aux = torch.cat((spk_code, spk_aux, c, self.scale_in(aux.transpose(1,2)).transpose(1,2)), 2)
                 else:
-                    c_aux = torch.cat((spk_code, spk_aux, self.scale_in(c.transpose(1,2)).transpose(1,2)), 2)
+                    if self.scale_in_flag:
+                        c_aux = torch.cat((spk_code, spk_aux, self.scale_in(c.transpose(1,2)).transpose(1,2)), 2)
+                    else:
+                        c_aux = torch.cat((spk_code, spk_aux, c), 2)
             else:
                 if aux is not None:
                     c_aux = torch.cat((spk_code, c, self.scale_in(aux.transpose(1,2)).transpose(1,2)), 2)
                 else:
-                    c_aux = torch.cat((spk_code, self.scale_in(c.transpose(1,2)).transpose(1,2)), 2)
+                    if self.scale_in_flag:
+                        c_aux = torch.cat((spk_code, self.scale_in(c.transpose(1,2)).transpose(1,2)), 2)
+                    else:
+                        c_aux = torch.cat((spk_code, c), 2)
         elif spk_aux is not None:
             if aux is not None:
                 c_aux = torch.cat((spk_aux, c, self.scale_in(aux.transpose(1,2)).transpose(1,2)), 2)
             else:
-                c_aux = torch.cat((spk_aux, self.scale_in(c.transpose(1,2)).transpose(1,2)), 2)
+                if self.scale_in_flag:
+                    c_aux = torch.cat((spk_aux, self.scale_in(c.transpose(1,2)).transpose(1,2)), 2)
+                else:
+                    c_aux = torch.cat((spk_aux, c), 2)
         elif aux is not None:
             c_aux = torch.cat((c, self.scale_in(aux.transpose(1,2)).transpose(1,2)), 2)
         else:

@@ -380,6 +380,10 @@ def main():
                         type=int, help="kernel size of dilated causal convolution")
     parser.add_argument("--dilation_size_enc", default=1,
                         type=int, help="kernel size of dilated causal convolution")
+    parser.add_argument("--kernel_size_spk", default=5,
+                        type=int, help="kernel size of dilated causal convolution")
+    parser.add_argument("--dilation_size_spk", default=1,
+                        type=int, help="kernel size of dilated causal convolution")
     parser.add_argument("--kernel_size_dec", default=5,
                         type=int, help="kernel size of dilated causal convolution")
     parser.add_argument("--dilation_size_dec", default=1,
@@ -423,11 +427,15 @@ def main():
                         type=int, help="batch size (if set 0, utterance batch will be used)")
     parser.add_argument("--causal_conv_enc", default=False,
                         type=strtobool, help="batch size (if set 0, utterance batch will be used)")
+    parser.add_argument("--causal_conv_spk", default=True,
+                        type=strtobool, help="batch size (if set 0, utterance batch will be used)")
     parser.add_argument("--causal_conv_dec", default=True,
                         type=strtobool, help="batch size (if set 0, utterance batch will be used)")
     parser.add_argument("--causal_conv_lf0", default=True,
                         type=strtobool, help="batch size (if set 0, utterance batch will be used)")
     parser.add_argument("--right_size_enc", default=2,
+                        type=int, help="batch size (if set 0, utterance batch will be used)")
+    parser.add_argument("--right_size_spk", default=0,
                         type=int, help="batch size (if set 0, utterance batch will be used)")
     parser.add_argument("--right_size_dec", default=0,
                         type=int, help="batch size (if set 0, utterance batch will be used)")
@@ -460,7 +468,7 @@ def main():
                         type=int, help="seed number")
     parser.add_argument("--resume", default=None,
                         type=str, help="model path to restart training")
-    parser.add_argument("--pretrained", required=True,
+    parser.add_argument("--gen_model", required=True,
                         type=str, help="model path to restart training")
     #parser.add_argument("--string_path", default=None,
     #                    type=str, help="model path to restart training")
@@ -520,6 +528,9 @@ def main():
     # save args as conf
     args.fftsize = 2 ** (len(bin(200)) - 2 + 1)
     args.string_path = "/log_1pmelmagsp"
+    args.t_start = args.t_start // 2
+    args.t_end = args.t_end // 2
+    args.interval = args.interval // 2
     torch.save(args, args.expdir + "/model.conf")
 
     # define network
@@ -622,7 +633,7 @@ def main():
         red_dim=args.mel_dim,
         do_prob=args.do_prob)
     logging.info(model_spk)
-    criterion_ms = ModulationSpectrumLoss(args.fftsize, post=True)
+    criterion_ms = ModulationSpectrumLoss(args.fftsize)
     criterion_ce = torch.nn.CrossEntropyLoss(reduction='none')
     criterion_l1 = torch.nn.L1Loss(reduction='none')
     criterion_l2 = torch.nn.MSELoss(reduction='none')
@@ -717,7 +728,7 @@ def main():
         weight_decay=0,
     )
 
-    checkpoint = torch.load(args.pretrained)
+    checkpoint = torch.load(args.gen_model)
     model_encoder_melsp.load_state_dict(checkpoint["model_encoder_melsp"])
     model_decoder_melsp_fix.load_state_dict(checkpoint["model_decoder_melsp"])
     model_decoder_melsp.load_state_dict(checkpoint["model_decoder_melsp"])
@@ -727,7 +738,7 @@ def main():
     if (args.spkidtr_dim > 0):
         model_spkidtr.load_state_dict(checkpoint["model_spkidtr"])
     epoch_idx = checkpoint["iterations"]
-    logging.info("pretrained spkidtr from %d-iter checkpoint." % epoch_idx)
+    logging.info("gen_model from %d-iter checkpoint." % epoch_idx)
     epoch_idx = 0
 
     # resume
@@ -842,8 +853,9 @@ def main():
     logging.info(t_ends)
     logging.info(args.interval)
     logging.info(densities)
-    idx_stage = args.n_stage - 1
-    logging.info(idx_stage)
+    #idx_stage = args.n_stage - 1
+    #logging.info(idx_stage)
+    idx_stage = 0
 
     # train
     logging.info(args.fftsize)
@@ -856,8 +868,8 @@ def main():
     logging.info(f'enc_pad_right: {enc_pad_right}')
     spk_pad_left = model_spk.pad_left
     spk_pad_right = model_spk.pad_right
-    logging.info(f'lf0_pad_left: {lf0_pad_left}')
-    logging.info(f'lf0_pad_right: {lf0_pad_right}')
+    logging.info(f'spk_pad_left: {spk_pad_left}')
+    logging.info(f'spk_pad_right: {spk_pad_right}')
     lf0_pad_left = model_decoder_excit.pad_left
     lf0_pad_right = model_decoder_excit.pad_right
     logging.info(f'lf0_pad_left: {lf0_pad_left}')
@@ -1104,6 +1116,9 @@ def main():
         min_eval_loss_gv_src_trg = checkpoint["min_eval_loss_gv_src_trg"]
         iter_idx = checkpoint["iter_idx"]
         min_idx = checkpoint["min_idx"]
+    while idx_stage < args.n_stage-1 and iter_idx + 1 >= t_starts[idx_stage+1]:
+        idx_stage += 1
+        logging.info(idx_stage)
     logging.info("==%d EPOCH==" % (epoch_idx+1))
     logging.info("Training data")
     while epoch_idx < args.epoch_count:
@@ -1882,7 +1897,7 @@ def main():
                                                 + torch.sqrt(torch.mean(torch.mean(criterion_l2(melsp_est, melsp), -1), -1))
                         batch_loss_px_sum = batch_loss_melsp_.sum()
                         batch_loss_melsp[i] = batch_loss_melsp_.mean()
-                        batch_loss_px[i] = batch_loss_melsp[i]
+                        batch_loss_px[i] = batch_loss_melsp_.mean()
                         batch_loss_melsp_dB[i] = torch.mean(torch.sqrt(torch.mean((20*(torch.log10(torch.clamp(melsp_est_rest, min=1e-16))-melsp_rest_log))**2, -1)))
 
                         batch_loss_magsp_ = torch.mean(torch.sum(criterion_l1(magsp_est, magsp), -1), -1) \
@@ -2108,12 +2123,14 @@ def main():
                         eval_loss_melsp[i], eval_loss_melsp_std[i], eval_loss_melsp_dB[i], eval_loss_melsp_dB_std[i],
                         eval_loss_magsp[i], eval_loss_magsp_std[i], eval_loss_magsp_dB[i], eval_loss_magsp_dB_std[i])
             logging.info("%s (%.3f min., %.3f sec / batch)" % (text_log, total / 60.0, total / iter_count))
-            if ((round(eval_loss_gv_src_trg,2)-0.02) <= round(min_eval_loss_gv_src_trg,2)) and ((pair_exist and \
-                    (round(eval_loss_melsp_dB_src_trg,2)-0.01) <= round(min_eval_loss_melsp_dB_src_trg,2) \
-                    or (round(eval_loss_melsp_dB_src_trg+eval_loss_melsp_dB_src_trg_std,2)-0.01) <= round(min_eval_loss_melsp_dB_src_trg+min_eval_loss_melsp_dB_src_trg_std,2)) \
+            if (round(eval_loss_gv_src_trg-0.05,2) <= round(min_eval_loss_gv_src_trg,2)) and ((pair_exist and \
+                    (round(eval_loss_melsp_dB_src_trg-0.01,2) <= round(min_eval_loss_melsp_dB_src_trg,2) \
+                    or round(eval_loss_melsp_dB_src_trg+eval_loss_melsp_dB_src_trg_std-0.01,2) <= round(min_eval_loss_melsp_dB_src_trg+min_eval_loss_melsp_dB_src_trg_std,2) \
+                    or (round(eval_loss_melsp_dB_src_trg+eval_loss_melsp_dB_src_trg_std-0.04,2) <= round(min_eval_loss_melsp_dB_src_trg+min_eval_loss_melsp_dB_src_trg_std,2)
+                        and round(eval_loss_melsp_cv[0]-eval_loss_melsp[0],2) >= round(min_eval_loss_melsp_cv[0]-min_eval_loss_melsp[0],2)))) \
                 or (not pair_exist and \
-                    (eval_loss_melsp_cv[0]-eval_loss_melsp[0]) >= (min_eval_loss_melsp_cv[0]-min_eval_loss_melsp[0]) \
-                    and eval_loss_melsp_dB[0] <= min_eval_loss_melsp_dB[0])):
+                    round(eval_loss_melsp_cv[0]-eval_loss_melsp[0],2) >= round(min_eval_loss_melsp_cv[0]-min_eval_loss_melsp[0],2) \
+                    and round(eval_loss_melsp_dB[0],2) <= round(min_eval_loss_melsp_dB[0],2))):
                 min_eval_loss_gv_src_src = eval_loss_gv_src_src
                 min_eval_loss_gv_src_trg = eval_loss_gv_src_trg
                 min_eval_loss_sc_feat_in = eval_loss_sc_feat_in
@@ -2651,6 +2668,10 @@ def main():
                     batch_feat_magsp_cv_sc[i_cv], h_feat_magsp_cv_sc[i_cv] = model_classifier(feat_aux=batch_magsp_cv[i_cv], do=True)
                     ## cyclic reconstruction
                     if args.n_half_cyc > 1:
+                        idx_in += 1
+                        cv_feat = batch_melsp_cv_fix[i_cv].detach()
+                        _, _, z[j], h_z[j] = model_encoder_melsp(cv_feat, outpad_right=outpad_rights[idx_in], do=True)
+                        _, _, z_e[j], h_z_e[j] = model_encoder_excit(cv_feat, outpad_right=outpad_rights[idx_in], do=True)                        
                         ## time-varying speaker conditionings
                         idx_in += 1
                         z_cat = torch.cat((z_e[j], z[j]), 2)
@@ -2842,7 +2863,13 @@ def main():
                     optimizer.step()
 
                     with torch.no_grad():
-                        sparsify(model_decoder_melsp, t_ends[idx_stage], t_starts[idx_stage], t_ends[idx_stage], args.interval, densities[idx_stage], densities_p=densities[idx_stage-1])
+                        #sparsify(model_decoder_melsp, t_ends[idx_stage], t_starts[idx_stage], t_ends[idx_stage], args.interval, densities[idx_stage], densities_p=densities[idx_stage-1])
+                        if idx_stage < args.n_stage-1 and iter_idx + 1 == t_starts[idx_stage+1]:
+                            idx_stage += 1
+                        if idx_stage > 0:
+                            sparsify(model_decoder_melsp, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities[idx_stage], densities_p=densities[idx_stage-1])
+                        else:
+                            sparsify(model_decoder_melsp, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities[idx_stage])
 
                     text_log = "batch loss_select %lf " % (batch_loss.item())
                     logging.info("%s (%.3f sec)" % (text_log, time.time() - start))
@@ -2889,7 +2916,7 @@ def main():
                                         + torch.sqrt(torch.mean(torch.mean(criterion_l2(melsp_est, melsp), -1), -1))
                 batch_loss_px_sum = batch_loss_melsp_.sum()
                 batch_loss_melsp[i] = batch_loss_melsp_.mean()
-                batch_loss_px[i] = batch_loss_melsp[i]
+                batch_loss_px[i] = batch_loss_melsp_.mean()
                 batch_loss_melsp_dB[i] = torch.mean(torch.sqrt(torch.mean((20*(torch.log10(torch.clamp(melsp_est_rest, min=1e-16))-melsp_rest_log))**2, -1)))
 
                 batch_loss_magsp_ = torch.mean(torch.sum(criterion_l1(magsp_est, magsp), -1), -1) \
@@ -2995,7 +3022,13 @@ def main():
             optimizer.step()
 
             with torch.no_grad():
-                sparsify(model_decoder_melsp, t_ends[idx_stage], t_starts[idx_stage], t_ends[idx_stage], args.interval, densities[idx_stage], densities_p=densities[idx_stage-1])
+                #sparsify(model_decoder_melsp, t_ends[idx_stage], t_starts[idx_stage], t_ends[idx_stage], args.interval, densities[idx_stage], densities_p=densities[idx_stage-1])
+                if idx_stage < args.n_stage-1 and iter_idx + 1 == t_starts[idx_stage+1]:
+                    idx_stage += 1
+                if idx_stage > 0:
+                    sparsify(model_decoder_melsp, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities[idx_stage], densities_p=densities[idx_stage-1])
+                else:
+                    sparsify(model_decoder_melsp, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities[idx_stage])
 
             text_log = "batch loss [%d] %d %d %.3f %.3f " % (c_idx+1, f_ss, f_bs, batch_loss_sc_feat_in.item(), batch_loss_sc_feat_magsp_in.item())
             for i in range(args.n_half_cyc):

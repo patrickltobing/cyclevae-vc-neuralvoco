@@ -264,7 +264,7 @@ def main():
                     red_dim=config.mel_dim)
                 logging.info(model_spk)
                 model_waveform = GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(
-                    feat_dim=n_spk*2+config.lat_dim+config.lat_dim_e+config.full_excit_dim,
+                    feat_dim=n_spk*2+config.mel_dim,
                     upsampling_factor=config.upsampling_factor,
                     hidden_units=config.hidden_units_wave,
                     hidden_units_2=config.hidden_units_wave_2,
@@ -277,7 +277,7 @@ def main():
                     n_bands=config.n_bands,
                     pad_first=True,
                     n_spk=n_spk,
-                    scale_in_aux_dim=config.full_excit_dim,
+                    scale_in_aux_dim=config.mel_dim,
                     red_dim=config.mel_dim)
                 logging.info(model_waveform)
                 model_encoder_melsp.load_state_dict(torch.load(args.model)["model_encoder_melsp"])
@@ -366,10 +366,10 @@ def main():
             outpad_rights[1] = outpad_rights[0]-model_spk.pad_right
             outpad_lefts[2] = outpad_lefts[1]-model_decoder_excit.pad_left
             outpad_rights[2] = outpad_rights[1]-model_decoder_excit.pad_right
-            outpad_lefts[3] = outpad_lefts[2]-model_waveform.pad_left
-            outpad_rights[3] = outpad_rights[2]-model_waveform.pad_right
-            outpad_lefts[4] = outpad_lefts[3]-model_decoder_melsp.pad_left
-            outpad_rights[4] = outpad_rights[3]-model_decoder_melsp.pad_right
+            outpad_lefts[3] = outpad_lefts[2]-model_decoder_melsp.pad_left
+            outpad_rights[3] = outpad_rights[2]-model_decoder_melsp.pad_right
+            outpad_lefts[4] = outpad_lefts[3]-model_waveform.pad_left
+            outpad_rights[4] = outpad_rights[3]-model_waveform.pad_right
             outpad_lefts[5] = outpad_lefts[4]-model_encoder_melsp.pad_left
             outpad_rights[5] = outpad_rights[4]-model_encoder_melsp.pad_right
             outpad_lefts[6] = outpad_lefts[5]-model_spk.pad_left
@@ -462,31 +462,31 @@ def main():
                             trg_code = trg_code[:,model_decoder_excit.pad_left:]
                             trj_src_code = trj_src_code[:,model_decoder_excit.pad_left:]
                             trj_trg_code = trj_trg_code[:,model_decoder_excit.pad_left:]
-                        cv_samples = model_waveform.generate(lat_cat, spk_code=trg_code, spk_aux=trj_trg_code, aux=cvlf0,
-                                        outpad_left=outpad_lefts[3], outpad_right=outpad_rights[3])
+                        cvmelsp_src, _ = model_decoder_melsp(lat_cat, y=src_code, aux=trj_src_code, e=cvlf0_src[:,:,:config.excit_dim])
+                        cvmelsp, _ = model_decoder_melsp(lat_cat, y=trg_code, aux=trj_trg_code, e=cvlf0[:,:,:config.excit_dim])
+
+                        if model_decoder_melsp.pad_right > 0:
+                            trg_code = trg_code[:,model_decoder_melsp.pad_left:-model_decoder_melsp.pad_right]
+                            trj_trg_code = trj_trg_code[:,model_decoder_melsp.pad_left:-model_decoder_melsp.pad_right]
+                            cvlf0_src = cvlf0_src[:,model_decoder_melsp.pad_left:-model_decoder_melsp.pad_right]
+                            cvlf0 = cvlf0[:,model_decoder_melsp.pad_left:-model_decoder_melsp.pad_right]
+                        else:
+                            trg_code = trg_code[:,model_decoder_melsp.pad_left:]
+                            trj_trg_code = trj_trg_code[:,model_decoder_melsp.pad_left:]
+                            cvlf0_src = cvlf0_src[:,model_decoder_melsp.pad_left:]
+                            cvlf0 = cvlf0[:,model_decoder_melsp.pad_left:]
+                        cv_samples = model_waveform.generate(cvmelsp, spk_code=trg_code, spk_aux=trj_trg_code,
+                                        outpad_left=outpad_lefts[4], outpad_right=outpad_rights[4])
                         logging.info(cv_samples.shape)
                         cv_samples = pqmf.synthesis(cv_samples)[:,0].cpu().data.numpy() # B x 1 x T --> B x T
                         logging.info(cv_samples.shape)
 
                         if model_waveform.pad_right > 0:
-                            lat_cat = lat_cat[:,model_waveform.pad_left:-model_waveform.pad_right]
-                            src_code = src_code[:,model_waveform.pad_left:-model_waveform.pad_right]
-                            trg_code = trg_code[:,model_waveform.pad_left:-model_waveform.pad_right]
-                            trj_src_code = trj_src_code[:,model_waveform.pad_left:-model_waveform.pad_right]
-                            trj_trg_code = trj_trg_code[:,model_waveform.pad_left:-model_waveform.pad_right]
-                            cvlf0_src = cvlf0_src[:,model_waveform.pad_left:-model_waveform.pad_right]
-                            cvlf0 = cvlf0[:,model_waveform.pad_left:-model_waveform.pad_right]
+                            cvmelsp_src = cvmelsp_src[:,model_waveform.pad_left:-model_waveform.pad_right]
+                            cvmelsp = cvmelsp[:,model_waveform.pad_left:-model_waveform.pad_right]
                         else:
-                            lat_cat = lat_cat[:,model_waveform.pad_left:]
-                            src_code = src_code[:,model_waveform.pad_left:]
-                            trg_code = trg_code[:,model_waveform.pad_left:]
-                            trj_src_code = trj_src_code[:,model_waveform.pad_left:]
-                            trj_trg_code = trj_trg_code[:,model_waveform.pad_left:]
-                            cvlf0_src = cvlf0_src[:,model_waveform.pad_left:]
-                            cvlf0 = cvlf0[:,model_waveform.pad_left:]
-                        cvmelsp_src, _ = model_decoder_melsp(lat_cat, y=src_code, aux=trj_src_code, e=cvlf0_src[:,:,:config.excit_dim])
-                        cvmelsp, _ = model_decoder_melsp(lat_cat, y=trg_code, aux=trj_trg_code, e=cvlf0[:,:,:config.excit_dim])
-
+                            cvmelsp_src = cvmelsp_src[:,model_waveform.pad_left:]
+                            cvmelsp = cvmelsp[:,model_waveform.pad_left:]
                         spk_logits, _, lat_rec, _ = model_encoder_melsp(cvmelsp_src, sampling=False)
                         spk_logits_e, _, lat_rec_e, _ = model_encoder_excit(cvmelsp_src, sampling=False)
                         logging.info('rec spkpost')
@@ -915,16 +915,16 @@ def main():
                 logging.info('cv cap')
                 logging.info(cvcodeap[10:15])
 
-                logging.info("synth anasyn")
-                magsp = np.matmul(melfb_t, melsp_rest.T)
-                logging.info(magsp.shape)
-                hop_length = int((args.fs/1000)*args.shiftms)
-                win_length = int((args.fs/1000)*args.winms)
-                wav = np.clip(librosa.core.griffinlim(magsp, hop_length=hop_length,
-                            win_length=win_length, window='hann'), -1, 0.999969482421875)
-                wavpath = os.path.join(args.outdir,os.path.basename(feat_file).replace(".h5","_anasyn.wav"))
-                logging.info(wavpath)
-                sf.write(wavpath, wav, args.fs, 'PCM_16')
+                #logging.info("synth anasyn")
+                #magsp = np.matmul(melfb_t, melsp_rest.T)
+                #logging.info(magsp.shape)
+                #hop_length = int((args.fs/1000)*args.shiftms)
+                #win_length = int((args.fs/1000)*args.winms)
+                #wav = np.clip(librosa.core.griffinlim(magsp, hop_length=hop_length,
+                #            win_length=win_length, window='hann'), -1, 0.999969482421875)
+                #wavpath = os.path.join(args.outdir,os.path.basename(feat_file).replace(".h5","_anasyn.wav"))
+                #logging.info(wavpath)
+                #sf.write(wavpath, wav, args.fs, 'PCM_16')
 
                 #if trg_exist:
                 #    logging.info("synth anasyn_trg")
@@ -934,28 +934,28 @@ def main():
                 #    logging.info(wavpath)
 
                 if args.n_interp == 0:
-                    logging.info("synth gf rec")
-                    recmagsp = np.matmul(melfb_t, melsp_src_rest.T)
-                    logging.info(recmagsp.shape)
-                    wav = np.clip(librosa.core.griffinlim(recmagsp, hop_length=hop_length,
-                                win_length=win_length, window='hann'), -1, 0.999969482421875)
-                    wavpath = os.path.join(args.outdir, os.path.basename(feat_file).replace(".h5", "_rec.wav"))
-                    logging.info(wavpath)
-                    sf.write(wavpath, wav, args.fs, 'PCM_16')
+                #    logging.info("synth gf rec")
+                #    recmagsp = np.matmul(melfb_t, melsp_src_rest.T)
+                #    logging.info(recmagsp.shape)
+                #    wav = np.clip(librosa.core.griffinlim(recmagsp, hop_length=hop_length,
+                #                win_length=win_length, window='hann'), -1, 0.999969482421875)
+                #    wavpath = os.path.join(args.outdir, os.path.basename(feat_file).replace(".h5", "_rec.wav"))
+                #    logging.info(wavpath)
+                #    sf.write(wavpath, wav, args.fs, 'PCM_16')
 
-                    logging.info("synth gf cv")
-                    cvmagsp = np.matmul(melfb_t, melsp_cv_rest.T)
-                    logging.info(cvmagsp.shape)
-                    wav = np.clip(librosa.core.griffinlim(cvmagsp, hop_length=hop_length,
-                                win_length=win_length, window='hann'), -1, 0.999969482421875)
-                    wavpath = os.path.join(args.outdir, os.path.basename(feat_file).replace(".h5", "_cv.wav"))
-                    logging.info(wavpath)
-                    sf.write(wavpath, wav, args.fs, 'PCM_16')
+                #    logging.info("synth gf cv")
+                #    cvmagsp = np.matmul(melfb_t, melsp_cv_rest.T)
+                #    logging.info(cvmagsp.shape)
+                #    wav = np.clip(librosa.core.griffinlim(cvmagsp, hop_length=hop_length,
+                #                win_length=win_length, window='hann'), -1, 0.999969482421875)
+                #    wavpath = os.path.join(args.outdir, os.path.basename(feat_file).replace(".h5", "_cv.wav"))
+                #    logging.info(wavpath)
+                #    sf.write(wavpath, wav, args.fs, 'PCM_16')
 
                     samples = deemphasis(cv_samples[0], alpha=args.alpha)
                     logging.info(samples.shape)
                     wav = np.clip(samples, -1, 0.999969482421875)
-                    outpath = os.path.join(args.outdir, os.path.basename(feat_file).replace(".h5", "_cv_spklatexcit-mwdlp.wav"))
+                    outpath = os.path.join(args.outdir, os.path.basename(feat_file).replace(".h5", "_cv_spkmelsp-mwdlp.wav"))
                     sf.write(outpath, wav, args.fs, "PCM_16")
                     logging.info("wrote %s." % (outpath))
 

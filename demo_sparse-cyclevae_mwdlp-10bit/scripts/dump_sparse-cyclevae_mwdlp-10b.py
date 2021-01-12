@@ -28,7 +28,7 @@
     Based on dump_lpcnet.py
     Modified for 16-bit output multiband wavernn with data-driven LPC
     by: Patrick Lumban Tobing (Nagoya University) on October 2020
-    Further modified for cyclevae and 10-bit mu-law output multiband wavernn with data-driven LPC.
+    Further modified for sparse cyclevae and 10-bit mu-law output multiband wavernn with data-driven LPC.
     by: Patrick Lumban Tobing (Nagoya University) on December 2020 - January 2021
 '''
 
@@ -38,7 +38,7 @@ import sys
 
 import torch
 from vcneuvoco import GRU_VAE_ENCODER, GRU_SPEC_DECODER, GRU_EXCIT_DECODER
-from vcneuvoco import GRU_SPK, GRU_POST_NET, SPKID_TRANSFORM_LAYER
+from vcneuvoco import GRU_SPK, SPKID_TRANSFORM_LAYER
 from vcneuvoco import GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF, decode_mu_law
 from pqmf import PQMF
 
@@ -215,22 +215,6 @@ def main():
         right_size=config_cycvae.right_size_spk,
         red_dim=config_cycvae.mel_dim)
     print(model_spk)
-    model_post = GRU_POST_NET(
-        spec_dim=config_cycvae.mel_dim,
-        excit_dim=config_cycvae.excit_dim+config_cycvae.cap_dim+1,
-        n_spk=n_spk,
-        aux_dim=n_spk,
-        hidden_layers=config_cycvae.hidden_layers_post,
-        hidden_units=config_cycvae.hidden_units_post,
-        kernel_size=config_cycvae.kernel_size_post,
-        dilation_size=config_cycvae.dilation_size_post,
-        causal_conv=config_cycvae.causal_conv_post,
-        pad_first=True,
-        right_size=config_cycvae.right_size_post,
-        res=True,
-        laplace=True,
-        red_dim=config_cycvae.mel_dim)
-    print(model_post)
     model = GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(
         feat_dim=config.mcep_dim+config.excit_dim,
         upsampling_factor=config.upsampling_factor,
@@ -253,7 +237,6 @@ def main():
     if (config_cycvae.spkidtr_dim > 0):
         model_spkidtr.load_state_dict(torch.load(args.model_cycvae, map_location=device)["model_spkidtr"])
     model_spk.load_state_dict(torch.load(args.model_cycvae, map_location=device)["model_spk"])
-    model_post.load_state_dict(torch.load(args.model_cycvae, map_location=device)["model_post"])
     model.load_state_dict(torch.load(args.model, map_location=device)["model_waveform"])
     model_encoder_melsp.remove_weight_norm()
     model_decoder_melsp.remove_weight_norm()
@@ -262,7 +245,6 @@ def main():
     if (config_cycvae.spkidtr_dim > 0):
         model_spkidtr.remove_weight_norm()
     model_spk.remove_weight_norm()
-    model_post.remove_weight_norm()
     model.remove_weight_norm()
     model_encoder_melsp.eval()
     model_decoder_melsp.eval()
@@ -271,7 +253,6 @@ def main():
     if (config_cycvae.spkidtr_dim > 0):
         model_spkidtr.eval()
     model_spk.eval()
-    model_post.eval()
     model.eval()
     for param in model_encoder_melsp.parameters():
         param.requires_grad = False
@@ -285,8 +266,6 @@ def main():
         for param in model_spkidtr.parameters():
             param.requires_grad = False
     for param in model_spk.parameters():
-        param.requires_grad = False
-    for param in model_post.parameters():
         param.requires_grad = False
     for name, param in model.named_parameters():
         param.requires_grad = False
@@ -630,7 +609,7 @@ def main():
     f.close()
     hf.close()
 
-    ## CycleVAE+PostNet+SpkNet for Mel-Spectrogram conversion with intermediate excitation estimation
+    ## CycleVAE+SpkNet for Mel-Spectrogram conversion with intermediate excitation estimation
     cfile = args.c_cycvae_file
     hfile = args.h_cycvae_file
     
@@ -669,17 +648,6 @@ def main():
             .format(name, name, name, mean.shape[0]))
     hf.write('extern const NormStats {};\n\n'.format(name))
 
-    ## Dump uvcap_norm
-    name = 'uvcap_norm'
-    print("printing layer " + name + " of type " + model_post.scale_in.__class__.__name__)
-    std = 1.0/np.diag(weights)[2:3] #in training script, diagonal square weights matrix defined as 1/std
-    mean = (-bias[2:3])*std #in training script, bias defined as -mean/std
-    printVector(f, mean, name + '_mean')
-    printVector(f, std, name + '_std')
-    f.write('const NormStats {} = {{\n   {}_mean,\n   {}_std,\n   {}\n}};\n\n'
-            .format(name, name, name, mean.shape[0]))
-    hf.write('extern const NormStats {};\n\n'.format(name))
-
     ## Dump in_red spk
     name = 'fc_red_spk'
     print("printing layer " + name)
@@ -712,19 +680,6 @@ def main():
     #defined as sequential with relu activation
     weights = model_decoder_melsp.in_red[0].weight.permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
     bias = model_decoder_melsp.in_red[0].bias.numpy()
-    printVector(f, weights, name + '_weights')
-    printVector(f, bias, name + '_bias')
-    f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_RELU\n}};\n\n'
-            .format(name, name, name, weights.shape[0], weights.shape[1]))
-    hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
-    hf.write('extern const DenseLayer {};\n\n'.format(name))
-
-    ## Dump in_red post
-    name = 'fc_red_post'
-    print("printing layer " + name)
-    #defined as sequential with relu activation
-    weights = model_post.in_red[0].weight.permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
-    bias = model_post.in_red[0].bias.numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
     f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_RELU\n}};\n\n'
@@ -845,27 +800,6 @@ def main():
     hf.write('#define {}_DELAY {}\n'.format(name.upper(), model_decoder_melsp.pad_right))
     hf.write('extern const Conv1DLayer {};\n\n'.format(name))
 
-    ## Dump conv_in post
-    name = "feature_conv_post"
-    #FIXME: make model format without sequential for two-sided/causal conv
-    if model_post.right_size <= 0:
-        print("printing layer " + name + " of type " + model_post.conv.conv[0].__class__.__name__)
-        weights = model_post.conv.conv[0].weight.permute(2,1,0).numpy()
-        bias = model_post.conv.conv[0].bias.numpy()
-    else:
-        print("printing layer " + name + " of type " + model_post.conv.conv.__class__.__name__)
-        weights = model_post.conv.conv.weight.permute(2,1,0).numpy()
-        bias = model_post.conv.conv.bias.numpy()
-    printVector(f, weights, name + '_weights')
-    printVector(f, bias, name + '_bias')
-    f.write('const Conv1DLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, {}, ACTIVATION_LINEAR\n}};\n\n'
-            .format(name, name, name, weights.shape[1], weights.shape[0], weights.shape[2]))
-    hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[2]))
-    hf.write('#define {}_STATE_SIZE ({}*{})\n'.format(name.upper(), weights.shape[1],
-        model_post.pad_left+1+model_post.pad_right-1))
-    hf.write('#define {}_DELAY {}\n'.format(name.upper(), model_post.pad_right))
-    hf.write('extern const Conv1DLayer {};\n\n'.format(name))
-
     #dump sparse_gru_enc_melsp
     name = 'sparse_gru_enc_melsp'
     print("printing layer " + name + " of type sparse " + model_encoder_melsp.gru.__class__.__name__)
@@ -979,28 +913,6 @@ def main():
     hf.write('#define {}_STATE_SIZE {}\n'.format(name.upper(), weights_hh.shape[1]//3))
     hf.write('extern const SparseFrameGRULayer {};\n\n'.format(name))
 
-    #dump dense_gru_post
-    name = "gru_post"
-    print("printing layer " + name + " of type " + model_post.gru.__class__.__name__)
-    weights_ih = model_post.gru.weight_ih_l0.transpose(0,1).numpy()
-    weights_hh = model_post.gru.weight_hh_l0.transpose(0,1).numpy()
-    bias_ih = model_post.gru.bias_ih_l0
-    bias_hh = model_post.gru.bias_hh_l0
-    printVector(f, weights_ih, name + '_input_weights')
-    printVector(f, weights_hh, name + '_recurrent_weights')
-    printVector(f, bias_ih, name + '_input_bias')
-    printVector(f, bias_hh, name + '_recurrent_bias')
-    activation = 'TANH'
-    reset_after = 1
-    neurons = weights_hh.shape[1]//3
-    max_rnn_neurons = max(max_rnn_neurons, neurons)
-    f.write('const FrameGRULayer {} = {{\n   {}_input_bias,\n   {}_recurrent_bias,\n   {}_input_weights,\n   {}_recurrent_weights,\n   {}, {}, ACTIVATION_{}, '\
-        '{}\n}};\n\n'.format(name, name, name, name, name, weights_ih.shape[0], weights_hh.shape[1]//3,
-            activation, reset_after))
-    hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights_hh.shape[1]//3))
-    hf.write('#define {}_STATE_SIZE {}\n'.format(name.upper(), weights_hh.shape[1]//3))
-    hf.write('extern const FrameGRULayer {};\n\n'.format(name))
-
     #PyTorch = (out,in,ks) / (out,in)
     #to
     #Keras = (ks,in,out) / (in,out)
@@ -1046,8 +958,8 @@ def main():
     #dump fc_out_dec_excit
     name = 'fc_out_dec_excit'
     print("printing layer " + name)
-    weights = model_decoder_excit.out.weight.permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
-    bias = model_decoder_excit.out.bias.numpy()
+    weights = model_decoder_excit.out.weight.permute(2,1,0)[0,:,:2].numpy() #it's defined as conv1d with ks=1 on the model
+    bias = model_decoder_excit.out.bias[:2].numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
     f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_LINEAR\n}};\n\n'
@@ -1063,18 +975,6 @@ def main():
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
     f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_TANHSHRINK\n}};\n\n'
-            .format(name, name, name, weights.shape[0], weights.shape[1]))
-    hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
-    hf.write('extern const DenseLayer {};\n\n'.format(name))
-
-    #dump fc_out_post
-    name = 'fc_out_post'
-    print("printing layer " + name)
-    weights = model_post.out.weight.permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
-    bias = model_post.out.bias.numpy()
-    printVector(f, weights, name + '_weights')
-    printVector(f, bias, name + '_bias')
-    f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_LINEAR\n}};\n\n'
             .format(name, name, name, weights.shape[0], weights.shape[1]))
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
     hf.write('extern const DenseLayer {};\n\n'.format(name))
@@ -1109,20 +1009,17 @@ def main():
     hf.write('#define RNN_SPK_NEURONS {}\n\n'.format(model_spk.hidden_units))
     hf.write('#define RNN_DEC_MELSP_NEURONS {}\n\n'.format(model_decoder_melsp.hidden_units))
     hf.write('#define RNN_DEC_EXCIT_NEURONS {}\n\n'.format(model_decoder_excit.hidden_units))
-    hf.write('#define RNN_POST_NEURONS {}\n\n'.format(model_post.hidden_units))
     hf.write('#define FEATURE_DIM_MELSP {}\n\n'.format(model_decoder_melsp.spec_dim))
     hf.write('#define FEATURE_LAT_DIM_MELSP {}\n\n'.format(model_encoder_melsp.lat_dim))
     hf.write('#define FEATURE_LAT_DIM_EXCIT {}\n\n'.format(model_encoder_excit.lat_dim))
     hf.write('#define FEATURE_N_SPK {}\n\n'.format(model_decoder_melsp.n_spk))
-    hf.write('#define FEATURE_CAP_DIM {}\n\n'.format(model_decoder_excit.cap_dim))
     hf.write('#define FEATURE_RED_DIM {}\n\n'.format(model_decoder_melsp.red_dim))
     hf.write('#define FEATURE_CONV_ENC_STATE_SIZE {}\n\n'.format(enc_melsp_state_size))
-    hf.write('#define FEATURE_CONV_VC_DELAY {}\n\n'.format(model_encoder_melsp.pad_right+model_spk.pad_right+model_decoder_excit.pad_right+model_decoder_melsp.pad_right+model_post.pad_right))
+    hf.write('#define FEATURE_CONV_VC_DELAY {}\n\n'.format(model_encoder_melsp.pad_right+model_spk.pad_right+model_decoder_excit.pad_right+model_decoder_melsp.pad_right))
     hf.write('#define ENC_CONV_KERNEL_1 {}\n\n'.format(model_encoder_melsp.kernel_size-1))
     hf.write('#define SPK_CONV_KERNEL_1 {}\n\n'.format(model_spk.kernel_size-1))
     hf.write('#define DEC_EXCIT_CONV_KERNEL_1 {}\n\n'.format(model_decoder_excit.kernel_size-1))
     hf.write('#define DEC_MELSP_CONV_KERNEL_1 {}\n\n'.format(model_decoder_melsp.kernel_size-1))
-    hf.write('#define POST_CONV_KERNEL_1 {}\n\n'.format(model_post.kernel_size-1))
 
     hf.write('typedef struct {\n')
     hf.write('  float feature_conv_enc_melsp_state[FEATURE_CONV_ENC_MELSP_STATE_SIZE];\n')
@@ -1130,14 +1027,12 @@ def main():
     hf.write('  float feature_conv_spk_state[FEATURE_CONV_SPK_STATE_SIZE];\n')
     hf.write('  float feature_conv_dec_excit_state[FEATURE_CONV_DEC_EXCIT_STATE_SIZE];\n')
     hf.write('  float feature_conv_dec_melsp_state[FEATURE_CONV_DEC_MELSP_STATE_SIZE];\n')
-    hf.write('  float feature_conv_post_state[FEATURE_CONV_POST_STATE_SIZE];\n')
     hf.write('  float gru_enc_melsp_state[SPARSE_GRU_ENC_MELSP_STATE_SIZE];\n')
     hf.write('  float gru_enc_excit_state[SPARSE_GRU_ENC_EXCIT_STATE_SIZE];\n')
     hf.write('  float gru_spk_state[GRU_SPK_STATE_SIZE];\n')
     hf.write('  float gru_dec_excit_state[GRU_DEC_EXCIT_STATE_SIZE];\n')
     hf.write('  float gru_dec_melsp_state[SPARSE_GRU_DEC_MELSP_STATE_SIZE];\n')
-    hf.write('  float gru_post_state[GRU_POST_STATE_SIZE];\n')
-    hf.write('} CycleVAEPostMelspExcitSpkNNetState;\n')
+    hf.write('} CycleVAEMelspExcitSpkNNetState;\n')
 
     hf.write('\n\n#endif\n')
 
@@ -1146,10 +1041,10 @@ def main():
 
     ## Dump high-pass filter coeffs, half hanning-window coeffs, mel-filterbank, and mu-law 10 table here
     ## hpassfilt.h, halfwin.h, melfb.h, mu_law_10_table.h
-    fs = config_cycvae.fs
-    #fs = FS
-    fftl = config_cycvae.fftl
-    #fftl = FFTL
+    #fs = config_cycvae.fs
+    fs = FS
+    #fftl = config_cycvae.fftl
+    fftl = FFTL
     shiftms = SHIFTMS
     winms = WINMS
     print(f'{fs} {fftl} {shiftms} {winms}')

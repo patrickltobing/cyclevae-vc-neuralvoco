@@ -1597,7 +1597,8 @@ class GRU_EXCIT_DECODER(nn.Module):
 class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
     def __init__(self, feat_dim=80, upsampling_factor=120, hidden_units=640, hidden_units_2=32, n_quantize=65536,
             kernel_size=7, dilation_size=1, do_prob=0, causal_conv=False, use_weight_norm=True, lpc=6,
-                right_size=2, n_bands=5, excit_dim=0, pad_first=False, mid_out_flag=True):
+                right_size=2, n_bands=5, excit_dim=0, pad_first=False, mid_out_flag=True, red_dim=None,
+                    scale_in_aux_dim=None, n_spk=None, scale_in_flag=True):
         super(GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF, self).__init__()
         self.feat_dim = feat_dim
         self.in_dim = self.feat_dim
@@ -1636,9 +1637,25 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
                 self.mid_out = self.cf_dim_in
         else:
             self.mid_out = None
+        self.red_dim = red_dim
+        self.scale_in_aux_dim = scale_in_aux_dim
+        self.scale_in_flag = scale_in_flag
+        self.n_spk = n_spk
+
+        # Norm. layer
+        if self.scale_in_flag:
+            if self.scale_in_aux_dim is not None:
+                self.scale_in = nn.Conv1d(self.scale_in_aux_dim, self.scale_in_aux_dim, 1)
+            else:
+                self.scale_in = nn.Conv1d(self.in_dim, self.in_dim, 1)
+
+        # Reduction layers
+        if self.red_dim is not None:
+            in_red = [nn.Conv1d(self.in_dim, self.red_dim, 1), nn.ReLU()]
+            self.in_red = nn.Sequential(*in_red)
+            self.in_dim = self.red_dim
 
         # Conv. layers
-        self.scale_in = nn.Conv1d(self.in_dim, self.in_dim, 1)
         if self.right_size <= 0:
             if not self.causal_conv:
                 self.conv = TwoSidedDilConv1d(in_dim=self.in_dim, kernel_size=self.kernel_size,
@@ -1687,18 +1704,102 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
         # apply weight norm
         if self.use_weight_norm:
             self.apply_weight_norm()
-            torch.nn.utils.remove_weight_norm(self.scale_in)
+            if self.scale_in_flag:
+                torch.nn.utils.remove_weight_norm(self.scale_in)
         else:
             self.apply(initialize)
 
-    def forward(self, c, x_c_prev, x_f_prev, x_c, h=None, h_2=None, h_f=None, h_spk=None, do=False, x_c_lpc=None, x_f_lpc=None):
+    def forward(self, c, x_c_prev, x_f_prev, x_c, spk_code=None, spk_aux=None, aux=None, h=None, h_2=None, h_f=None, h_spk=None, do=False, x_c_lpc=None, x_f_lpc=None, outpad_left=None, outpad_right=None):
         # Input
-        if self.do_prob > 0 and do:
-            conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(self.scale_in(c.transpose(1,2)))).transpose(1,2),self.upsampling_factor,dim=1))
+        if spk_code is not None:
+            if len(spk_code.shape) == 2:
+                spk_code = F.one_hot(spk_code, num_classes=self.n_spk).float()
+            if spk_aux is not None:
+                if aux is not None:
+                    c_aux = torch.cat((spk_code, spk_aux, c, self.scale_in(aux.transpose(1,2)).transpose(1,2)), 2)
+                else:
+                    if self.scale_in_flag:
+                        c_aux = torch.cat((spk_code, spk_aux, self.scale_in(c.transpose(1,2)).transpose(1,2)), 2)
+                    else:
+                        c_aux = torch.cat((spk_code, spk_aux, c), 2)
+            else:
+                if aux is not None:
+                    c_aux = torch.cat((spk_code, c, self.scale_in(aux.transpose(1,2)).transpose(1,2)), 2)
+                else:
+                    if self.scale_in_flag:
+                        c_aux = torch.cat((spk_code, self.scale_in(c.transpose(1,2)).transpose(1,2)), 2)
+                    else:
+                        c_aux = torch.cat((spk_code, c), 2)
+        elif spk_aux is not None:
+            if aux is not None:
+                c_aux = torch.cat((spk_aux, c, self.scale_in(aux.transpose(1,2)).transpose(1,2)), 2)
+            else:
+                if self.scale_in_flag:
+                    c_aux = torch.cat((spk_aux, self.scale_in(c.transpose(1,2)).transpose(1,2)), 2)
+                else:
+                    c_aux = torch.cat((spk_aux, c), 2)
+        elif aux is not None:
+            c_aux = torch.cat((c, self.scale_in(aux.transpose(1,2)).transpose(1,2)), 2)
         else:
-            conv = torch.repeat_interleave(self.conv_s_c(self.conv(self.scale_in(c.transpose(1,2)))).transpose(1,2),self.upsampling_factor,dim=1)
+            c_aux = None
+        if c_aux is not None:
+            if self.red_dim is not None:
+                if self.do_prob > 0 and do:
+                    if outpad_left is not None:
+                        if outpad_right is not None and outpad_right > 0:
+                            conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(self.in_red(c_aux.transpose(1,2)))[:,:,outpad_left:-outpad_right]).transpose(1,2),self.upsampling_factor,dim=1))
+                        else:
+                            conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(self.in_red(c_aux.transpose(1,2)))[:,:,outpad_left:]).transpose(1,2),self.upsampling_factor,dim=1))
+                    elif outpad_right is not None and outpad_right > 0:
+                        conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(self.in_red(c_aux.transpose(1,2)))[:,:,:-outpad_right]).transpose(1,2),self.upsampling_factor,dim=1))
+                    else:
+                        conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(self.in_red(c_aux.transpose(1,2)))).transpose(1,2),self.upsampling_factor,dim=1))
+                else:
+                    if outpad_left is not None:
+                        if outpad_right is not None and outpad_right > 0:
+                            conv = torch.repeat_interleave(self.conv_s_c(self.conv(self.in_red(c_aux.transpose(1,2)))[:,:,outpad_left:-outpad_right]).transpose(1,2),self.upsampling_factor,dim=1)
+                        else:
+                            conv = torch.repeat_interleave(self.conv_s_c(self.conv(self.in_red(c_aux.transpose(1,2)))[:,:,outpad_left:]).transpose(1,2),self.upsampling_factor,dim=1)
+                    elif outpad_right is not None and outpad_right > 0:
+                        conv = torch.repeat_interleave(self.conv_s_c(self.conv(self.in_red(c_aux.transpose(1,2)))[:,:,:-outpad_right]).transpose(1,2),self.upsampling_factor,dim=1)
+                    else:
+                        conv = torch.repeat_interleave(self.conv_s_c(self.conv(self.in_red(c_aux.transpose(1,2)))).transpose(1,2),self.upsampling_factor,dim=1)
+            else:
+                if self.do_prob > 0 and do:
+                    if outpad_left is not None:
+                        if outpad_right is not None and outpad_right > 0:
+                            conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(c_aux.transpose(1,2))[:,:,outpad_left:-outpad_right]).transpose(1,2),self.upsampling_factor,dim=1))
+                        else:
+                            conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(c_aux.transpose(1,2))[:,:,outpad_left:]).transpose(1,2),self.upsampling_factor,dim=1))
+                    elif outpad_right is not None and outpad_right > 0:
+                        conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(c_aux.transpose(1,2))[:,:,:-outpad_right]).transpose(1,2),self.upsampling_factor,dim=1))
+                    else:
+                        conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(c_aux.transpose(1,2))).transpose(1,2),self.upsampling_factor,dim=1))
+                else:
+                    if outpad_left is not None:
+                        if outpad_right is not None and outpad_right > 0:
+                            conv = torch.repeat_interleave(self.conv_s_c(self.conv(c_aux.transpose(1,2))[:,:,outpad_left:-outpad_right]).transpose(1,2),self.upsampling_factor,dim=1)
+                        else:
+                            conv = torch.repeat_interleave(self.conv_s_c(self.conv(c_aux.transpose(1,2))[:,:,outpad_left:]).transpose(1,2),self.upsampling_factor,dim=1)
+                    elif outpad_right is not None and outpad_right > 0:
+                        conv = torch.repeat_interleave(self.conv_s_c(self.conv(c_aux.transpose(1,2))[:,:,:-outpad_right]).transpose(1,2),self.upsampling_factor,dim=1)
+                    else:
+                        conv = torch.repeat_interleave(self.conv_s_c(self.conv(c_aux.transpose(1,2))).transpose(1,2),self.upsampling_factor,dim=1)
+        else:
+            if self.red_dim is None:
+                if self.do_prob > 0 and do:
+                    conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(self.scale_in(c.transpose(1,2)))).transpose(1,2),self.upsampling_factor,dim=1))
+                else:
+                    conv = torch.repeat_interleave(self.conv_s_c(self.conv(self.scale_in(c.transpose(1,2)))).transpose(1,2),self.upsampling_factor,dim=1)
+            else:
+                if self.do_prob > 0 and do:
+                    conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(self.in_red(self.scale_in(c.transpose(1,2))))).transpose(1,2),self.upsampling_factor,dim=1))
+                else:
+                    conv = torch.repeat_interleave(self.conv_s_c(self.conv(self.in_red(self.scale_in(c.transpose(1,2))))).transpose(1,2),self.upsampling_factor,dim=1)
 
         # GRU1
+        if x_c_prev.shape[1] < conv.shape[1]:
+            conv = conv[:,:x_c_prev.shape[1]]
         if h is not None:
             out, h = self.gru(torch.cat((conv, self.embed_c_wav(x_c_prev).reshape(x_c_prev.shape[0], x_c_prev.shape[1], -1),
                         self.embed_f_wav(x_f_prev).reshape(x_f_prev.shape[0], x_f_prev.shape[1], -1)), 2), h) # B x T x C -> B x C x T -> B x T x C
@@ -1732,8 +1833,8 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
             logits_c = self.out(out.transpose(1,2))
             logits_f = self.out_f(out_f.transpose(1,2))
             return torch.clamp(logits_c, -32, 32), torch.clamp(logits_f, -32, 32), h.detach(), h_2.detach(), h_f.detach()
-
-    def generate(self, c, intervals=4000):
+ 
+    def generate(self, c, intervals=4000, spk_code=None, spk_aux=None, aux=None, outpad_left=None, outpad_right=None):
         start = time.time()
         time_sample = []
         intervals /= self.n_bands
@@ -1744,8 +1845,80 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
         f_pad = (self.n_quantize // 2) % self.cf_dim
 
         B = c.shape[0]
-        c = F.pad(c.transpose(1,2), (self.pad_left,self.pad_right), "replicate").transpose(1,2)
-        c = self.conv_s_c(self.conv(self.scale_in(c.transpose(1,2)))).transpose(1,2)
+
+        # Input
+        if outpad_left is None and outpad_right is None:
+            c = F.pad(c.transpose(1,2), (self.pad_left,self.pad_right), "replicate").transpose(1,2)
+            if spk_code is not None:
+                if len(spk_code.shape) == 2:
+                    spk_code = F.pad(spk_code, (self.pad_left,self.pad_right), "replicate")
+                else:
+                    spk_code = F.pad(spk_code.transpose(1,2), (self.pad_left,self.pad_right), "replicate").transpose(1,2)
+            if spk_aux is not None:
+                spk_aux = F.pad(spk_aux.transpose(1,2), (self.pad_left,self.pad_right), "replicate").transpose(1,2)
+            if aux is not None:
+                aux = F.pad(aux.transpose(1,2), (self.pad_left,self.pad_right), "replicate").transpose(1,2)
+        if spk_code is not None:
+            if len(spk_code.shape) == 2:
+                spk_code = F.one_hot(spk_code, num_classes=self.n_spk).float()
+            if spk_aux is not None:
+                if aux is not None:
+                    c_aux = torch.cat((spk_code, spk_aux, c, self.scale_in(aux.transpose(1,2)).transpose(1,2)), 2)
+                else:
+                    if self.scale_in_flag:
+                        c_aux = torch.cat((spk_code, spk_aux, self.scale_in(c.transpose(1,2)).transpose(1,2)), 2)
+                    else:
+                        c_aux = torch.cat((spk_code, spk_aux, c), 2)
+            else:
+                if aux is not None:
+                    c_aux = torch.cat((spk_code, c, self.scale_in(aux.transpose(1,2)).transpose(1,2)), 2)
+                else:
+                    if self.scale_in_flag:
+                        c_aux = torch.cat((spk_code, self.scale_in(c.transpose(1,2)).transpose(1,2)), 2)
+                    else:
+                        c_aux = torch.cat((spk_code, c), 2)
+        elif spk_aux is not None:
+            if aux is not None:
+                c_aux = torch.cat((spk_aux, c, self.scale_in(aux.transpose(1,2)).transpose(1,2)), 2)
+            else:
+                if self.scale_in_flag:
+                    c_aux = torch.cat((spk_aux, self.scale_in(c.transpose(1,2)).transpose(1,2)), 2)
+                else:
+                    c_aux = torch.cat((spk_aux, c), 2)
+        elif aux is not None:
+            c_aux = torch.cat((c, self.scale_in(aux.transpose(1,2)).transpose(1,2)), 2)
+        else:
+            c_aux = None
+        if c_aux is not None:
+            if self.red_dim is not None:
+                if outpad_left is not None:
+                    if outpad_right is not None and outpad_right > 0:
+                        c = self.conv_s_c(self.conv(self.in_red(c_aux.transpose(1,2)))[:,:,outpad_left:-outpad_right]).transpose(1,2)
+                    else:
+                        c = self.conv_s_c(self.conv(self.in_red(c_aux.transpose(1,2)))[:,:,outpad_left:]).transpose(1,2)
+                elif outpad_right is not None and outpad_right > 0:
+                    c = self.conv_s_c(self.conv(self.in_red(c_aux.transpose(1,2)))[:,:,:-outpad_right]).transpose(1,2)
+                else:
+                    c = self.conv_s_c(self.conv(self.in_red(c_aux.transpose(1,2)))).transpose(1,2)
+            else:
+                if outpad_left is not None:
+                    if outpad_right is not None and outpad_right > 0:
+                        c = self.conv_s_c(self.conv(c_aux.transpose(1,2))[:,:,outpad_left:-outpad_right]).transpose(1,2)
+                    else:
+                        c = self.conv_s_c(self.conv(c_aux.transpose(1,2))[:,:,outpad_left:]).transpose(1,2)
+                elif outpad_right is not None and outpad_right > 0:
+                    c = self.conv_s_c(self.conv(c_aux.transpose(1,2))[:,:,:-outpad_right]).transpose(1,2)
+                else:
+                    c = self.conv_s_c(self.conv(c_aux.transpose(1,2))).transpose(1,2)
+        else:
+            if self.red_dim is None:
+                c = self.conv_s_c(self.conv(self.scale_in(c.transpose(1,2)))).transpose(1,2)
+            else:
+                c = self.conv_s_c(self.conv(self.in_red(self.scale_in(c.transpose(1,2))))).transpose(1,2)
+
+        #c = F.pad(c.transpose(1,2), (self.pad_left,self.pad_right), "replicate").transpose(1,2)
+        #c = self.conv_s_c(self.conv(self.scale_in(c.transpose(1,2)))).transpose(1,2)
+
         if self.lpc > 0:
             x_c_lpc = torch.empty(B,1,self.n_bands,self.lpc).cuda().fill_(c_pad).long() # B x 1 x n_bands x K
             x_f_lpc = torch.empty(B,1,self.n_bands,self.lpc).cuda().fill_(f_pad).long() # B x 1 x n_bands x K

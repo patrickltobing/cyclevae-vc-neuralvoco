@@ -25,8 +25,8 @@
    NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
    SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-/* Modified by Patrick Lumban Tobing (Nagoya University) on Sept.-Dec. 2020,
-   marked by PLT_<Sep/Dec>20 */
+/* Modified by Patrick Lumban Tobing (Nagoya University) on Sept.-Dec. 2020 - Jan. 2021,
+   marked by PLT_<Sep20/Dec20/Jan21> */
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -400,7 +400,7 @@ void compute_denormalize(const NormStats *norm_stats, float *input_output)
     input_output[i] = input_output[i] * norm_stats->std[i] + norm_stats->mean[i];
 }
 
-//PLT_Jan20
+//PLT_Jan21
 void compute_sparse_gru_enc_melsp(const SparseFrameGRULayer *gru, float *state, const float *input)
 {
    int i, j, k;
@@ -436,7 +436,7 @@ void compute_sparse_gru_enc_melsp(const SparseFrameGRULayer *gru, float *state, 
       state[i] = r[i]*state[i] + (1-r[i])*h[i]; //h_t = z_t o h_{t-1} + (1-z_t) o n_t
 }
 
-//PLT_Jan20
+//PLT_Jan21
 void compute_sparse_gru_enc_excit(const SparseFrameGRULayer *gru, float *state, const float *input)
 {
    int i, j, k;
@@ -540,7 +540,7 @@ void compute_gru_dec_excit(const FrameGRULayer *gru, float *state, const float *
       state[i] = r[i]*state[i] + (1-r[i])*h[i]; //h_t = z_t o h_{t-1} + (1-z_t) o n_t
 }
 
-//PLT_Jan20
+//PLT_Jan21
 void compute_sparse_gru_dec_melsp(const SparseFrameGRULayer *gru, float *state, const float *input)
 {
    int i, j, k;
@@ -574,51 +574,6 @@ void compute_sparse_gru_dec_melsp(const SparseFrameGRULayer *gru, float *state, 
 
    for (i=0;i<RNN_DEC_MELSP_NEURONS;i++)
       state[i] = r[i]*state[i] + (1-r[i])*h[i]; //h_t = z_t o h_{t-1} + (1-z_t) o n_t
-}
-
-//PLT_Dec20
-void compute_gru_post(const FrameGRULayer *gru, float *state, const float *input)
-{
-   int i;
-   float zrh[RNN_POST_NEURONS_3];
-   float recur[RNN_POST_NEURONS_3];
-   float *z;
-   float *r;
-   float *h;
-
-   z = zrh; //swap with r, pytorch rzh, keras zrh
-   r = &zrh[RNN_POST_NEURONS];
-   h = &zrh[RNN_POST_NEURONS_2];
-
-   for (i=0;i<RNN_POST_NEURONS_3;i++) {
-      recur[i] = gru->recurrent_bias[i];
-      zrh[i] = gru->input_bias[i];
-   }
-   sgemv_accum(recur, gru->recurrent_weights, RNN_POST_NEURONS_3, RNN_POST_NEURONS, RNN_POST_NEURONS_3, state);
-   sgemv_accum(zrh, gru->input_weights, RNN_POST_NEURONS_3, FEATURE_CONV_POST_OUT_SIZE, RNN_POST_NEURONS_3, input);
-
-   for (i=0;i<RNN_POST_NEURONS_2;i++)
-      zrh[i] += recur[i]; //z_t and r_t computed in a similar way : sigmoid(in_t + W_z*h_{t-1})
-   compute_activation(zrh, zrh, RNN_POST_NEURONS_2, ACTIVATION_SIGMOID);
-
-   for (i=0;i<RNN_POST_NEURONS;i++)
-      h[i] += recur[RNN_POST_NEURONS_2+i]*z[i]; //n_t = tanh(in_t + r_t o W_n*h_{t-1})
-   compute_activation(h, h, RNN_POST_NEURONS, gru->activation);
-
-   for (i=0;i<RNN_POST_NEURONS;i++)
-      state[i] = r[i]*state[i] + (1-r[i])*h[i]; //h_t = z_t o h_{t-1} + (1-z_t) o n_t
-}
-
-//PLT_Dec20
-void compute_sampling_laplace(float *loc, const float *scale, int dim)
-{
-    float r;
-    for (int i=0;i<dim;i++) {
-        r = ((float) rand() - HALF_RAND_MAX) / HALF_RAND_MAX_FLT_MIN; //r ~ (-1,1)
-        // loc - sign(r)*scale*log(1-2|r/2|)
-        if (r > 0) loc[i] -= scale[i] * log(1-r);
-        else loc[i] += scale[i] * log(1+r);
-    }
 }
 
 //PLT_Dec20

@@ -23,8 +23,8 @@
    NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
    SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-/* Modified by Patrick Lumban Tobing (Nagoya University) on Dec. 2020,
-   marked by PLT_Dec20 */
+/* Modified by Patrick Lumban Tobing (Nagoya University) on Dec. 2020 - Jan. 2021,
+   marked by PLT_<Dec20/Jan21> */
 
 //PLT_Dec20
 #ifndef _MWDLP10NET_CYCVAE_H_
@@ -46,15 +46,15 @@
 
 
 //PLT_Dec20
-typedef struct MWDLP10CycleVAEPostMelspExcitSpkNetState MWDLP10CycleVAEPostMelspExcitSpkNetState;
+typedef struct MWDLP10CycleVAEMelspExcitSpkNetState MWDLP10CycleVAEMelspExcitSpkNetState;
 
 typedef struct MWDLP10NetState MWDLP10NetState;
 
 MWDLP10NET_CYCVAE_EXPORT int mwdlp10cyclevaenet_get_size();
 
-MWDLP10NET_CYCVAE_EXPORT MWDLP10CycleVAEPostMelspExcitSpkNetState *mwdlp10cyclevaenet_create();
+MWDLP10NET_CYCVAE_EXPORT MWDLP10CycleVAEMelspExcitSpkNetState *mwdlp10cyclevaenet_create();
 
-MWDLP10NET_CYCVAE_EXPORT void mwdlp10cyclevaenet_destroy(MWDLP10CycleVAEPostMelspExcitSpkNetState *mwdlp10cyclevaenet);
+MWDLP10NET_CYCVAE_EXPORT void mwdlp10cyclevaenet_destroy(MWDLP10CycleVAEMelspExcitSpkNetState *mwdlp10cyclevaenet);
 
 MWDLP10NET_CYCVAE_EXPORT int mwdlp10cyclevaenet_get_size();
 
@@ -62,12 +62,14 @@ MWDLP10NET_CYCVAE_EXPORT MWDLP10NetState *mwdlp10net_create();
 
 MWDLP10NET_CYCVAE_EXPORT void mwdlp10net_destroy(MWDLP10NetState *mwdlp10net);
 
-MWDLP10NET_CYCVAE_EXPORT void cyclevae_post_melsp_excit_spk_convert_mwdlp10net_synthesize(
-    MWDLP10CycleVAEPostMelspExcitSpkNetState *st, float *features, float *spk_code_aux,
+//PLT_Jan21
+MWDLP10NET_CYCVAE_EXPORT void cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(
+    MWDLP10CycleVAEMelspExcitSpkNetState *st, float *features, float *spk_code_aux,
         short *output, int *n_output, int flag_last_frame);
+        //short *output, int *n_output, int flag_last_frame, int flag_melsp_out);
         //short *output, int *n_output, int flag_last_frame, float *melsp_cv, float *lat_tmp, float *spk_tmp, float *conv_tmp, float *gru_tmp, float *f0_tmp);
         //short *output, int *n_output, int flag_last_frame, float *melsp_cv);
-    //MWDLP10CycleVAEPostMelspExcitSpkNetState *st, const float *features, float *spk_code_aux,
+    //MWDLP10CycleVAEMelspExcitSpkNetState *st, const float *features, float *spk_code_aux,
     //    short *output, int *n_output, int flag_last_frame, float *melsp_cv, short *pcm_1, short *pcm_2, short *pcm_3, short *pcm_4);
 
 MWDLP10NET_CYCVAE_EXPORT void mwdlp10net_synthesize(MWDLP10NetState *st, const float *features,

@@ -24,8 +24,8 @@
    NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
    SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-/* Modified by Patrick Lumban Tobing (Nagoya University) on Sept.-Dec. 2020,
-   marked by PLT_<Sep/Dec>20 */
+/* Modified by Patrick Lumban Tobing (Nagoya University) on Sept.-Dec. 2020 - Jan. 2021,
+   marked by PLT_<Sep20/Dec20/Jan21> */
 
 #ifndef _NNET_H_
 #define _NNET_H_
@@ -76,7 +76,7 @@ typedef struct {
   int reset_after;
 } FrameGRULayer;
 
-//PLT_Jan20
+//PLT_Jan21
 typedef struct {
   const float *input_bias;
   const float *recurrent_bias;
@@ -153,6 +153,7 @@ int sample_from_pdf_mwdlp(const float *pdf, int N);
 void compute_normalize(const NormStats *norm_stats, float *input_output);
 void compute_denormalize(const NormStats *norm_stats, float *input_output);
 
+//PLT_Jan21
 void compute_sparse_gru_enc_melsp(const SparseFrameGRULayer *gru, float *state, const float *input);
 void compute_sparse_gru_enc_excit(const SparseFrameGRULayer *gru, float *state, const float *input);
 
@@ -160,9 +161,6 @@ void compute_gru_spk(const FrameGRULayer *gru, float *state, const float *input)
 
 void compute_gru_dec_excit(const FrameGRULayer *gru, float *state, const float *input);
 void compute_sparse_gru_dec_melsp(const SparseFrameGRULayer *gru, float *state, const float *input);
-
-void compute_gru_post(const FrameGRULayer *gru, float *state, const float *input);
-void compute_sampling_laplace(float *loc, const float *scale, int dim);
 
 void compute_spkidtr(const DenseLayer *in_layer, const DenseLayer *out_layer, float *output, const float *input);
 void compute_spkidtr_coord(const DenseLayer *layer, float *output, const float *input);

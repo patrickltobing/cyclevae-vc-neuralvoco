@@ -2425,7 +2425,7 @@ def main():
                         eval_loss_uv[i], eval_loss_uv_std[i], eval_loss_f0[i], eval_loss_f0_std[i],
                         eval_loss_uvcap[i], eval_loss_uvcap_std[i], eval_loss_cap[i], eval_loss_cap_std[i])
             logging.info("%s (%.3f min., %.3f sec / batch)" % (text_log, total / 60.0, total / iter_count))
-            if (round(eval_loss_gv_src_trg-0.04,2) <= round(min_eval_loss_gv_src_trg,2)) and ((pair_exist and \
+            if (round(eval_loss_gv_src_trg-0.05,2) <= round(min_eval_loss_gv_src_trg,2)) and ((pair_exist and \
                     (round(eval_loss_melsp_dB_src_trg-0.01,2) <= round(min_eval_loss_melsp_dB_src_trg,2) \
                     or round(eval_loss_melsp_dB_src_trg+eval_loss_melsp_dB_src_trg_std-0.01,2) <= round(min_eval_loss_melsp_dB_src_trg+min_eval_loss_melsp_dB_src_trg_std,2) \
                     or (round(eval_loss_melsp_dB_src_trg+eval_loss_melsp_dB_src_trg_std-0.04,2) <= round(min_eval_loss_melsp_dB_src_trg+min_eval_loss_melsp_dB_src_trg_std,2)
