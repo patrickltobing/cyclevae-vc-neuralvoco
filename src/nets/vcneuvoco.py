@@ -1598,7 +1598,7 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
     def __init__(self, feat_dim=80, upsampling_factor=120, hidden_units=640, hidden_units_2=32, n_quantize=65536,
             kernel_size=7, dilation_size=1, do_prob=0, causal_conv=False, use_weight_norm=True, lpc=6,
                 right_size=2, n_bands=5, excit_dim=0, pad_first=False, mid_out_flag=True, red_dim=None,
-                    scale_in_aux_dim=None, n_spk=None, scale_in_flag=True):
+                    scale_in_aux_dim=None, n_spk=None, scale_in_flag=True, mid_dim=None):
         super(GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF, self).__init__()
         self.feat_dim = feat_dim
         self.in_dim = self.feat_dim
@@ -1630,13 +1630,17 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
         self.excit_dim = excit_dim
         self.pad_first = pad_first
         self.mid_out_flag = mid_out_flag
-        if self.mid_out_flag:
-            if self.cf_dim_in > 32:
-                self.mid_out = self.cf_dim_in // 2
+        self.mid_dim = mid_dim
+        if self.mid_dim is None:
+            if self.mid_out_flag:
+                if self.cf_dim_in > 32:
+                    self.mid_out = self.cf_dim_in // 2
+                else:
+                    self.mid_out = self.cf_dim_in
             else:
-                self.mid_out = self.cf_dim_in
+                self.mid_out = None
         else:
-            self.mid_out = None
+            self.mid_out = mid_dim
         self.red_dim = red_dim
         self.scale_in_aux_dim = scale_in_aux_dim
         self.scale_in_flag = scale_in_flag

@@ -227,6 +227,7 @@ def main():
         right_size=config.right_size,
         n_bands=config.n_bands,
         pad_first=True,
+        mid_dim=config.mid_dim,
         lpc=config.lpc)
     print(model)
     device = torch.device("cpu")

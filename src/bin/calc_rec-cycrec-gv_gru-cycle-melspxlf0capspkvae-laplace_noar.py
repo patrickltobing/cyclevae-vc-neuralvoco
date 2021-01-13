@@ -160,7 +160,8 @@ def main():
                     dilation_size=config.dilation_size_dec,
                     causal_conv=config.causal_conv_dec,
                     pad_first=True,
-                    right_size=config.right_size_dec)
+                    right_size=config.right_size_dec,
+                    red_dim=config.mel_dim)
                 logging.info(model_decoder_melsp)
                 model_encoder_excit = GRU_VAE_ENCODER(
                     in_dim=config.mel_dim,
@@ -185,7 +186,8 @@ def main():
                     dilation_size=config.dilation_size_lf0,
                     causal_conv=config.causal_conv_lf0,
                     pad_first=True,
-                    right_size=config.right_size_lf0)
+                    right_size=config.right_size_lf0,
+                    red_dim=config.mel_dim)
                 logging.info(model_decoder_excit)
                 if (config.spkidtr_dim > 0):
                     model_spkidtr = SPKID_TRANSFORM_LAYER(
@@ -200,7 +202,8 @@ def main():
                     causal_conv=config.causal_conv_spk,
                     pad_first=True,
                     right_size=config.right_size_spk,
-                    hidden_units=32)
+                    hidden_units=32,
+                    red_dim=config.mel_dim)
                 logging.info(model_spk)
                 model_encoder_melsp.load_state_dict(torch.load(args.model)["model_encoder_melsp"])
                 model_decoder_melsp.load_state_dict(torch.load(args.model)["model_decoder_melsp"])
@@ -511,14 +514,14 @@ def main():
                 #logging.info(lat_src_e.shape)
                 #write_hdf5(feat_file, args.string_path+'_lat_e', lat_src_e)
 
-                logging.info('write cyc to h5')
-                outh5dir = os.path.join(os.path.dirname(os.path.dirname(feat_file)), args.spk+"-"+args.spk+"-"+args.spk)
-                if not os.path.exists(outh5dir):
-                    os.makedirs(outh5dir)
-                feat_file = os.path.join(outh5dir, os.path.basename(feat_file))
-                logging.info(feat_file + ' ' + args.string_path)
-                logging.info(feat_cyc.shape)
-                write_hdf5(feat_file, args.string_path, feat_cyc)
+                #logging.info('write cyc to h5')
+                #outh5dir = os.path.join(os.path.dirname(os.path.dirname(feat_file)), args.spk+"-"+args.spk+"-"+args.spk)
+                #if not os.path.exists(outh5dir):
+                #    os.makedirs(outh5dir)
+                #feat_file = os.path.join(outh5dir, os.path.basename(feat_file))
+                #logging.info(feat_file + ' ' + args.string_path)
+                #logging.info(feat_cyc.shape)
+                #write_hdf5(feat_file, args.string_path, feat_cyc)
 
                 #logging.info('write lat rec to h5')
                 #logging.info(feat_file + ' ' + args.string_path+'_lat')
