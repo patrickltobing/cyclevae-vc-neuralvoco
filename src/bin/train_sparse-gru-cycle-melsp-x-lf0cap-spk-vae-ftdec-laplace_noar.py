@@ -2123,7 +2123,7 @@ def main():
                         eval_loss_melsp[i], eval_loss_melsp_std[i], eval_loss_melsp_dB[i], eval_loss_melsp_dB_std[i],
                         eval_loss_magsp[i], eval_loss_magsp_std[i], eval_loss_magsp_dB[i], eval_loss_magsp_dB_std[i])
             logging.info("%s (%.3f min., %.3f sec / batch)" % (text_log, total / 60.0, total / iter_count))
-            if (round(eval_loss_gv_src_trg-0.05,2) <= round(min_eval_loss_gv_src_trg,2)) and ((pair_exist and \
+            if (round(eval_loss_gv_src_trg-0.03,2) <= round(min_eval_loss_gv_src_trg,2)) and ((pair_exist and \
                     (round(eval_loss_melsp_dB_src_trg-0.01,2) <= round(min_eval_loss_melsp_dB_src_trg,2) \
                     or round(eval_loss_melsp_dB_src_trg+eval_loss_melsp_dB_src_trg_std-0.01,2) <= round(min_eval_loss_melsp_dB_src_trg+min_eval_loss_melsp_dB_src_trg_std,2) \
                     or (round(eval_loss_melsp_dB_src_trg+eval_loss_melsp_dB_src_trg_std-0.04,2) <= round(min_eval_loss_melsp_dB_src_trg+min_eval_loss_melsp_dB_src_trg_std,2)

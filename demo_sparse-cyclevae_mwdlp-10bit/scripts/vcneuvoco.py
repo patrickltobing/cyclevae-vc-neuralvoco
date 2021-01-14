@@ -1605,13 +1605,6 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
         self.n_quantize = n_quantize
         self.n_bands = n_bands
         self.cf_dim = int(np.sqrt(self.n_quantize))
-        if self.cf_dim > 64:
-            self.cf_dim_in = 64
-        else:
-            if self.n_bands > 5:
-                self.cf_dim_in = self.cf_dim
-            else:
-                self.cf_dim_in = 64
         self.out_dim = self.n_quantize
         self.upsampling_factor = upsampling_factor // self.n_bands
         self.hidden_units = hidden_units
@@ -1621,8 +1614,7 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
         self.do_prob = do_prob
         self.causal_conv = causal_conv
         self.s_dim = 320
-        self.wav_dim = self.s_dim // self.n_bands
-        self.wav_dim = self.cf_dim_in
+        self.wav_dim = 64
         self.wav_dim_bands = self.wav_dim * self.n_bands
         self.use_weight_norm = use_weight_norm
         self.lpc = lpc
@@ -1633,10 +1625,10 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
         self.mid_dim = mid_dim
         if self.mid_dim is None:
             if self.mid_out_flag:
-                if self.cf_dim_in > 32:
-                    self.mid_out = self.cf_dim_in // 2
+                if self.cf_dim > 32:
+                    self.mid_out = 32
                 else:
-                    self.mid_out = self.cf_dim_in
+                    self.mid_out = self.cf_dim
             else:
                 self.mid_out = None
         else:

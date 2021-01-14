@@ -32,11 +32,9 @@ gv_coeff: 0.9
 hidden_units_enc: 512
 hidden_units_dec: 640
 hidden_units_lf0: 128
-hidden_units_post: 128
 
 ## GRU hidden units wavernn
-#hidden_units_wave: 704 
-hidden_units_wave: 736
+hidden_units_wave: 800
 
 hidden_units_wave_2: 32
 
@@ -44,7 +42,6 @@ hidden_units_wave_2: 32
 hidden_layers_enc: 1
 hidden_layers_dec: 1
 hidden_layers_lf0: 1
-hidden_layers_post: 1
 
 ## GRU hidden layers wavernn
 hidden_layers_wave: 1
@@ -60,10 +57,6 @@ dilation_size_dec: 1
 ## kernel-size input conv encoder excit
 kernel_size_lf0: 7
 dilation_size_lf0: 1
-
-## kernel-size input conv post-net
-kernel_size_post: 7
-dilation_size_post: 1
 
 ## kernel-size input conv wavernn
 kernel_size_wave: 7
@@ -84,7 +77,6 @@ right_size_lf0: 0
 ## lookup frame limited to only 1/2 frame [for allowing low-latency/real-time processing]
 #right_size_wave: 1
 right_size_wave: 2
-right_size_post: 0
 
 ## number of cycles :  n_half_cyc // 2
 n_half_cyc: 2
@@ -108,7 +100,6 @@ causal_conv_enc: false
 causal_conv_dec: true
 causal_conv_lf0: true
 causal_conv_wave: false
-causal_conv_post: true
 ## if right_size > 0 (skewed conv encoder, i.e., future frame is limited), set causal_conv dec/lf0 to true [low-latency/real-time proc.]
 
 ## use dim-reduction for cont. spk. embed from 1-hot code (only for cyclevae spec-excit)
@@ -193,16 +184,23 @@ batch_size_utt_eval_wave: 14
 # number of workers (threads) for batch data handling
 n_workers: 2
 
-mdl_name: cycmelspxlf0capspkvae-laplace
+mdl_name: cycmelspxlf0capspkvae-laplace_sparse
 
-mdl_name_post: cycmelspxlf0capspkvae-post-smpl-laplace
+mdl_name_post: cycmelspxlf0capspkvae-laplace_sparse_ftdec
 
 ##[8 kHz, 16 kHz, 22.05 kHz, 24 kHz]
 #mdl_name_wave: wavernn_dualgru_compact_lpc_mband_9bit
 ##[8 kHz, 16 kHz, 22.05 kHz, 24 kHz, 44.1 kHz, 48 kHz]
-#mdl_name_wave: wavernn_dualgru_compact_lpc_mband_10bit_cf
+mdl_name_wave: wavernn_dualgru_compact_lpc_mband_10bit_cf
 ##[8 kHz, 16 kHz, 22.05 kHz, 24 kHz]
-mdl_name_wave: wavernn_dualgru_compact_lpc_mband_16bit
+#mdl_name_wave: wavernn_dualgru_compact_lpc_mband_16bit
+
+## sparsification scheduling settings for cyclevae
+t_start_cycvae: 5000
+t_end_cycvae: 245000
+interval_cycvae: 10
+densities_cycvae: 0.36-0.36-0.48
+n_stage_cycvae: 4
 
 ## sparsification scheduling settings for wavernn
 t_start: 20000

@@ -270,21 +270,33 @@ class FeatureDatasetNeuVoco(Dataset):
                         return {'x': x, 'feat': h, 'slen': slen, 'flen': flen, 'featfile': featfile}
 
 
-def proc_random_spkcv_statcvexcit(src_idx, spk_list, n_cv, n_frm, n_spk, stat_spk_list, mean_path, scale_path):
-    mean_trg_list = [None]*n_cv
-    std_trg_list = [None]*n_cv
-    trg_code_list = [None]*n_cv
-    pair_spk_list = [None]*n_cv
-    for i in range(n_cv):
-        pair_idx = np.random.randint(0,n_spk)
-        while pair_idx == src_idx:
+def proc_random_spkcv_statcvexcit(src_idx, spk_list, n_cv, n_frm, n_spk, stat_spk_list, mean_path, scale_path, excit_flag=True):
+    if excit_flag:
+        mean_trg_list = [None]*n_cv
+        std_trg_list = [None]*n_cv
+        trg_code_list = [None]*n_cv
+        pair_spk_list = [None]*n_cv
+        for i in range(n_cv):
             pair_idx = np.random.randint(0,n_spk)
-        trg_code_list[i] = np.ones(n_frm, dtype=np.int64)*pair_idx
-        mean_trg_list[i] = read_hdf5(stat_spk_list[pair_idx], mean_path)[1:2]
-        std_trg_list[i] = read_hdf5(stat_spk_list[pair_idx], scale_path)[1:2]
-        pair_spk_list[i] = spk_list[pair_idx]
+            while pair_idx == src_idx:
+                pair_idx = np.random.randint(0,n_spk)
+            trg_code_list[i] = np.ones(n_frm, dtype=np.int64)*pair_idx
+            mean_trg_list[i] = read_hdf5(stat_spk_list[pair_idx], mean_path)[1:2]
+            std_trg_list[i] = read_hdf5(stat_spk_list[pair_idx], scale_path)[1:2]
+            pair_spk_list[i] = spk_list[pair_idx]
 
-    return mean_trg_list, std_trg_list, trg_code_list, pair_spk_list
+        return mean_trg_list, std_trg_list, trg_code_list, pair_spk_list
+    else:
+        trg_code_list = [None]*n_cv
+        pair_spk_list = [None]*n_cv
+        for i in range(n_cv):
+            pair_idx = np.random.randint(0,n_spk)
+            while pair_idx == src_idx:
+                pair_idx = np.random.randint(0,n_spk)
+            trg_code_list[i] = np.ones(n_frm, dtype=np.int64)*pair_idx
+            pair_spk_list[i] = spk_list[pair_idx]
+
+        return trg_code_list, pair_spk_list
 
 
 class FeatureDatasetCycMceplf0WavVAE(Dataset):
@@ -424,10 +436,10 @@ class FeatureDatasetCycMceplf0WavVAE(Dataset):
                 feat_magsp = feat_magsp[spcidx_s_e[0]:spcidx_s_e[-1]]
             flen = feat.shape[0]
 
-        mean_trg_list, std_trg_list, trg_code_list, pair_spk_list = \
-            proc_random_spkcv_statcvexcit(src_idx, self.spk_list, self.n_cv, flen, self.n_spk, \
-                self.stat_spk_list, self.mean_path, self.scale_path)
         if not self.mel or (self.mel and self.excit_dim is not None):
+            mean_trg_list, std_trg_list, trg_code_list, pair_spk_list = \
+                proc_random_spkcv_statcvexcit(src_idx, self.spk_list, self.n_cv, flen, self.n_spk, \
+                    self.stat_spk_list, self.mean_path, self.scale_path)
             mean_src = read_hdf5(self.stat_spk_list[src_idx], self.mean_path)[1:2]
             std_src = read_hdf5(self.stat_spk_list[src_idx], self.scale_path)[1:2]
 
@@ -445,6 +457,10 @@ class FeatureDatasetCycMceplf0WavVAE(Dataset):
                 for i in range(self.n_cv):
                     cv_src_list[i] = torch.FloatTensor(self.pad_feat_transform(np.c_[feat[:,:1], \
                                         (std_trg_list[i]/std_src)*(feat[:,1:2]-mean_src)+mean_trg_list[i]]))
+        else:
+            trg_code_list, pair_spk_list = \
+                proc_random_spkcv_statcvexcit(src_idx, self.spk_list, self.n_cv, flen, self.n_spk, \
+                    self.stat_spk_list, self.mean_path, self.scale_path, False)
 
         for i in range(self.n_cv):
             trg_code_list[i] = torch.LongTensor(self.pad_feat_transform(trg_code_list[i]))

@@ -11,11 +11,14 @@ src_spk=p326
 in_dir=wav
 out_dir=wav_cv_point
 
+mkdir -p $out_dir
+
 spk_idx=1
 
 for spk in ${spks[@]};do
     echo $file_idx $src_spk to $spk $spk_idx
-    ./bin/test_cycvae_mwdlp.exe $spk_idx ${in_dir}/${file_idx}_${src_spk}.wav ${out_dir}/${spk_idx}_${file_idx}_${src_spk}-${spk}.wav 
+    ./bin/test_cycvae_mwdlp $spk_idx ${in_dir}/${file_idx}_${src_spk}.wav ${out_dir}/${spk_idx}_${file_idx}_${src_spk}-${spk}.wav 
+    #./bin/test_cycvae_mwdlp.exe $spk_idx ${in_dir}/${file_idx}_${src_spk}.wav ${out_dir}/${spk_idx}_${file_idx}_${src_spk}-${spk}.wav 
     spk_idx=$(( ${spk_idx}+1  ))
 done
 

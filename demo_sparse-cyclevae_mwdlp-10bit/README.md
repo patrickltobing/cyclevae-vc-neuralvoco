@@ -4,28 +4,22 @@
 This is a C implementation of [cyclevae-vc-neuralvoco](https://github.com/patrickltobing/cyclevae-vc-neuralvoco).
 
 
-* The post-network of VC model (CycleVAE+PostNet) is still being trained.
-* PostNet is used to generate finer structure of mel-spectrogram for alleviating spectral oversmoothnes through Laplace sampling,
-  which is trained after CycleVAE is fixed to preserve the lower-bound conversion.
+* The neural vocoder model (MWDLP) uses 10-bit mu-law coarse-fine output architecture with sparse 800-GRU and 10% sparsification.
+* The VC model (CycleVAE) uses sparse 512-GRU for 2 encoders and 640-GRU for 1 decoder-melsp with 40 % sparsification.
+
+* The MWDLP model is still being trained, current demo uses a model that has been trained for only 1.4 days. (Minimum is about 3 days to guarantee stability)
+* The CycleVAE model is still being fine-tuned, current demo uses a fine-tuned decoder-melsp that has been trained for only 1.8 days.
 
 
-* The neural vocoder model (MWDLP) uses 10-bit mu-law coarse-fine output architecture with 704-GRU and 10% sparsification.
-* Currently, an investigation is ongoing for higher MWDLP performance with a larger 768/1024-GRU and a lower density of 5%/2% sparsification,
-  which will also provide much lower cost and complexity.
+* The quality will be significantly improved after fine-tuning the MWDLP with the reconstructed mel-spec from the CycleVAE with fine-tuned decoder-melsp.
 
 
-* The quality will be significantly improved after fine-tuning the MWDLP with the reconstructed mel-spec from the PostNet output using the cyclic flow from CycleVAE.
-
-
-* With a single core of 2.7 GHz CPU, the total time required (including waveform read-write and features extraction)
-  to process 1 sec. of 16 kHz audio file is about 3.64 sec.,
-  i.e., 0.27 slower than real-time (3.64 RT). [The bottleneck is on CycleVAE; MWDLP + waveform I/O + feature extract is about 0.46 RT, i.e., 2.17 faster than real-time.]
-* The total VC computation time will be real-time with the use of sparsification on larger GRUs for CycleVAE (ongoing investigation).
+* With a single core of 2.6 GHz CPU, the total time required (including waveform read-write and features extraction) to process 1 sec. of 16 kHz audio file is about 1.00 sec,
+  i.e., just about real-time (1.00 RT). [Only MWDLP + waveform I/O + feature extract is about 0.50 RT, i.e., 2.00 faster than real-time, hence 50/50 cost for CycleVAE+MWDLP]
 
 
 * Speaker list details and 2-dimensional speaker-space are located in the folder speaker_info.
-* Some example of input, converted waveforms with interpolated-points and speaker-points are located in the folders wav, wav_cv_interp, and wav_cv_point, respectively.
-* Some ppt slides including diagram and audio samples are located in the folder slides
+* Some example of input, analysis-synthesis waveforms, converted waveforms with interpolated-points and speaker-points are located in the folders wav, wav_anasyn, wav_cv_interp, and wav_cv_point, respectively.
 
 
 A brief overview of the process:
@@ -47,26 +41,26 @@ A brief overview of the process:
 ```
 $ make
 ```
-* The size of nnet_cv_data.c is a bit large due to a more complex model of CycleVAE.
-* The use of sparse GRUs with larger hidden units (currently ongoing) [of 2 encoders and 1 melspec-decoder] will greatly reduces its size and complexity.
 
 
 ## Usage
 
 ```
-$ bash demo_interp.sh
+$ bash <demo_script>
+```
+**demo_script: demo.sh, demo_point.sh, demo_interp.sh, demo_anasyn.sh
+
+or
+```
+$ ./bin/test_cycvae_mwdlp <trg_spk_id> <input_wav> <output_cv_wav>
 ```
 or
 ```
-$ bash demo_point.sh
+$ ./bin/test_cycvae_mwdlp <x_coord> <y_coord> <input_wav> <output_cv_wav>
 ```
 or
 ```
-$ ./bin/test_cycvae_mwdlp.exe <trg_spk_id> <input_wav> <output_wav>
-```
-or
-```
-$ ./bin/test_cycvae_mwdlp.exe <x_coord> <y_coord> <input_wav> <output_wav>
+$ ./bin/test_cycvae_mwdlp <input_wav> <output_anasyn_wav>
 ```
 
 
@@ -77,3 +71,4 @@ Patrick Lumban Tobing
 Nagoya University
 
 patrick.lumbantobing@g.sp.m.is.nagoya-u.ac.jp
+
