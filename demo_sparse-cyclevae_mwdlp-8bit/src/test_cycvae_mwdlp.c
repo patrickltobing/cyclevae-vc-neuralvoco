@@ -8,12 +8,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#include "mwdlp10net_cycvae.h"
+#include "mwdlp8net_cycvae.h"
 #include "freq.h"
 #include "nnet.h"
 #include "nnet_data.h"
 #include "nnet_cv_data.h"
-#include "mwdlp10net_cycvae_private.h"
+#include "mwdlp8net_cycvae_private.h"
 #include "wave.h"
 
 
@@ -245,7 +245,7 @@ int main(int argc, char **argv) {
             clock_t t = clock();
             DSPState *dsp;
             if (argc == 3) { //analysis-synthesis
-                MWDLP10NetState *net;
+                MWDLP8NetState *net;
 
                 float features[FEATURES_DIM];
                 short pcm[MAX_N_OUTPUT]; //output is in short 2-byte (16-bit) format [-32768,32767]
@@ -263,7 +263,7 @@ int main(int argc, char **argv) {
                 dsp = dspstate_create();
 
                 // initialize mwdlp+cyclevae struct
-                net = mwdlp10net_create();
+                net = mwdlp8net_create();
 
                 for (i = 0, j = 0, k = 0; i < num_samples; i++) {
                     //printf("==========Sample %d / %ld=============\n", i+1, num_samples);
@@ -311,7 +311,7 @@ int main(int argc, char **argv) {
                             mel_spec_extract(dsp, features);
                             //printf("melsp extract, nth-frame: %d\n", k);
 
-                            mwdlp10net_synthesize(net, features, pcm, &n_output, 0);
+                            mwdlp8net_synthesize(net, features, pcm, &n_output, 0);
                 
                             if (n_output > 0)  { //delay is reached, samples are generated
                                 fwrite(pcm, sizeof(pcm[0]), n_output, fout);
@@ -327,7 +327,7 @@ int main(int argc, char **argv) {
                         fclose(fin);
                         fclose(fout);
                         dspstate_destroy(dsp);
-                        mwdlp10net_destroy(net);
+                        mwdlp8net_destroy(net);
                         exit(1);
                     }
                 }
@@ -343,7 +343,7 @@ int main(int argc, char **argv) {
                         fclose(fin);
                         fclose(fout);
                         dspstate_destroy(dsp);
-                        mwdlp10net_destroy(net);
+                        mwdlp8net_destroy(net);
                         exit(1);
                     } else {
                         printf(" [last frame]\n");
@@ -351,14 +351,14 @@ int main(int argc, char **argv) {
                     //}
 
                     mel_spec_extract(dsp, features);
-                    mwdlp10net_synthesize(net, features, pcm, &n_output, 0); //last_frame, synth pad_right
+                    mwdlp8net_synthesize(net, features, pcm, &n_output, 0); //last_frame, synth pad_right
 
                     if (n_output > 0)  {
                         fwrite(pcm, sizeof(pcm[0]), n_output, fout);
                         samples += n_output;
                     //    printf("write %d\n", samples);
                     }
-                    mwdlp10net_synthesize(net, features, pcm, &n_output, 1); //synth pad_right
+                    mwdlp8net_synthesize(net, features, pcm, &n_output, 1); //synth pad_right
                     if (n_output > 0)  {
                         fwrite(pcm, sizeof(pcm[0]), n_output, fout);
                         samples += n_output;
@@ -378,9 +378,9 @@ int main(int argc, char **argv) {
                 fclose(fin);
                 fclose(fout);
                 dspstate_destroy(dsp);
-                mwdlp10net_destroy(net);
+                mwdlp8net_destroy(net);
             } else {
-                MWDLP10CycleVAEMelspExcitSpkNetState *net;
+                MWDLP8CycleVAEMelspExcitSpkNetState *net;
 
                 float features[FEATURES_DIM];
                 short pcm[MAX_N_OUTPUT]; //output is in short 2-byte (16-bit) format [-32768,32767]
@@ -406,7 +406,7 @@ int main(int argc, char **argv) {
                 dsp = dspstate_create();
 
                 // initialize mwdlp+cyclevae struct
-                net = mwdlp10cyclevaenet_create();
+                net = mwdlp8cyclevaenet_create();
 
                 //printf("nn.Valid range for data values : %ld to %ld \n", low_limit, high_limit);
 
@@ -538,11 +538,11 @@ int main(int argc, char **argv) {
                             //}
                             //fputs("};\n", f);
                 
-                            cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0);
-                            //cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0, 0);
-                            //cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0, melsp_cv);
-                            //cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0, melsp_cv, lat_tmp, spk_tmp, conv_tmp, gru_tmp, f0_tmp);
-                            //cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0, melsp_cv, pcm_1, pcm_2, pcm_3, pcm_4);
+                            cyclevae_melsp_excit_spk_convert_mwdlp8net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0);
+                            //cyclevae_melsp_excit_spk_convert_mwdlp8net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0, 0);
+                            //cyclevae_melsp_excit_spk_convert_mwdlp8net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0, melsp_cv);
+                            //cyclevae_melsp_excit_spk_convert_mwdlp8net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0, melsp_cv, lat_tmp, spk_tmp, conv_tmp, gru_tmp, f0_tmp);
+                            //cyclevae_melsp_excit_spk_convert_mwdlp8net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0, melsp_cv, pcm_1, pcm_2, pcm_3, pcm_4);
                             //printf("cv synth\n");
                 
                             //if (k > FEATURE_CONV_VC_DELAY) {
@@ -591,7 +591,7 @@ int main(int argc, char **argv) {
                         fclose(fin);
                         fclose(fout);
                         dspstate_destroy(dsp);
-                        mwdlp10cyclevaenet_destroy(net);
+                        mwdlp8cyclevaenet_destroy(net);
                         exit(1);
                     }
                 }
@@ -615,7 +615,7 @@ int main(int argc, char **argv) {
                         fclose(fin);
                         fclose(fout);
                         dspstate_destroy(dsp);
-                        mwdlp10cyclevaenet_destroy(net);
+                        mwdlp8cyclevaenet_destroy(net);
                         exit(1);
                     } else {
                         printf(" [last frame]\n");
@@ -623,10 +623,10 @@ int main(int argc, char **argv) {
                     //}
 
                     mel_spec_extract(dsp, features);
-                    cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0); //last_frame, synth pad_right
-                    //cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0, 0); //last_frame, synth pad_right
-                    //cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0, melsp_cv); //last_frame
-                    //cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0, melsp_cv, lat_tmp, spk_tmp, conv_tmp, gru_tmp, f0_tmp); //last_frame
+                    cyclevae_melsp_excit_spk_convert_mwdlp8net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0); //last_frame, synth pad_right
+                    //cyclevae_melsp_excit_spk_convert_mwdlp8net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0, 0); //last_frame, synth pad_right
+                    //cyclevae_melsp_excit_spk_convert_mwdlp8net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0, melsp_cv); //last_frame
+                    //cyclevae_melsp_excit_spk_convert_mwdlp8net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0, melsp_cv, lat_tmp, spk_tmp, conv_tmp, gru_tmp, f0_tmp); //last_frame
 
                     //for (l=0;l<MEL_DIM;l++)
                     //    if (l < (MEL_DIM-1))
@@ -660,10 +660,10 @@ int main(int argc, char **argv) {
                         samples += n_output;
                     //    printf("write %d\n", samples);
                     }
-                    cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 1); //synth pad_right
-                    //cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 1, 0); //synth pad_right
-                    //cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 1, melsp_cv); //synth pad_right
-                    //cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 1, melsp_cv, lat_tmp, spk_tmp, conv_tmp, gru_tmp, f0_tmp); //synth pad_right
+                    cyclevae_melsp_excit_spk_convert_mwdlp8net_synthesize(net, features, spk_code_aux, pcm, &n_output, 1); //synth pad_right
+                    //cyclevae_melsp_excit_spk_convert_mwdlp8net_synthesize(net, features, spk_code_aux, pcm, &n_output, 1, 0); //synth pad_right
+                    //cyclevae_melsp_excit_spk_convert_mwdlp8net_synthesize(net, features, spk_code_aux, pcm, &n_output, 1, melsp_cv); //synth pad_right
+                    //cyclevae_melsp_excit_spk_convert_mwdlp8net_synthesize(net, features, spk_code_aux, pcm, &n_output, 1, melsp_cv, lat_tmp, spk_tmp, conv_tmp, gru_tmp, f0_tmp); //synth pad_right
                     if (n_output > 0)  {
                         fwrite(pcm, sizeof(pcm[0]), n_output, fout);
                         samples += n_output;
@@ -689,7 +689,7 @@ int main(int argc, char **argv) {
                 fclose(fin);
                 fclose(fout);
                 dspstate_destroy(dsp);
-                mwdlp10cyclevaenet_destroy(net);
+                mwdlp8cyclevaenet_destroy(net);
             }
         } else {
             printf("Error not mono and 16-bit pcm\n");
@@ -726,12 +726,12 @@ int main(int argc, char **argv) {
 //
 //#include <time.h>
 //#include <unistd.h>
-//#include "mwdlp10net_cycvae.h"
+//#include "mwdlp8net_cycvae.h"
 //#include "freq.h"
 //#include "nnet.h"
 //#include "nnet_data.h"
 //#include "nnet_cv_data.h"
-//#include "mwdlp10net_cycvae_private.h"
+//#include "mwdlp8net_cycvae_private.h"
 //#include "wave.h"
 //
 //
@@ -742,7 +742,7 @@ int main(int argc, char **argv) {
 //{
 //   fprintf(stderr, "\n");
 //   fprintf(stderr, " %s - Multiband WaveRNN with data-driven Linear Prediction\n", cmnd);
-//   fprintf(stderr, "                using 10-bit mu-law coarse-fine output architecture\n");
+//   fprintf(stderr, "                using 8-bit mu-law coarse-fine output architecture\n");
 //   fprintf(stderr, "\n");
 //   fprintf(stderr, "  usage:\n");
 //   fprintf(stderr, "       %s [ options ] [ infile ] [ outfile ]\n", cmnd);
@@ -988,7 +988,7 @@ int main(int argc, char **argv) {
 //        if (header.format_type == 1 && header.channels == 1) { // PCM and mono
 //            clock_t t = clock();
 //            DSPState *dsp;
-//            MWDLP10NetState *net;
+//            MWDLP8NetState *net;
 //    
 //            float features[FEATURES_DIM];
 //            short pcm[MAX_N_OUTPUT]; //output is in short 2-byte (16-bit) format [-32768,32767]
@@ -1006,7 +1006,7 @@ int main(int argc, char **argv) {
 //            dsp = dspstate_create();
 //    
 //            // initialize mwdlp+cyclevae struct
-//            net = mwdlp10net_create();
+//            net = mwdlp8net_create();
 //
 //            //FILE *tmp_file5;
 //            //tmp_file5 = fopen("melsp.txt", "wt");
@@ -1064,7 +1064,7 @@ int main(int argc, char **argv) {
 //                        //        else
 //                        //            fprintf(tmp_file5, "%f\n", features[l]);
 //                        //}
-//                        mwdlp10net_synthesize(net, features, pcm, &n_output, 0);
+//                        mwdlp8net_synthesize(net, features, pcm, &n_output, 0);
 //            
 //                        if (n_output > 0)  { //delay is reached, samples are generated
 //                            fwrite(pcm, sizeof(pcm[0]), n_output, fout);
@@ -1081,7 +1081,7 @@ int main(int argc, char **argv) {
 //                    fclose(fout);
 //                    if (print_melsp_flag) fclose(fout_msp);
 //                    dspstate_destroy(dsp);
-//                    mwdlp10net_destroy(net);
+//                    mwdlp8net_destroy(net);
 //                    exit(1);
 //                }
 //            }
@@ -1098,7 +1098,7 @@ int main(int argc, char **argv) {
 //                    fclose(fout);
 //                    if (print_melsp_flag) fclose(fout_msp);
 //                    dspstate_destroy(dsp);
-//                    mwdlp10net_destroy(net);
+//                    mwdlp8net_destroy(net);
 //                    exit(1);
 //                } else {
 //                    printf(" [last frame]\n");
@@ -1112,14 +1112,14 @@ int main(int argc, char **argv) {
 //                //        fprintf(tmp_file5, "%f ", features[l]);
 //                //    else
 //                //        fprintf(tmp_file5, "%f\n", features[l]);
-//                mwdlp10net_synthesize(net, features, pcm, &n_output, 0); //last_frame, synth pad_right
+//                mwdlp8net_synthesize(net, features, pcm, &n_output, 0); //last_frame, synth pad_right
 //    
 //                if (n_output > 0)  {
 //                    fwrite(pcm, sizeof(pcm[0]), n_output, fout);
 //                    samples += n_output;
 //                //    printf("write %d\n", samples);
 //                }
-//                mwdlp10net_synthesize(net, features, pcm, &n_output, 1); //synth pad_right
+//                mwdlp8net_synthesize(net, features, pcm, &n_output, 1); //synth pad_right
 //                if (n_output > 0)  {
 //                    fwrite(pcm, sizeof(pcm[0]), n_output, fout);
 //                    samples += n_output;
@@ -1140,7 +1140,7 @@ int main(int argc, char **argv) {
 //            fclose(fout);
 //            if (print_melsp_flag) fclose(fout_msp);
 //            dspstate_destroy(dsp);
-//            mwdlp10net_destroy(net);
+//            mwdlp8net_destroy(net);
 //        } else {
 //            printf("Error not mono and 16-bit pcm\n");
 //            fclose(fin);
@@ -1335,7 +1335,7 @@ int main(int argc, char **argv) {
 //        if (header.format_type == 1 && header.channels == 1) { // PCM and mono
 //            clock_t t = clock();
 //            DSPState *dsp;
-//            MWDLP10NetState *net;
+//            MWDLP8NetState *net;
 //    
 //            float features[FEATURES_DIM];
 //            short pcm[MAX_N_OUTPUT]; //output is in short 2-byte (16-bit) format [-32768,32767]
@@ -1353,7 +1353,7 @@ int main(int argc, char **argv) {
 //            dsp = dspstate_create();
 //    
 //            // initialize mwdlp+cyclevae struct
-//            net = mwdlp10net_create();
+//            net = mwdlp8net_create();
 //
 //            //FILE *tmp_file5;
 //            //tmp_file5 = fopen("melsp.txt", "wt");
@@ -1411,7 +1411,7 @@ int main(int argc, char **argv) {
 //                        //        else
 //                        //            fprintf(tmp_file5, "%f\n", features[l]);
 //                        //}
-//                        mwdlp10net_synthesize(net, features, pcm, &n_output, 0);
+//                        mwdlp8net_synthesize(net, features, pcm, &n_output, 0);
 //            
 //                        if (n_output > 0)  { //delay is reached, samples are generated
 //                            fwrite(pcm, sizeof(pcm[0]), n_output, fout);
@@ -1428,7 +1428,7 @@ int main(int argc, char **argv) {
 //                    fclose(fout);
 //                    if (print_melsp_flag) fclose(fout_msp);
 //                    dspstate_destroy(dsp);
-//                    mwdlp10net_destroy(net);
+//                    mwdlp8net_destroy(net);
 //                    exit(1);
 //                }
 //            }
@@ -1445,7 +1445,7 @@ int main(int argc, char **argv) {
 //                    fclose(fout);
 //                    if (print_melsp_flag) fclose(fout_msp);
 //                    dspstate_destroy(dsp);
-//                    mwdlp10net_destroy(net);
+//                    mwdlp8net_destroy(net);
 //                    exit(1);
 //                } else {
 //                    printf(" [last frame]\n");
@@ -1459,14 +1459,14 @@ int main(int argc, char **argv) {
 //                //        fprintf(tmp_file5, "%f ", features[l]);
 //                //    else
 //                //        fprintf(tmp_file5, "%f\n", features[l]);
-//                mwdlp10net_synthesize(net, features, pcm, &n_output, 0); //last_frame, synth pad_right
+//                mwdlp8net_synthesize(net, features, pcm, &n_output, 0); //last_frame, synth pad_right
 //    
 //                if (n_output > 0)  {
 //                    fwrite(pcm, sizeof(pcm[0]), n_output, fout);
 //                    samples += n_output;
 //                //    printf("write %d\n", samples);
 //                }
-//                mwdlp10net_synthesize(net, features, pcm, &n_output, 1); //synth pad_right
+//                mwdlp8net_synthesize(net, features, pcm, &n_output, 1); //synth pad_right
 //                if (n_output > 0)  {
 //                    fwrite(pcm, sizeof(pcm[0]), n_output, fout);
 //                    samples += n_output;
@@ -1487,7 +1487,7 @@ int main(int argc, char **argv) {
 //            fclose(fout);
 //            if (print_melsp_flag) fclose(fout_msp);
 //            dspstate_destroy(dsp);
-//            mwdlp10net_destroy(net);
+//            mwdlp8net_destroy(net);
 //        } else {
 //            printf("Error not mono and 16-bit pcm\n");
 //            fclose(fin);
