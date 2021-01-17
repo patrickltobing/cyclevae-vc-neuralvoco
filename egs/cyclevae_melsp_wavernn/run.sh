@@ -308,8 +308,6 @@ n_interp=0
 #n_interp=10 #for speaker interpolation in 2-dim space with spec-excit cyclevae/cyclevqvae
 #n_interp=20
 
-gv_coeff=`awk '{if ($1 == "gv_coeff:") print $2}' conf/config.yml`
-
 if [ $mdl_name_post == "cycmelspxlf0capspkvae-laplace_sparse_ftdec" ]; then
     string_path_rec=/feat_rec_${mdl_name_post}-${mdl_name}-${step_count}-${lat_dim}-${lat_dim_e}-${densities_cycvae}-${spkidtr_dim}-${n_half_cyc}-${min_idx_cycvae}-${min_idx}
     string_path_cv=/feat_cv_${mdl_name_post}-${mdl_name}-${step_count}-${lat_dim}-${lat_dim_e}-${densities_cycvae}-${spkidtr_dim}-${n_half_cyc}-${min_idx_cycvae}-${min_idx}

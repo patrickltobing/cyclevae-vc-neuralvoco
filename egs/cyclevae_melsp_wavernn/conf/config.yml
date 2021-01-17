@@ -33,7 +33,7 @@ hidden_units_lf0: 128
 ## GRU hidden units wavernn
 #[for high-quality, 0.5 RT with 10-bit mu-law]
 #hidden_units_wave: 800
-#[for natural-quality, 0.59 RT with 10-bit mu-law, 0.5 RT with 8-bit mu-law 16-GRU small]
+#[for natural-quality, 0.59 RT with 10-bit mu-law; 0.5 RT with 8-bit mu-law 16-GRU small, but much lesser quality]
 hidden_units_wave: 896
 
 #[for 8-bit mu-law]
@@ -115,7 +115,7 @@ lr: 1e-4
 do_prob: 0.5
 
 ## maximum step count
-step_count: 1130000
+step_count: 1155000
 step_count_wave: 3810000
 
 ## use get_max_frame.sh to get max_frame of the current train/dev sets as the value of pad_len
@@ -195,8 +195,10 @@ lpc: 6
 #n_bands: 2
 ##[16 kHz]
 #n_bands: 4
-##[22.05 kHz, 24 kHz]
-n_bands: 5
+##[22.05 kHz]
+#n_bands: 5
+##[24 kHz]
+n_bands: 6
 ##[44.1 kHz]
 #n_bands: 10
 ##[48 kHz]

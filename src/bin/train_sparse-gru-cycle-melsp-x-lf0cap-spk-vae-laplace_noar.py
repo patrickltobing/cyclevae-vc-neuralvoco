@@ -2433,7 +2433,7 @@ def main():
             logging.info("%s (%.3f min., %.3f sec / batch)" % (text_log, total / 60.0, total / iter_count))
             if (round(eval_loss_gv_src_trg-0.03,2) <= round(min_eval_loss_gv_src_trg,2)) and \
                 (round(eval_loss_melsp_cv[0]-eval_loss_melsp[0],1) >= round(min_eval_loss_melsp_cv[0]-min_eval_loss_melsp[0],1)) and \
-                ((round(eval_loss_melsp_dB[0],2)-0.02) <= round(min_eval_loss_melsp_dB[0],1)) and \
+                ((round(eval_loss_melsp_dB[0],2)-0.02) <= round(min_eval_loss_melsp_dB[0],2)) and \
                     (pair_exist and \
                         (round(eval_loss_melsp_dB_src_trg-0.01,2) <= round(min_eval_loss_melsp_dB_src_trg,2) \
                             or round(eval_loss_melsp_dB_src_trg+eval_loss_melsp_dB_src_trg_std-0.01,2) <= round(min_eval_loss_melsp_dB_src_trg+min_eval_loss_melsp_dB_src_trg_std,2))):

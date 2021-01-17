@@ -254,6 +254,8 @@ def main():
                         type=int, help="kernel size of dilated causal convolution")
     parser.add_argument("--right_size", default=0,
                         type=int, help="kernel size of dilated causal convolution")
+    parser.add_argument("--mid_dim", default=32,
+                        type=int, help="kernel size of dilated causal convolution")
     # network training setting
     parser.add_argument("--lr", default=1e-4,
                         type=float, help="learning rate")
@@ -399,6 +401,7 @@ def main():
         right_size=args.right_size,
         n_bands=args.n_bands,
         pad_first=True,
+        mid_dim=args.mid_dim,
         do_prob=args.do_prob)
     logging.info(model_waveform)
     criterion_ce = torch.nn.CrossEntropyLoss(reduction='none')
