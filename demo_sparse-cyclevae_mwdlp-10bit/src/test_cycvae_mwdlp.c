@@ -61,14 +61,14 @@ void usage(int status)
 
 int main(int argc, char **argv) {
     short wav_in_flag = 1;
-    short melsp_bin_in_flag = 0;
-    short melsp_txt_in_flag = 0;
+    short melsp_bin_in_flag = 0, melsp_txt_in_flag = 0;
     short cv_point_flag = 0;
     short cv_interp_flag = 0;
     short print_melsp_flag = 0;
     short spk_idx;
-    float x_coord, y_coord;
-    FILE *fin, *fout_msp_bin, *fout_msp_txt;
+    float x_coord = 0, y_coord = 0;
+    int n_argc = argc;
+    FILE *fin = NULL, *fout = NULL, *fout_msp_bin = NULL, *fout_msp_txt = NULL;
 
     if ((cmnd = strrchr(argv[0], '/')) == NULL) {
         cmnd = argv[0];
@@ -81,7 +81,7 @@ int main(int argc, char **argv) {
             switch (*(*argv + 1)) {
                 case 'i':
                     cv_point_flag = 1;
-                    spk_idx = atoi(*++argv, "rb");
+                    spk_idx = atoi(*++argv);
                     if (spk_idx > FEATURE_N_SPK) {
 	                    fprintf(stderr, "Speaker id %d is more than n_spk %d\n", spk_idx, FEATURE_N_SPK);
                         if (print_melsp_flag) {
@@ -94,24 +94,24 @@ int main(int argc, char **argv) {
                     break;
                 case 'c':
                     cv_interp_flag = 1;
-                    x_coord = atof(*++argv, "rb");
+                    x_coord = atof(*++argv);
                     --argc;
-                    y_coord = atof(*++argv, "rb");
+                    y_coord = atof(*++argv);
                     --argc;
                     break;
-                case 'e':
+                case 'o':
                     print_melsp_flag = 1;
                     //file handler melsp binary output
                     fout_msp_bin = fopen(*++argv, "wb");
                     if (fout_msp_bin == NULL) {
-                        fprintf(stderr, "Can't open %s\n", *argv);
+                        fprintf(stderr, "Can't open fout_bin %s\n", *argv);
                         exit(1);
                     }
                     --argc;
                     //file handler melsp text output
                     fout_msp_txt = fopen(*++argv, "w");
                     if (fout_msp_txt == NULL) {
-                        fprintf(stderr, "Can't open %s\n", *argv);
+                        fprintf(stderr, "Can't open fout_txt %s\n", *argv);
                         fclose(fout_msp_bin);
                         exit(1);
                     }
@@ -124,6 +124,10 @@ int main(int argc, char **argv) {
                     melsp_txt_in_flag = 1;
                     break;
                 case 'h':
+                    if (print_melsp_flag) {
+                        fclose(fout_msp_bin);
+                        fclose(fout_msp_txt);
+                    }
                     usage(0);
                     break;
                 default:
@@ -131,20 +135,58 @@ int main(int argc, char **argv) {
                     usage(1);
             }
         } else {
-            //file handler wav/binary-melsp/text-melsp input
-            if (melsp_txt_in_flag) {
-                fin = fopen(*++argv, "r");
-                melsp_bin_in_flag = 0;
-            } else fin = fopen(*++argv, "rb");
-            if (fin == NULL) {
-	            fprintf(stderr, "Can't open %s\n", *argv);
+            if (n_argc < 3) {
+                fprintf(stderr, "Invalid usage n_arg\n");
+                usage(1);
+            }
+
+            if (argc == 2) {
+                //file handler wav/binary-melsp/text-melsp input
+                if (melsp_txt_in_flag) {
+                    fin = fopen(*argv, "r");
+                    melsp_bin_in_flag = 0;
+                } else fin = fopen(*argv, "rb");
+                if (fin == NULL) {
+	                fprintf(stderr, "Can't open fin %s\n", *argv);
+                    if (print_melsp_flag) {
+                        fclose(fout_msp_bin);
+                        fclose(fout_msp_txt);
+                    }
+	                exit(1);
+                }
+           } else if (argc == 1) {
+                //file handler wav output
+                fout = fopen(*argv, "wb");
+                if (fout == NULL) {
+                    fprintf(stderr, "Can't open fout %s\n", *argv);
+                    if (print_melsp_flag) {
+                        fclose(fout_msp_bin);
+                        fclose(fout_msp_txt);
+                    }
+                    fclose(fin);
+                    exit(1);
+                }
+            } else {
+                fprintf(stderr, "Invalid usage in/out\n");
                 if (print_melsp_flag) {
                     fclose(fout_msp_bin);
                     fclose(fout_msp_txt);
                 }
-	            exit(1);
+                usage(1);
             }
         }
+    }
+
+    if (fin == NULL || fout == NULL) {
+        fprintf(stderr, "Invalid usage\n");
+        if (print_melsp_flag) {
+            fclose(fout_msp_bin);
+            fclose(fout_msp_txt);
+        }
+        if (fin != NULL) {
+            fclose(fin);
+        }
+        usage(1);
     }
 
     //use input melsp
@@ -160,25 +202,13 @@ int main(int argc, char **argv) {
     // ignore spk-index option if interpolated is used
     if (cv_interp_flag) cv_point_flag = 0;
 
-    //file handler wav output
-    FILE *fout = fopen(*argv, "wb");
-    if (fout == NULL) {
-        fprintf(stderr, "Can't open %s\n", *argv);
-        if (print_melsp_flag) {
-            fclose(fout_msp_bin);
-            fclose(fout_msp_txt);
-        }
-        fclose(fin);
-        exit(1);
-    }
-
-    if (print_melsp_flag) {
-        short l;
-        short features_dim_1 = FEATURES_DIM - 1;
-    }
-
     srand (time(NULL));
     clock_t t = clock();
+
+    short l, features_dim_1;
+    if (print_melsp_flag)
+        features_dim_1 = FEATURES_DIM - 1;
+    long samples = 0;
 
     if (wav_in_flag) { //waveform input
         short num_reflected_right_edge_samples;
@@ -192,9 +222,8 @@ int main(int argc, char **argv) {
             short first_buffer_flag = 0;
             short waveform_buffer_flag = 0;
             int n_output = 0;
-            long samples = 0;
             float data_in_channel = 0;
-            short i, j, k;
+            long i, j, k;
             char data_buffer[size_of_each_sample];
             float x_buffer[FRAME_SHIFT];
             int read = 0;
@@ -209,7 +238,7 @@ int main(int argc, char **argv) {
                 net = mwdlp10net_create();
 
                 for (i = 0, j = 0, k = 0; i < num_samples; i++) {
-                    if ((read = fread(data_buffer, sizeof(data_buffer), 1, fin)) == 1) {
+                    if ((read = fread(data_buffer, sizeof(data_buffer), 1, fin))) {
                     
                         /* Receives only mono 16-bit PCM, convert to float [-1,0.999969482421875] */
                         data_in_channel = ((float) ((data_buffer[0] & 0x00ff) | (data_buffer[1] << 8))) / 32768;
@@ -226,7 +255,7 @@ int main(int argc, char **argv) {
                                 waveform_buffer_flag = 1;
                                 j = 0;
                                 k += 1;
-                                printf(" [%d]", k);
+                                printf(" [%ld]", k);
                             }
                         } else { //take RIGHT_SAMPLES amount of samples as the first samples
                             // put only LEFT_SAMPLES and RIGHT_SAMPLES amount in window buffer,
@@ -240,7 +269,7 @@ int main(int argc, char **argv) {
                                 first_buffer_flag = 1;
                                 waveform_buffer_flag = 1;
                                 k += 1;
-                                printf("frame: [%d]", k);
+                                printf("frame: [%ld]", k);
                             }
                         }
 
@@ -267,7 +296,7 @@ int main(int argc, char **argv) {
                             waveform_buffer_flag = 0;
                         }
                     } else {
-                        fprintf(stderr, "\nError reading file. %d bytes\n", read);
+                        fprintf(stderr, "\nError reading file. %d bytes -- %ld -- %ld\n", read, i+1, num_samples);
                         fclose(fin);
                         fclose(fout);
                         if (print_melsp_flag) {
@@ -287,7 +316,7 @@ int main(int argc, char **argv) {
 
                     if (j == FRAME_SHIFT) printf(" [last frame]\n");
                     else {
-                        fprintf(stderr, "\nError remainder right-edge samples calculation %d %d %ld\n", j, FRAME_SHIFT, num_reflected_right_edge_samples);
+                        fprintf(stderr, "\nError remainder right-edge samples calculation %ld %d %d\n", j, FRAME_SHIFT, num_reflected_right_edge_samples);
                         fclose(fin);
                         fclose(fout);
                         if (print_melsp_flag) {
@@ -345,31 +374,28 @@ int main(int argc, char **argv) {
                     //N-dim 1-hot --> 2-dim --> N-dim [N_SPK]
                     printf("%d-dim 1-hot code: ", FEATURE_N_SPK);
                     for (k = 0; k < FEATURE_N_SPK; k++)
-                        printf("[%d] %f ", k+1, one_hot_code[k]);
+                        printf("[%ld] %f ", k+1, one_hot_code[k]);
                     printf("\n");
                     compute_spkidtr(&fc_in_spk_code_transform, &fc_out_spk_code_transform, spk_code_aux, one_hot_code);
                     printf("%d-dim embed.: ", FEATURE_N_SPK);
-                    for (k = 0; k < FEATURE_N_SPK; k++) {
-                        printf("[%d] %f ", k+1, spk_code_aux[k]);
-                    }
+                    for (k = 0; k < FEATURE_N_SPK; k++)
+                        printf("[%ld] %f ", k+1, spk_code_aux[k]);
                     printf("\n");
                 } else { //interpolated spk-code location
                     float spk_coord[2];
-                    spk_coord[0] = atof(argv[1]);
-                    spk_coord[1] = atof(argv[2]);
+                    spk_coord[0] = x_coord;
+                    spk_coord[1] = y_coord;
                     //2-dim --> N-dim [N_SPK]
                     printf("2-dim spk-coord: %f %f\n", spk_coord[0], spk_coord[1]);
                     compute_spkidtr_coord(&fc_out_spk_code_transform, spk_code_aux, spk_coord);
                     printf("%d-dim embed.: ", FEATURE_N_SPK);
-                    for (k = 0; k < FEATURE_N_SPK; k++) {
-                        printf("[%d] %f ", k+1, spk_code_aux[k]);
-                    }
+                    for (k = 0; k < FEATURE_N_SPK; k++)
+                        printf("[%ld] %f ", k+1, spk_code_aux[k]);
                     printf("\n");
                 }
 
                 for (i = 0, j = 0, k = 0; i < num_samples; i++) {
-                    read = fread(data_buffer, sizeof(data_buffer), 1, fin);
-                    if (read == 1) {
+                    if ((read = fread(data_buffer, sizeof(data_buffer), 1, fin))) {
                     
                         /* Receives only mono 16-bit PCM, convert to float [-1,0.999969482421875] */
                         data_in_channel = ((float) ((data_buffer[0] & 0x00ff) | (data_buffer[1] << 8))) / 32768;
@@ -386,7 +412,7 @@ int main(int argc, char **argv) {
                                 waveform_buffer_flag = 1;
                                 j = 0;
                                 k += 1;
-                                printf(" [%d]", k);
+                                printf(" [%ld]", k);
                             }
                         } else { //take RIGHT_SAMPLES amount of samples as the first samples
                             // put only LEFT_SAMPLES and RIGHT_SAMPLES amount in window buffer,
@@ -400,7 +426,7 @@ int main(int argc, char **argv) {
                                 first_buffer_flag = 1;
                                 waveform_buffer_flag = 1;
                                 k += 1;
-                                printf("frame: [%d]", k);
+                                printf("frame: [%ld]", k);
                             }
                         }
 
@@ -425,7 +451,7 @@ int main(int argc, char **argv) {
                             waveform_buffer_flag = 0;
                         }
                     } else {
-                        fprintf(stderr, "\nError reading file. %d bytes\n", read);
+                        fprintf(stderr, "\nError reading file. %d bytes -- %ld -- %ld\n", read, i+1, num_samples);
                         fclose(fin);
                         fclose(fout);
                         if (print_melsp_flag) {
@@ -446,7 +472,7 @@ int main(int argc, char **argv) {
 
                     if (j == FRAME_SHIFT) printf(" [last frame]\n");
                     else {
-                        fprintf(stderr, "\nError remainder right-edge samples calculation %d %d %ld\n", j, FRAME_SHIFT, num_reflected_right_edge_samples);
+                        fprintf(stderr, "\nError remainder right-edge samples calculation %ld %d %d\n", j, FRAME_SHIFT, num_reflected_right_edge_samples);
                         fclose(fin);
                         fclose(fout);
                         dspstate_destroy(dsp);
@@ -499,13 +525,13 @@ int main(int argc, char **argv) {
         long num_frame;
 
         //read input features and initialize wave output header
-        if ((num_frame = read_feat_write_wav(fin, fout, melsp_bin_in_flasg) > 0) {
+        if ((num_frame = read_feat_write_wav(fin, fout, melsp_bin_in_flag)) > 0) {
 
             float features[FEATURES_DIM];
             short pcm[MAX_N_OUTPUT]; //output is in short 2-byte (16-bit) format [-32768,32767]
             int n_output = 0;
-            long samples = 0;
-            short i, j, k;
+            short i, j;
+            long k;
 
             if (!cv_point_flag && !cv_interp_flag) { //analysis-synthesis
                 // initialize mwdlp struct
@@ -569,7 +595,7 @@ int main(int argc, char **argv) {
                         }
                     }
                     if (frame) {
-                        if (k < num_frame) printf("frame: [%d]", k);
+                        if (k < num_frame) printf("frame: [%ld]", k);
                         else printf(" [last frame]\n");
 
                         mwdlp10net_synthesize(net, features, pcm, &n_output, 0);
@@ -591,7 +617,7 @@ int main(int argc, char **argv) {
                         samples += n_output;
                     }
                 } else {
-                    fprintf(stderr, "\nError input frames  %d -- %d\n", k, num_frame);
+                    fprintf(stderr, "\nError input frames  %ld -- %ld\n", k, num_frame);
                     fclose(fin);
                     fclose(fout);
                     mwdlp10net_destroy(net);
@@ -614,12 +640,12 @@ int main(int argc, char **argv) {
                     //N-dim 1-hot --> 2-dim --> N-dim [N_SPK]
                     printf("%d-dim 1-hot code: ", FEATURE_N_SPK);
                     for (k = 0; k < FEATURE_N_SPK; k++)
-                        printf("[%d] %f ", k+1, one_hot_code[k]);
+                        printf("[%ld] %f ", k+1, one_hot_code[k]);
                     printf("\n");
                     compute_spkidtr(&fc_in_spk_code_transform, &fc_out_spk_code_transform, spk_code_aux, one_hot_code);
                     printf("%d-dim embed.: ", FEATURE_N_SPK);
                     for (k = 0; k < FEATURE_N_SPK; k++) {
-                        printf("[%d] %f ", k+1, spk_code_aux[k]);
+                        printf("[%ld] %f ", k+1, spk_code_aux[k]);
                     }
                     printf("\n");
                 } else { //interpolated spk-code location
@@ -631,7 +657,7 @@ int main(int argc, char **argv) {
                     compute_spkidtr_coord(&fc_out_spk_code_transform, spk_code_aux, spk_coord);
                     printf("%d-dim embed.: ", FEATURE_N_SPK);
                     for (k = 0; k < FEATURE_N_SPK; k++) {
-                        printf("[%d] %f ", k+1, spk_code_aux[k]);
+                        printf("[%ld] %f ", k+1, spk_code_aux[k]);
                     }
                     printf("\n");
                 }
@@ -701,10 +727,10 @@ int main(int argc, char **argv) {
                         }
                     }
                     if (frame) {
-                        if (k < num_frame) printf("frame: [%d]", k);
+                        if (k < num_frame) printf("frame: [%ld]", k);
                         else printf(" [last frame]\n");
 
-                        cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_feat_in(net, features, spk_code_aux, pcm, &n_output, 0);
+                        cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0);
                 
                         if (print_melsp_flag) {
                             fwrite(features, sizeof(features), 1, fout_msp_bin);
@@ -732,7 +758,7 @@ int main(int argc, char **argv) {
                         samples += n_output;
                     }
                 } else {
-                    fprintf(stderr, "\nError input frames  %d -- %d\n", k, num_frame);
+                    fprintf(stderr, "\nError input frames  %ld -- %ld\n", k, num_frame);
                     fclose(fin);
                     fclose(fout);
                     if (print_melsp_flag) {
@@ -762,7 +788,7 @@ int main(int argc, char **argv) {
 
     t = clock() - t;
     double time_taken = ((double)t)/CLOCKS_PER_SEC;
-    printf("%d [frames] %d [samples] %.2f [sec.] synthesis in %.2f seconds \n"\
+    printf("%d [frames] %ld [samples] %.2f [sec.] synthesis in %.2f seconds \n"\
         "[%.2f x faster than real-time] [%.2f RTF] [%.2f kHz/sec]\n",
         (int)((double)samples/FRAME_SHIFT), samples, (double)samples/SAMPLING_FREQUENCY, time_taken,
             ((double)samples/SAMPLING_FREQUENCY)/time_taken, time_taken/((double)samples/SAMPLING_FREQUENCY),

@@ -6,22 +6,32 @@
 #include "wave.h"
 
 
-int read_write_wav(FILE *fin, FILE *fout, short *num_reflected_right_edge_samples, long *num_samples, long *size_of_each_sample) {
+short read_write_wav(FILE *fin, FILE *fout, short *num_reflected_right_edge_samples, long *num_samples, long *size_of_each_sample) {
     unsigned char buffer4[4];
     unsigned char buffer2[2];
     
     // WAVE header structure
     struct HEADER header;
-    
-    int read = 0;
-    
+   
+    size_t read;
+ 
     // read header parts [input wav]
-    read = fread(header.riff, sizeof(header.riff), 1, fin);
+    if (!(read = fread(header.riff, sizeof(header.riff), 1, fin))) {
+        fprintf(stderr, "\nError reading file. riff %lu bytes * 4 %s\n", read, header.riff);
+        fclose(fin);
+        fclose(fout);
+        return -1;
+    }
     printf("(1-4): %s \n", header.riff); 
     // write header parts [output wav, following input reading]
     fwrite(header.riff, sizeof(header.riff), 1, fout);
     
-    read = fread(buffer4, sizeof(buffer4), 1, fin);
+    if (!(read = fread(buffer4, sizeof(buffer4), 1, fin))) {
+        fprintf(stderr, "\nError reading file. size %lu bytes * 4 %s\n", read, buffer4);
+        fclose(fin);
+        fclose(fout);
+        return -1;
+    }
     printf("%u %u %u %u\n", buffer4[0], buffer4[1], buffer4[2], buffer4[3]);
     fwrite(buffer4, sizeof(buffer4), 1, fout);
     
@@ -33,15 +43,30 @@ int read_write_wav(FILE *fin, FILE *fout, short *num_reflected_right_edge_sample
     
     printf("(5-8) Overall size: bytes:%u, Kb:%u \n", header.overall_size, header.overall_size/1024);
     
-    read = fread(header.wave, sizeof(header.wave), 1, fin);
+    if (!(read = fread(header.wave, sizeof(header.wave), 1, fin))) {
+        fprintf(stderr, "\nError reading file. wave %lu bytes * 4 %s\n", read, header.wave);
+        fclose(fin);
+        fclose(fout);
+        return -1;
+    }
     printf("(9-12) Wave marker: %s\n", header.wave);
     fwrite(header.wave, sizeof(header.wave), 1, fout);
     
-    read = fread(header.fmt_chunk_marker, sizeof(header.fmt_chunk_marker), 1, fin);
+    if (!(read = fread(header.fmt_chunk_marker, sizeof(header.fmt_chunk_marker), 1, fin))) {
+        fprintf(stderr, "\nError reading file. fmt %lu bytes * 4 %s\n", read, header.fmt_chunk_marker);
+        fclose(fin);
+        fclose(fout);
+        return -1;
+    }
     printf("(13-16) Fmt marker: %s\n", header.fmt_chunk_marker);
     fwrite(header.fmt_chunk_marker, sizeof(header.fmt_chunk_marker), 1, fout);
     
-    read = fread(buffer4, sizeof(buffer4), 1, fin);
+    if (!(read = fread(buffer4, sizeof(buffer4), 1, fin))) {
+        fprintf(stderr, "\nError reading file. fmt_length %lu bytes * 4 %s\n", read, buffer4);
+        fclose(fin);
+        fclose(fout);
+        return -1;
+    }
     printf("%u %u %u %u\n", buffer4[0], buffer4[1], buffer4[2], buffer4[3]);
     fwrite(buffer4, sizeof(buffer4), 1, fout);
     
@@ -52,7 +77,12 @@ int read_write_wav(FILE *fin, FILE *fout, short *num_reflected_right_edge_sample
                                (buffer4[3] << 24);
     printf("(17-20) Length of Fmt header: %u \n", header.length_of_fmt);
     
-    read = fread(buffer2, sizeof(buffer2), 1, fin);
+    if (!(read = fread(buffer2, sizeof(buffer2), 1, fin))) {
+        fprintf(stderr, "\nError reading file. type %lu bytes * 2 %s\n", read, buffer2);
+        fclose(fin);
+        fclose(fout);
+        return -1;
+    }
     printf("%u %u \n", buffer2[0], buffer2[1]);
     fwrite(buffer2, sizeof(buffer2), 1, fout);
     
@@ -73,7 +103,12 @@ int read_write_wav(FILE *fin, FILE *fout, short *num_reflected_right_edge_sample
         return -1;
     }
     
-    read = fread(buffer2, sizeof(buffer2), 1, fin);
+    if (!(read = fread(buffer2, sizeof(buffer2), 1, fin))) {
+        fprintf(stderr, "\nError reading file. channels %lu bytes * 2 %s\n", read, buffer2);
+        fclose(fin);
+        fclose(fout);
+        return -1;
+    }
     printf("%u %u \n", buffer2[0], buffer2[1]);
     fwrite(buffer2, sizeof(buffer2), 1, fout);
     
@@ -86,7 +121,12 @@ int read_write_wav(FILE *fin, FILE *fout, short *num_reflected_right_edge_sample
         return -1;
     }
     
-    read = fread(buffer4, sizeof(buffer4), 1, fin);
+    if (!(read = fread(buffer4, sizeof(buffer4), 1, fin))) {
+        fprintf(stderr, "\nError reading file. sr %lu bytes * 4 %s\n", read, buffer4);
+        fclose(fin);
+        fclose(fout);
+        return -1;
+    }
     printf("%u %u %u %u\n", buffer4[0], buffer4[1], buffer4[2], buffer4[3]);
     fwrite(buffer4, sizeof(buffer4), 1, fout);
     
@@ -103,7 +143,12 @@ int read_write_wav(FILE *fin, FILE *fout, short *num_reflected_right_edge_sample
         return -1;
     }
     
-    read = fread(buffer4, sizeof(buffer4), 1, fin);
+    if (!(read = fread(buffer4, sizeof(buffer4), 1, fin))) {
+        fprintf(stderr, "\nError reading file. byterate %lu bytes * 4 %s\n", read, buffer4);
+        fclose(fin);
+        fclose(fout);
+        return -1;
+    }
     printf("%u %u %u %u\n", buffer4[0], buffer4[1], buffer4[2], buffer4[3]);
     fwrite(buffer4, sizeof(buffer4), 1, fout);
     
@@ -113,7 +158,12 @@ int read_write_wav(FILE *fin, FILE *fout, short *num_reflected_right_edge_sample
                            (buffer4[3] << 24);
     printf("(29-32) Byte Rate: %u B/s , Bit Rate:%u b/s\n", header.byterate, header.byterate*8);
     
-    read = fread(buffer2, sizeof(buffer2), 1, fin);
+    if (!(read = fread(buffer2, sizeof(buffer2), 1, fin))) {
+        fprintf(stderr, "\nError reading file. block %lu bytes * 2 %s\n", read, buffer2);
+        fclose(fin);
+        fclose(fout);
+        return -1;
+    }
     printf("%u %u \n", buffer2[0], buffer2[1]);
     fwrite(buffer2, sizeof(buffer2), 1, fout);
     
@@ -121,7 +171,12 @@ int read_write_wav(FILE *fin, FILE *fout, short *num_reflected_right_edge_sample
                        (buffer2[1] << 8);
     printf("(33-34) Block Alignment: %u \n", header.block_align);
     
-    read = fread(buffer2, sizeof(buffer2), 1, fin);
+    if (!(read = fread(buffer2, sizeof(buffer2), 1, fin))) {
+        fprintf(stderr, "\nError reading file. bits %lu bytes * 2 %s\n", read, buffer2);
+        fclose(fin);
+        fclose(fout);
+        return -1;
+    }
     printf("%u %u \n", buffer2[0], buffer2[1]);
     fwrite(buffer2, sizeof(buffer2), 1, fout);
     
@@ -129,11 +184,21 @@ int read_write_wav(FILE *fin, FILE *fout, short *num_reflected_right_edge_sample
                        (buffer2[1] << 8);
     printf("(35-36) Bits per sample: %u \n", header.bits_per_sample);
     
-    read = fread(header.data_chunk_header, sizeof(header.data_chunk_header), 1, fin);
+    if (!(read = fread(header.data_chunk_header, sizeof(header.data_chunk_header), 1, fin))) {
+        fprintf(stderr, "\nError reading file. data_mark %lu bytes * 4 %s\n", read, header.data_chunk_header);
+        fclose(fin);
+        fclose(fout);
+        return -1;
+    }
     printf("(37-40) Data Marker: %s \n", header.data_chunk_header);
     fwrite(header.data_chunk_header, sizeof(header.data_chunk_header), 1, fout);
     
-    read = fread(buffer4, sizeof(buffer4), 1, fin);
+    if (!(read = fread(buffer4, sizeof(buffer4), 1, fin))) {
+        fprintf(stderr, "\nError reading file. data_size %lu bytes * 4 %s\n", read, buffer4);
+        fclose(fin);
+        fclose(fout);
+        return -1;
+    }
     printf("%u %u %u %u\n", buffer4[0], buffer4[1], buffer4[2], buffer4[3]);
     
     header.data_size = buffer4[0] |
@@ -168,11 +233,11 @@ int read_write_wav(FILE *fin, FILE *fout, short *num_reflected_right_edge_sample
     float duration_in_seconds = (float) header.overall_size / header.byterate;
     printf("Approx.Duration in seconds= %f\n", duration_in_seconds);
 
-    return 0;
+    return 1;
 }
 
 
-long read_feat_write_wav(FILE* fin, FILE* fout, long *num_samples, long *size_of_each_sample, int bin_flag) {
+long read_feat_write_wav(FILE* fin, FILE* fout, int bin_flag) {
     // WAVE header structure
     struct HEADER header;
 
@@ -181,7 +246,7 @@ long read_feat_write_wav(FILE* fin, FILE* fout, long *num_samples, long *size_of
     if (bin_flag) {
         fseek(fin, 0, SEEK_END);
         long size = ftell(fin);
-        num_frame = (long) round((float) size / (FEATURES_DIM * sizeof(float)));
+        num_frame = (long) round((float) size / (MEL_DIM * sizeof(float)));
     } else {
         char c;
         short count = 0;
@@ -194,12 +259,12 @@ long read_feat_write_wav(FILE* fin, FILE* fout, long *num_samples, long *size_of
                     flag = 0;
                 } else if (c == '\n') { //found end-of-line
                     count++;
-                    if (count == FEATURES_DIM) { //add row
+                    if (count == MEL_DIM) { //add row
                         num_frame++;
                         count = 0;
                         flag = 0;
                     } else { //columns not appropriate
-                        fprintf(stderr, "Error input text format %d %d\n", count, FEATURES_DIM);
+                        fprintf(stderr, "Error input text format %d %d\n", count, MEL_DIM);
                         fclose(fin);
                         fclose(fout);
                         return -1;
@@ -209,11 +274,11 @@ long read_feat_write_wav(FILE* fin, FILE* fout, long *num_samples, long *size_of
                 if (c != ' ' && c != '\n') { //add starting column character
                     flag = 1;
                 } else if (c == '\n') { //found end-of-line
-                    if (count == FEATURES_DIM) { //add row
-                        num_frame++
+                    if (count == MEL_DIM) { //add row
+                        num_frame++;
                         count = 0;
                     } else { //columns not appropriate
-                        fprintf(stderr, "Error input text format  %d %d\n", count, FEATURES_DIM);
+                        fprintf(stderr, "Error input text format  %d %d\n", count, MEL_DIM);
                         fclose(fin);
                         fclose(fout);
                         return -1;
@@ -235,11 +300,11 @@ long read_feat_write_wav(FILE* fin, FILE* fout, long *num_samples, long *size_of
     fwrite(header.riff, sizeof(header.riff), 1, fout);
     
     // header.overall_size = data_size [samples_size] + 44 [header_size] - 8 [RIFF_size + overall_size]
-    header.channels = 1
+    header.channels = 1;
     header.bits_per_sample = 16;
     header.data_size = (num_samples_frame * header.channels * header.bits_per_sample) / 8;
     header.overall_size = header.data_size + 36;
-    fwrite(header.overal_size, sizeof(header.overal_size), 1, fout);
+    fwrite(&header.overall_size, sizeof(header.overall_size), 1, fout);
     printf("(5-8) Overall size: bytes:%u, Kb:%u \n", header.overall_size, header.overall_size/1024);
     
     header.wave[0] = 'W';
@@ -272,11 +337,11 @@ long read_feat_write_wav(FILE* fin, FILE* fout, long *num_samples, long *size_of
     fwrite(&header.sample_rate, sizeof(header.sample_rate), 1, fout);
     printf("(25-28) Sample rate: %u Hz\n", header.sample_rate);
     
-    header.byterate = (header.sample_rate * header.bits_per_sample * header.channels) / 8
+    header.byterate = (header.sample_rate * header.bits_per_sample * header.channels) / 8;
     fwrite(&header.byterate, sizeof(header.byterate), 1, fout);
     printf("(29-32) Byte Rate: %u B/s , Bit Rate:%u b/s\n", header.byterate, header.byterate*8);
     
-    header.block_align = (header.channels * header.bits_per_sample) / 8
+    header.block_align = (header.channels * header.bits_per_sample) / 8;
     fwrite(&header.block_align, sizeof(header.block_align), 1, fout);
     printf("(33-34) Block Alignment: %u \n", header.block_align);
     

@@ -19,7 +19,7 @@ INC = -I${IDIR}
 LIB = -L${LDIR} -l${LIBNAME}
 TARGET = test_cycvae_mwdlp
 
-_OBJS = mwdlp10net_cycvae.o freq.o kiss_fft.o nnet.o nnet_data.o nnet_cv_data.o
+_OBJS = mwdlp10net_cycvae.o freq.o kiss_fft.o nnet.o nnet_data.o nnet_cv_data.o wave.o
 OBJS = $(patsubst %,$(ODIR)/%,$(_OBJS))
 
 

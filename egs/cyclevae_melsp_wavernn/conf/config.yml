@@ -33,13 +33,15 @@ hidden_units_lf0: 128
 ## GRU hidden units wavernn
 #[for high-quality, 0.5 RT with 10-bit mu-law]
 #hidden_units_wave: 800
-#[for natural-quality, 0.59 RT with 10-bit mu-law; 0.5 RT with 8-bit mu-law 16-GRU small, but much lesser quality]
+#[for natural-quality, 0.59 RT with 10-bit mu-law]
 hidden_units_wave: 896
 
-#[for 8-bit mu-law]
-#hidden_units_wave_2: 16
-#[for others]
 hidden_units_wave_2: 32
+
+#[for others]
+#mid_dim: 32
+#[for 10-bit mu-law]
+mid_dim: 16
 
 ## GRU hidden layers encoder, decoder spec, decoder excit
 hidden_layers_enc: 1
@@ -164,8 +166,6 @@ mdl_name_post: cycmelspxlf0capspkvae-laplace_sparse_ftdec
 #mdl_name_wave: wavernn_dualgru_compact_lpc_mband_9bit
 ##[8 kHz, 16 kHz, 22.05 kHz, 24 kHz, 44.1 kHz, 48 kHz]
 mdl_name_wave: wavernn_dualgru_compact_lpc_mband_10bit_cf
-##[8 kHz, 16 kHz, 22.05 kHz, 24 kHz, 44.1 kHz, 48 kHz]
-#mdl_name_wave: wavernn_dualgru_compact_lpc_mband_8bit_cf
 ##[8 kHz, 16 kHz, 22.05 kHz, 24 kHz]
 #mdl_name_wave: wavernn_dualgru_compact_lpc_mband_16bit
 

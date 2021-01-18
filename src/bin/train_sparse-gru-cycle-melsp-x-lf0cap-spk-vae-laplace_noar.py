@@ -817,8 +817,8 @@ def main():
                     stats_list, args.string_path, excit_dim=args.full_excit_dim)
     n_eval_data = len(dataset_eval.file_list_src)
     batch_size_utt_eval = round(n_eval_data/10)
-    if batch_size_utt_eval > 80:
-        batch_size_utt_eval = 80
+    if batch_size_utt_eval > 160:
+        batch_size_utt_eval = 160
     logging.info("number of evaluation_data -- batch_size_eval = %d -- %d" % (n_eval_data, batch_size_utt_eval))
     dataloader_eval = DataLoader(dataset_eval, batch_size=batch_size_utt_eval, shuffle=False, num_workers=args.n_workers)
     #generator_eval = eval_generator(dataloader_eval, device, args.batch_size, limit_count=1)

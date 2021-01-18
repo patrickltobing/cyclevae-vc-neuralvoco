@@ -40,5 +40,5 @@ struct HEADER {
     so you need to convert the bytes to big-endian [MSB in smallest address] in code for the values to make sense.
 */
 
-int read_write_wav(FILE *fin, FILE *fout, short *num_reflected_right_edge_samples, long *num_samples, long *size_of_each_sample);
+short read_write_wav(FILE *fin, FILE *fout, short *num_reflected_right_edge_samples, long *num_samples, long *size_of_each_sample);
 long read_feat_write_wav(FILE* fin, FILE* fout, int bin_flag);
