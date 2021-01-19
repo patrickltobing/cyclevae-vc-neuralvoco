@@ -535,14 +535,14 @@ def main():
                 #logging.info(lat_src_e.shape)
                 #write_hdf5(feat_file, args.string_path+'_lat_e', lat_src_e)
 
-                #logging.info('write cyc to h5')
-                #outh5dir = os.path.join(os.path.dirname(os.path.dirname(feat_file)), args.spk+"-"+args.spk+"-"+args.spk)
-                #if not os.path.exists(outh5dir):
-                #    os.makedirs(outh5dir)
-                #feat_file = os.path.join(outh5dir, os.path.basename(feat_file))
-                #logging.info(feat_file + ' ' + args.string_path)
-                #logging.info(feat_cyc.shape)
-                #write_hdf5(feat_file, args.string_path, feat_cyc)
+                logging.info('write cyc to h5')
+                outh5dir = os.path.join(os.path.dirname(os.path.dirname(feat_file)), args.spk+"-"+args.spk+"-"+args.spk)
+                if not os.path.exists(outh5dir):
+                    os.makedirs(outh5dir)
+                feat_file = os.path.join(outh5dir, os.path.basename(feat_file))
+                logging.info(feat_file + ' ' + args.string_path)
+                logging.info(feat_cyc.shape)
+                write_hdf5(feat_file, args.string_path, feat_cyc)
 
                 #logging.info('write lat rec to h5')
                 #logging.info(feat_file + ' ' + args.string_path+'_lat')

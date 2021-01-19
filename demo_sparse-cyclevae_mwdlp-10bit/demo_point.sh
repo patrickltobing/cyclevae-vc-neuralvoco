@@ -17,8 +17,8 @@ spk_idx=1
 
 for spk in ${spks[@]};do
     echo $file_idx $src_spk to $spk $spk_idx
-    ./bin/test_cycvae_mwdlp $spk_idx ${in_dir}/${file_idx}_${src_spk}.wav ${out_dir}/${spk_idx}_${file_idx}_${src_spk}-${spk}.wav 
-    #./bin/test_cycvae_mwdlp.exe $spk_idx ${in_dir}/${file_idx}_${src_spk}.wav ${out_dir}/${spk_idx}_${file_idx}_${src_spk}-${spk}.wav 
+    ./bin/test_cycvae_mwdlp -i $spk_idx ${in_dir}/${file_idx}_${src_spk}.wav ${out_dir}/${spk_idx}_${file_idx}_${src_spk}-${spk}.wav 
+    #./bin/test_cycvae_mwdlp.exe -i $spk_idx ${in_dir}/${file_idx}_${src_spk}.wav ${out_dir}/${spk_idx}_${file_idx}_${src_spk}-${spk}.wav 
     spk_idx=$(( ${spk_idx}+1  ))
 done
 

@@ -29,7 +29,8 @@
 /* Modified by Patrick Lumban Tobing (Nagoya University) on Sept.-Dec. 2020,
    marked by PLT_<Sep/Dec>20 */
 
-
+#ifndef VEC_NEON_H
+#define VEC_NEON_H
 
 //PLT_Dec20
 #include "tansig_table.h"
@@ -179,3 +180,5 @@ static void sparse_sgemv_accum16(float *out, const float *w, int rows, const int
       }
    }
 }
+
+#endif /* VEC_H */

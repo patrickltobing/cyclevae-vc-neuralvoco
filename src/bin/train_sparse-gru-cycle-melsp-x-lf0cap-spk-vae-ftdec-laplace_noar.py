@@ -416,8 +416,8 @@ def main():
                         type=float, help="learning rate")
     parser.add_argument("--batch_size", default=30,
                         type=int, help="batch size (if set 0, utterance batch will be used)")
-    parser.add_argument("--step_count", default=1130000,
-                        type=int, help="number of training epochs")
+    parser.add_argument("--step_count", default=1155000,
+                        type=int, help="number of training steps")
     parser.add_argument("--do_prob", default=0.5,
                         type=float, help="dropout probability")
     parser.add_argument("--n_workers", default=2,
@@ -965,6 +965,8 @@ def main():
     loss_melsp_dB_src_trg = []
     loss_uv_src_trg = []
     loss_f0_src_trg = []
+    loss_uvcap_src_trg = []
+    loss_cap_src_trg = []
     loss_lat_dist_rmse = []
     loss_lat_dist_cossim = []
     loss_sc_feat_in = []
@@ -1914,7 +1916,7 @@ def main():
                                                 + torch.sqrt(torch.mean(torch.mean(criterion_l2(magsp_est, magsp), -1), -1))
                         batch_loss_px_sum += batch_loss_magsp_.sum()
                         batch_loss_magsp[i] = batch_loss_magsp_.mean()
-                        batch_loss_px[i] += batch_loss_magsp[i]
+                        batch_loss_px[i] += batch_loss_magsp_.mean()
                         batch_loss_magsp_dB[i] = torch.mean(torch.mean(torch.sqrt(torch.mean((20*(torch.log10(torch.clamp(magsp_est_rest, min=1e-16))
                                                                 -torch.log10(torch.clamp(magsp_rest, min=1e-16))))**2, -1)), -1))
 
@@ -1964,13 +1966,13 @@ def main():
 
                         total_eval_loss["eval/loss_elbo-%d"%(i+1)].append(batch_loss_elbo[i].item())
                         total_eval_loss["eval/loss_px-%d"%(i+1)].append(batch_loss_px[i].item())
-                        total_eval_loss["eval/loss_sc_feat-%d"%(i+1)].append(batch_loss_sc_feat[i].item())
-                        total_eval_loss["eval/loss_sc_feat_magsp-%d"%(i+1)].append(batch_loss_sc_feat_magsp[i].item())
                         if i == 0:
                             total_eval_loss["eval/loss_sc_feat_in"].append(batch_loss_sc_feat_in.item())
                             total_eval_loss["eval/loss_sc_feat_magsp_in"].append(batch_loss_sc_feat_magsp_in.item())
                             loss_sc_feat_in.append(batch_loss_sc_feat_in.item())
                             loss_sc_feat_magsp_in.append(batch_loss_sc_feat_magsp_in.item())
+                        total_eval_loss["eval/loss_sc_feat-%d"%(i+1)].append(batch_loss_sc_feat[i].item())
+                        total_eval_loss["eval/loss_sc_feat_magsp-%d"%(i+1)].append(batch_loss_sc_feat_magsp[i].item())
                         total_eval_loss["eval/loss_ms_norm-%d"%(i+1)].append(batch_loss_ms_norm[i].item())
                         total_eval_loss["eval/loss_ms_err-%d"%(i+1)].append(batch_loss_ms_err[i].item())
                         total_eval_loss["eval/loss_ms_norm_magsp-%d"%(i+1)].append(batch_loss_ms_norm_magsp[i].item())
@@ -2933,7 +2935,7 @@ def main():
             if iter_idx >= 50:
                 batch_loss_px_sum += batch_loss_magsp_.sum()
             batch_loss_magsp[i] = batch_loss_magsp_.mean()
-            batch_loss_px[i] += batch_loss_magsp[i]
+            batch_loss_px[i] += batch_loss_magsp_.mean()
             batch_loss_magsp_dB[i] = torch.mean(torch.mean(torch.sqrt(torch.mean((20*(torch.log10(torch.clamp(magsp_est_rest, min=1e-16))
                                                     -torch.log10(torch.clamp(magsp_rest, min=1e-16))))**2, -1)), -1))
 
@@ -2985,13 +2987,13 @@ def main():
 
             total_train_loss["train/loss_elbo-%d"%(i+1)].append(batch_loss_elbo[i].item())
             total_train_loss["train/loss_px-%d"%(i+1)].append(batch_loss_px[i].item())
-            total_train_loss["train/loss_sc_feat-%d"%(i+1)].append(batch_loss_sc_feat[i].item())
-            total_train_loss["train/loss_sc_feat_magsp-%d"%(i+1)].append(batch_loss_sc_feat_magsp[i].item())
             if i == 0:
                 total_train_loss["train/loss_sc_feat_in"].append(batch_loss_sc_feat_in.item())
                 total_train_loss["train/loss_sc_feat_magsp_in"].append(batch_loss_sc_feat_magsp_in.item())
                 loss_sc_feat_in.append(batch_loss_sc_feat_in.item())
                 loss_sc_feat_magsp_in.append(batch_loss_sc_feat_magsp_in.item())
+            total_train_loss["train/loss_sc_feat-%d"%(i+1)].append(batch_loss_sc_feat[i].item())
+            total_train_loss["train/loss_sc_feat_magsp-%d"%(i+1)].append(batch_loss_sc_feat_magsp[i].item())
             total_train_loss["train/loss_ms_norm-%d"%(i+1)].append(batch_loss_ms_norm[i].item())
             total_train_loss["train/loss_ms_err-%d"%(i+1)].append(batch_loss_ms_err[i].item())
             total_train_loss["train/loss_ms_norm_magsp-%d"%(i+1)].append(batch_loss_ms_norm_magsp[i].item())

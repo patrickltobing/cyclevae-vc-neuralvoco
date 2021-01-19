@@ -775,7 +775,7 @@ class GRU_SPEC_DECODER(nn.Module):
     def __init__(self, feat_dim=158, out_dim=80, hidden_layers=1, hidden_units=640, causal_conv=True,
             kernel_size=5, dilation_size=1, do_prob=0, n_spk=14, use_weight_norm=True, scale_out_flag=True,
                 excit_dim=None, pad_first=True, right_size=None, pdf=False, scale_in_flag=False,
-                    aux_dim=None, red_dim=None):
+                    aux_dim=None, red_dim=None, post_layer=False):
         super(GRU_SPEC_DECODER, self).__init__()
         self.n_spk = n_spk
         self.feat_dim = feat_dim
@@ -798,8 +798,10 @@ class GRU_SPEC_DECODER(nn.Module):
         self.pad_first = pad_first
         self.right_size = right_size
         self.pdf = pdf
+        self.post_layer = post_layer
         if self.pdf:
             self.out_dim = self.spec_dim*2
+            self.post_layer = False
         else:
             self.out_dim = self.spec_dim
         self.scale_in_flag = scale_in_flag
@@ -854,6 +856,10 @@ class GRU_SPEC_DECODER(nn.Module):
         # Output layers
         self.out = nn.Conv1d(self.hidden_units, self.out_dim, 1)
 
+        # Post layers
+        if self.post_layer:
+            self.post = nn.Conv1d(self.out_dim, self.out_dim*2, 1)
+
         # De-normalization layers
         if self.scale_out_flag:
             self.scale_out = nn.Conv1d(self.spec_dim, self.spec_dim, 1)
@@ -864,7 +870,7 @@ class GRU_SPEC_DECODER(nn.Module):
         else:
             self.apply(initialize)
 
-    def forward(self, z, y=None, aux=None, h=None, do=False, e=None, outpad_right=0, sampling=True):
+    def forward(self, z, y=None, aux=None, h=None, do=False, e=None, outpad_right=0, sampling=True, scale_fact=None):
         if aux is not None:
             if y is not None:
                 if len(y.shape) == 2:
@@ -942,7 +948,28 @@ class GRU_SPEC_DECODER(nn.Module):
         else:
             e = torch.clamp(self.out(e.transpose(1,2)).transpose(1,2), min=MIN_CLAMP, max=MAX_CLAMP) # B x T x C -> B x C x T -> B x T x C
 
-        if self.pdf:
+        if not self.pdf:
+            if not self.post_layer:
+                if self.scale_out_flag:
+                    return self.scale_out(F.tanhshrink(e).transpose(1,2)).transpose(1,2), h.detach()
+                else:
+                    return F.tanhshrink(e), h.detach()
+            else:
+                e = F.tanhshrink(e).transpose(1,2)
+                x_ = self.scale_out(e).transpose(1,2)
+                e = torch.clamp(self.post(e), min=MIN_CLAMP, max=MAX_CLAMP)
+                mus_e = self.scale_out(F.tanhshrink(e[:,:self.spec_dim,:])).transpose(1,2)
+                mus = x_+mus_e
+                log_scales = F.logsigmoid(e[:,self.spec_dim:,:]).transpose(1,2)
+                if scale_fact is None:
+                    e = sampling_laplace(mus_e, log_scales)
+                else:
+                    e = sampling_laplace(mus_e, log_scales+scale_fact)
+                if do:
+                    return torch.cat((mus, torch.clamp(log_scales, min=CLIP_1E12)), 2), x_+e, x_, h.detach()
+                else:
+                    return torch.cat((mus, log_scales), 2), x_+e, x_, h.detach()
+        else:
             if self.scale_out_flag:
                 mus = self.scale_out(F.tanhshrink(e[:,:,:self.spec_dim]).transpose(1,2)).transpose(1,2)
             else:
@@ -957,11 +984,6 @@ class GRU_SPEC_DECODER(nn.Module):
                             h.detach()
             else:
                 return torch.cat((mus, log_scales), 2), mus, h.detach()
-        else:
-            if self.scale_out_flag:
-                return self.scale_out(F.tanhshrink(e).transpose(1,2)).transpose(1,2), h.detach()
-            else:
-                return F.tanhshrink(e), h.detach()
 
     def apply_weight_norm(self):
         """Apply weight normalization module from all of the layers."""

@@ -30,6 +30,9 @@
 /* Modified by Patrick Lumban Tobing (Nagoya University) on Sept. 2020,
    marked by PLT_<Sep>20 */
 
+#ifndef VEC_NEON_H
+#define VEC_NEON_H
+
 #include <arm_neon.h>
 static OPUS_INLINE float32x4_t exp4_approx(float32x4_t x) {
   int32x4_t i;
@@ -231,3 +234,5 @@ static void sparse_sgemv_accum16(float *out, const float *w, int rows, const int
       
     }
 }
+
+#endif /* VEC_NEON_H */

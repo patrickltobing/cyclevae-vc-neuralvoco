@@ -31,6 +31,9 @@
 /* Modified by Patrick Lumban Tobing (Nagoya University) on Sept. 2020,
    marked by PLT_<Sep>20 */
 
+#ifndef VEC_AVX_H
+#define VEC_AVX_H
+
 #include <immintrin.h>
 
 #ifdef __AVX2__
@@ -288,3 +291,4 @@ static void sparse_sgemv_accum16(float *out, const float *weights, int rows, con
    }
 }
 
+#endif /* VEC_AVX_H */

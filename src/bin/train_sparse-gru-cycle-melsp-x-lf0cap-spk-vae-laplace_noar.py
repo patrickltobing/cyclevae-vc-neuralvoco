@@ -995,6 +995,8 @@ def main():
     loss_melsp_dB_src_trg = []
     loss_uv_src_trg = []
     loss_f0_src_trg = []
+    loss_uvcap_src_trg = []
+    loss_cap_src_trg = []
     loss_lat_dist_rmse = []
     loss_lat_dist_cossim = []
     loss_sc_feat_in = []

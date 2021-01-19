@@ -363,6 +363,8 @@ MWDLP10NET_CYCVAE_EXPORT MWDLP10CycleVAEMelspExcitSpkNetState *mwdlp10cyclevaene
         for (i=0, k=0;i<DLPC_ORDER;i++)
             for (j=0;j<N_MBANDS;j++,k++)
                 mwdlp10net->last_coarse[k] = INIT_LAST_SAMPLE;
+        for (i=0;i<N_QUANTIZE;i++)
+            mwdlp10net->mu_law_10_table[i] = mu_law_10_table[i];
         return mwdlp10net;
     }
     printf("Cannot allocate and initialize memory for MWDLP10CycleVAEMelspExcitSpkNetState.\n");
@@ -396,6 +398,8 @@ MWDLP10NET_CYCVAE_EXPORT MWDLP10NetState *mwdlp10net_create()
         for (i=0, k=0;i<DLPC_ORDER;i++)
             for (j=0;j<N_MBANDS;j++,k++)
                 mwdlp10net->last_coarse[k] = INIT_LAST_SAMPLE;
+        for (i=0;i<N_QUANTIZE;i++)
+            mwdlp10net->mu_law_10_table[i] = mu_law_10_table[i];
         return mwdlp10net;
     }
     printf("Cannot allocate and initialize memory for MWDLP10NetState.\n");
@@ -541,11 +545,11 @@ MWDLP10NET_CYCVAE_EXPORT void cyclevae_melsp_excit_spk_convert_mwdlp10net_synthe
             run_sample_network_mwdlp10_fine(nnet, c_embed_coarse, pdf, gru_c_condition, coarse, mwdlp10net->last_fine);
             for (j=0;j<N_MBANDS;j++) {
                 fine[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE);
-                mwdlp10net->buffer_output[j] = mu_law_10_table[coarse[j] * SQRT_QUANTIZE + fine[j]]*N_MBANDS;
-                //if (j==0) pcm_1[i] = mu_law_10_table[coarse[j] * SQRT_QUANTIZE + fine[j]]*32768;
-                //else if (j==1) pcm_2[i] = mu_law_10_table[coarse[j] * SQRT_QUANTIZE + fine[j]]*32768;
-                //else if (j==2) pcm_3[i] = mu_law_10_table[coarse[j] * SQRT_QUANTIZE + fine[j]]*32768;
-                //else if (j==3) pcm_4[i] = mu_law_10_table[coarse[j] * SQRT_QUANTIZE + fine[j]]*32768;
+                mwdlp10net->buffer_output[j] = mwdlp10net->mu_law_10_table[coarse[j] * SQRT_QUANTIZE + fine[j]]*N_MBANDS;
+                //if (j==0) pcm_1[i] = mwdlp10net->mu_law_10_table[coarse[j] * SQRT_QUANTIZE + fine[j]]*32768;
+                //else if (j==1) pcm_2[i] = mwdlp10net->mu_law_10_table[coarse[j] * SQRT_QUANTIZE + fine[j]]*32768;
+                //else if (j==2) pcm_3[i] = mwdlp10net->mu_law_10_table[coarse[j] * SQRT_QUANTIZE + fine[j]]*32768;
+                //else if (j==3) pcm_4[i] = mwdlp10net->mu_law_10_table[coarse[j] * SQRT_QUANTIZE + fine[j]]*32768;
             //    printf("[%d] %d %d %d %f ", j+1, coarse[j], fine[j], coarse[j]*SQRT_QUANTIZE+fine[j], mwdlp10net->buffer_output[j]);
                 //if (j==0) printf("%d ", pcm_1[i]);
                 //else if (j==1) printf("%d ", pcm_2[i]);
@@ -663,7 +667,7 @@ MWDLP10NET_CYCVAE_EXPORT void cyclevae_melsp_excit_spk_convert_mwdlp10net_synthe
                 for (j=0;j<N_MBANDS;j++) {
                     fine[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE);
                     //float,[-1,1),upsample-bands(x n_bands)
-                    mwdlp10net->buffer_output[j] = mu_law_10_table[coarse[j] * SQRT_QUANTIZE + fine[j]]*N_MBANDS;
+                    mwdlp10net->buffer_output[j] = mwdlp10net->mu_law_10_table[coarse[j] * SQRT_QUANTIZE + fine[j]]*N_MBANDS;
                 }
                 //update state of last_coarse and last_fine integer output
                 //last_output: [[o_1,...,o_N]_1,...,[o_1,...,o_N]_K]; K: DLPC_ORDER
@@ -777,7 +781,7 @@ MWDLP10NET_CYCVAE_EXPORT void mwdlp10net_synthesize(MWDLP10NetState *mwdlp10net,
             run_sample_network_mwdlp10_fine(nnet, c_embed_coarse, pdf, gru_c_condition, coarse, mwdlp10net->last_fine);
             for (j=0;j<N_MBANDS;j++) {
                 fine[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE);
-                mwdlp10net->buffer_output[j] = mu_law_10_table[coarse[j] * SQRT_QUANTIZE + fine[j]]*N_MBANDS;
+                mwdlp10net->buffer_output[j] = mwdlp10net->mu_law_10_table[coarse[j] * SQRT_QUANTIZE + fine[j]]*N_MBANDS;
             }
             //update state of last_coarse and last_fine integer output
             //last_output: [[o_1,...,o_N]_1,...,[o_1,...,o_N]_K]; K: DLPC_ORDER
@@ -877,7 +881,7 @@ MWDLP10NET_CYCVAE_EXPORT void mwdlp10net_synthesize(MWDLP10NetState *mwdlp10net,
                 for (j=0;j<N_MBANDS;j++) {
                     fine[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE);
                     //float,[-1,1),upsample-bands(x n_bands)
-                    mwdlp10net->buffer_output[j] = mu_law_10_table[coarse[j] * SQRT_QUANTIZE + fine[j]]*N_MBANDS;
+                    mwdlp10net->buffer_output[j] = mwdlp10net->mu_law_10_table[coarse[j] * SQRT_QUANTIZE + fine[j]]*N_MBANDS;
                 }
                 //update state of last_coarse and last_fine integer output
                 //last_output: [[o_1,...,o_N]_1,...,[o_1,...,o_N]_K]; K: DLPC_ORDER

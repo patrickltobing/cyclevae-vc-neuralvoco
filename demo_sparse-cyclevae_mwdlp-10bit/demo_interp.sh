@@ -14,8 +14,8 @@ mkdir -p $out_dir
 for x in ${x_coords[@]};do
 for y in ${y_coords[@]};do
     echo $file_idx $src_spk to $x $y
-    ./bin/test_cycvae_mwdlp $x $y ${in_dir}/${file_idx}_${src_spk}.wav ${out_dir}/${file_idx}_${src_spk}-interpolate_${x}_${y}.wav 
-    #./bin/test_cycvae_mwdlp.exe $x $y ${in_dir}/${file_idx}_${src_spk}.wav ${out_dir}/${file_idx}_${src_spk}-interpolate_${x}_${y}.wav 
+    ./bin/test_cycvae_mwdlp -c $x $y ${in_dir}/${file_idx}_${src_spk}.wav ${out_dir}/${file_idx}_${src_spk}-interpolate_${x}_${y}.wav 
+    #./bin/test_cycvae_mwdlp.exe -c $x $y ${in_dir}/${file_idx}_${src_spk}.wav ${out_dir}/${file_idx}_${src_spk}-interpolate_${x}_${y}.wav 
 done
 done
 

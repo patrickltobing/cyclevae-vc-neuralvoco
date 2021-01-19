@@ -62,10 +62,9 @@ void usage(int status)
 int main(int argc, char **argv) {
     short wav_in_flag = 1;
     short melsp_bin_in_flag = 0, melsp_txt_in_flag = 0;
-    short cv_point_flag = 0;
-    short cv_interp_flag = 0;
+    short cv_point_flag = 0, cv_interp_flag = 0;
     short print_melsp_flag = 0;
-    short spk_idx;
+    short spk_idx = 0;
     float x_coord = 0, y_coord = 0;
     int n_argc = argc;
     FILE *fin = NULL, *fout = NULL, *fout_msp_bin = NULL, *fout_msp_txt = NULL;
@@ -277,7 +276,11 @@ int main(int argc, char **argv) {
                             //extract melspectrogram here
                             mel_spec_extract(dsp, features);
 
+                            mwdlp10net_synthesize(net, features, pcm, &n_output, 0);
+
                             if (print_melsp_flag) {
+                                for (l=0;l<FEATURES_DIM;l++)
+                                    features[l] = (exp(features[l])-1)/10000;
                                 fwrite(features, sizeof(features), 1, fout_msp_bin);
                                 for (l=0;l<FEATURES_DIM;l++)
                                     if (l < features_dim_1)
@@ -285,8 +288,6 @@ int main(int argc, char **argv) {
                                     else
                                         fprintf(fout_msp_txt, "%f\n", features[l]);
                             }
-
-                            mwdlp10net_synthesize(net, features, pcm, &n_output, 0);
                 
                             if (n_output > 0)  { //delay is reached, samples are generated
                                 fwrite(pcm, sizeof(pcm[0]), n_output, fout);
@@ -329,7 +330,19 @@ int main(int argc, char **argv) {
                     }
 
                     mel_spec_extract(dsp, features);
+
+                    mwdlp10net_synthesize(net, features, pcm, &n_output, 0);
+
+                    if (n_output > 0)  {
+                        fwrite(pcm, sizeof(pcm[0]), n_output, fout);
+                        samples += n_output;
+                    }
+
+                    mwdlp10net_synthesize(net, features, pcm, &n_output, 1); //last_frame_flag, synth pad_right
+
                     if (print_melsp_flag) {
+                        for (l=0;l<FEATURES_DIM;l++)
+                            features[l] = (exp(features[l])-1)/10000;
                         fwrite(features, sizeof(features), 1, fout_msp_bin);
                         for (l=0;l<FEATURES_DIM;l++)
                             if (l < features_dim_1)
@@ -338,21 +351,20 @@ int main(int argc, char **argv) {
                                 fprintf(fout_msp_txt, "%f\n", features[l]);
                     }
 
-                    mwdlp10net_synthesize(net, features, pcm, &n_output, 0); //last_frame, synth pad_right
-
-                    if (n_output > 0)  {
-                        fwrite(pcm, sizeof(pcm[0]), n_output, fout);
-                        samples += n_output;
-                    }
-
-                    mwdlp10net_synthesize(net, features, pcm, &n_output, 1); //synth pad_right
-
                     if (n_output > 0)  {
                         fwrite(pcm, sizeof(pcm[0]), n_output, fout);
                         samples += n_output;
                     }
                 }
     
+                t = clock() - t;
+                double time_taken = ((double)t)/CLOCKS_PER_SEC;
+                printf("%d [frames] %ld [samples] %.2f [sec.] synthesis in %.2f seconds \n"\
+                    "[%.2f x faster than real-time] [%.2f RTF] [%.2f kHz/sec]\n",
+                    (int)((double)samples/FRAME_SHIFT), samples, (double)samples/SAMPLING_FREQUENCY, time_taken,
+                        ((double)samples/SAMPLING_FREQUENCY)/time_taken, time_taken/((double)samples/SAMPLING_FREQUENCY),
+                            N_SAMPLE_BANDS*((double)samples/SAMPLING_FREQUENCY)/time_taken);
+
                 fclose(fin);
                 fclose(fout);
                 if (print_melsp_flag) {
@@ -368,7 +380,7 @@ int main(int argc, char **argv) {
 
                 // set spk-conditioning here
                 float spk_code_aux[FEATURE_N_SPK_2];
-                if (argc == 4) { //exact point spk-code location
+                if (cv_point_flag) { //exact point spk-code location
                     float one_hot_code[FEATURE_N_SPK] = {0};
                     one_hot_code[spk_idx-1] = 1;
                     //N-dim 1-hot --> 2-dim --> N-dim [N_SPK]
@@ -432,7 +444,12 @@ int main(int argc, char **argv) {
 
                         if (waveform_buffer_flag) {
                             mel_spec_extract(dsp, features);
+                
+                            cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0);
+
                             if (print_melsp_flag) {
+                                for (l=0;l<FEATURES_DIM;l++)
+                                    features[l] = (exp(features[l])-1)/10000;
                                 fwrite(features, sizeof(features), 1, fout_msp_bin);
                                 for (l=0;l<FEATURES_DIM;l++)
                                     if (l < features_dim_1)
@@ -440,8 +457,6 @@ int main(int argc, char **argv) {
                                     else
                                         fprintf(fout_msp_txt, "%f\n", features[l]);
                             }
-                
-                            cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0);
                 
                             if (n_output > 0)  { //delay is reached, samples are generated
                                 fwrite(pcm, sizeof(pcm[0]), n_output, fout);
@@ -481,7 +496,19 @@ int main(int argc, char **argv) {
                     }
 
                     mel_spec_extract(dsp, features);
+
+                    cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0);
+
+                    if (n_output > 0)  {
+                        fwrite(pcm, sizeof(pcm[0]), n_output, fout);
+                        samples += n_output;
+                    }
+
+                    cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 1); //last_frame_flag, synth pad_right
+
                     if (print_melsp_flag) {
+                        for (l=0;l<FEATURES_DIM;l++)
+                            features[l] = (exp(features[l])-1)/10000;
                         fwrite(features, sizeof(features), 1, fout_msp_bin);
                         for (l=0;l<FEATURES_DIM;l++)
                             if (l < features_dim_1)
@@ -490,21 +517,20 @@ int main(int argc, char **argv) {
                                 fprintf(fout_msp_txt, "%f\n", features[l]);
                     }
 
-                    cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0); //last_frame, synth pad_right
-
-                    if (n_output > 0)  {
-                        fwrite(pcm, sizeof(pcm[0]), n_output, fout);
-                        samples += n_output;
-                    }
-
-                    cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 1); //synth pad_right
-
                     if (n_output > 0)  {
                         fwrite(pcm, sizeof(pcm[0]), n_output, fout);
                         samples += n_output;
                     }
                 }
     
+                t = clock() - t;
+                double time_taken = ((double)t)/CLOCKS_PER_SEC;
+                printf("%d [frames] %ld [samples] %.2f [sec.] synthesis in %.2f seconds \n"\
+                    "[%.2f x faster than real-time] [%.2f RTF] [%.2f kHz/sec]\n",
+                    (int)((double)samples/FRAME_SHIFT), samples, (double)samples/SAMPLING_FREQUENCY, time_taken,
+                        ((double)samples/SAMPLING_FREQUENCY)/time_taken, time_taken/((double)samples/SAMPLING_FREQUENCY),
+                            N_SAMPLE_BANDS*((double)samples/SAMPLING_FREQUENCY)/time_taken);
+
                 fclose(fin);
                 fclose(fout);
                 if (print_melsp_flag) {
@@ -548,13 +574,13 @@ int main(int argc, char **argv) {
                 while ((c = getc(fin)) != EOF) { //read per character
                     if (flag) { //within a column
                         if (c == ' ') { //add column
-                            features[j] = atof(buffer);
+                            features[j] = log(1+10000*atof(buffer));
                             memset(buffer,'\0',i);
                             j++;
                             i = 0;
                             flag = 0;
                         } else if (c == '\n') { //found end-of-line
-                            features[j] = atof(buffer);
+                            features[j] = log(1+10000*atof(buffer));
                             memset(buffer,'\0',i);
                             j++;
                             if (j == FEATURES_DIM) { //add row, process frame
@@ -565,8 +591,13 @@ int main(int argc, char **argv) {
                                 frame = 1;
                             } else { //columns not appropriate
                                 fprintf(stderr, "Error input text format %d %d\n", j, FEATURES_DIM);
+                                free(buffer);
                                 fclose(fin);
                                 fclose(fout);
+                                //if (print_melsp_flag) {
+                                //    fclose(fout_msp_bin);
+                                //    fclose(fout_msp_txt);
+                                //}
                                 mwdlp10net_destroy(net);
                                 exit(1);
                             }
@@ -587,19 +618,36 @@ int main(int argc, char **argv) {
                                 frame = 1;
                             } else { //columns not appropriate
                                 fprintf(stderr, "Error input text format  %d %d\n", j, FEATURES_DIM);
+                                free(buffer);
                                 fclose(fin);
                                 fclose(fout);
+                                //if (print_melsp_flag) {
+                                //    fclose(fout_msp_bin);
+                                //    fclose(fout_msp_txt);
+                                //}
                                 mwdlp10net_destroy(net);
                                 exit(1);
                             }
                         }
                     }
                     if (frame) {
-                        if (k < num_frame) printf("frame: [%ld]", k);
+                        if (k < num_frame && k > 1) printf(" [%ld]", k);
+                        else if (k < num_frame) printf("frame: [%ld]", k);
                         else printf(" [last frame]\n");
 
                         mwdlp10net_synthesize(net, features, pcm, &n_output, 0);
                 
+                        //if (print_melsp_flag) {
+                        //    for (l=0;l<FEATURES_DIM;l++)
+                        //        features[l] = (exp(features[l])-1)/10000;
+                        //    fwrite(features, sizeof(features), 1, fout_msp_bin);
+                        //    for (l=0;l<FEATURES_DIM;l++)
+                        //        if (l < features_dim_1)
+                        //            fprintf(fout_msp_txt, "%f ", features[l]);
+                        //        else
+                        //            fprintf(fout_msp_txt, "%f\n", features[l]);
+                        //}
+
                         if (n_output > 0)  { //delay is reached, samples are generated
                             fwrite(pcm, sizeof(pcm[0]), n_output, fout);
                             samples += n_output;
@@ -610,7 +658,7 @@ int main(int argc, char **argv) {
                 }
 
                 if (k == num_frame) {
-                    mwdlp10net_synthesize(net, features, pcm, &n_output, 1); //synth pad_right
+                    mwdlp10net_synthesize(net, features, pcm, &n_output, 1); //last_frame_flag, synth pad_right
 
                     if (n_output > 0)  {
                         fwrite(pcm, sizeof(pcm[0]), n_output, fout);
@@ -618,14 +666,32 @@ int main(int argc, char **argv) {
                     }
                 } else {
                     fprintf(stderr, "\nError input frames  %ld -- %ld\n", k, num_frame);
+                    free(buffer);
                     fclose(fin);
                     fclose(fout);
+                    //if (print_melsp_flag) {
+                    //    fclose(fout_msp_bin);
+                    //    fclose(fout_msp_txt);
+                    //}
                     mwdlp10net_destroy(net);
                     exit(1);
                 }
     
+                t = clock() - t;
+                double time_taken = ((double)t)/CLOCKS_PER_SEC;
+                printf("%d [frames] %ld [samples] %.2f [sec.] synthesis in %.2f seconds \n"\
+                    "[%.2f x faster than real-time] [%.2f RTF] [%.2f kHz/sec]\n",
+                    (int)((double)samples/FRAME_SHIFT), samples, (double)samples/SAMPLING_FREQUENCY, time_taken,
+                        ((double)samples/SAMPLING_FREQUENCY)/time_taken, time_taken/((double)samples/SAMPLING_FREQUENCY),
+                            N_SAMPLE_BANDS*((double)samples/SAMPLING_FREQUENCY)/time_taken);
+
+                free(buffer);
                 fclose(fin);
                 fclose(fout);
+                if (print_melsp_flag) {
+                    fclose(fout_msp_bin);
+                    fclose(fout_msp_txt);
+                }
                 mwdlp10net_destroy(net);
             } else { //analysis-conversion-synthesis
                 // initialize mwdlp+cyclevae struct
@@ -634,7 +700,7 @@ int main(int argc, char **argv) {
 
                 // set spk-conditioning here
                 float spk_code_aux[FEATURE_N_SPK_2];
-                if (argc == 4) { //exact point spk-code location
+                if (cv_point_flag) { //exact point spk-code location
                     float one_hot_code[FEATURE_N_SPK] = {0};
                     one_hot_code[spk_idx-1] = 1;
                     //N-dim 1-hot --> 2-dim --> N-dim [N_SPK]
@@ -672,13 +738,13 @@ int main(int argc, char **argv) {
                 while ((c = getc(fin)) != EOF) { //read per character
                     if (flag) { //within a column
                         if (c == ' ') { //add column
-                            features[j] = atof(buffer);
+                            features[j] = log(1+10000*atof(buffer));
                             memset(buffer,'\0',i);
                             j++;
                             i = 0;
                             flag = 0;
                         } else if (c == '\n') { //found end-of-line
-                            features[j] = atof(buffer);
+                            features[j] = log(1+10000*atof(buffer));
                             memset(buffer,'\0',i);
                             j++;
                             if (j == FEATURES_DIM) { //add row, process frame
@@ -689,6 +755,7 @@ int main(int argc, char **argv) {
                                 frame = 1;
                             } else { //columns not appropriate
                                 fprintf(stderr, "Error input text format %d %d\n", j, FEATURES_DIM);
+                                free(buffer);
                                 fclose(fin);
                                 fclose(fout);
                                 if (print_melsp_flag) {
@@ -715,6 +782,7 @@ int main(int argc, char **argv) {
                                 frame = 1;
                             } else { //columns not appropriate
                                 fprintf(stderr, "Error input text format  %d %d\n", j, FEATURES_DIM);
+                                free(buffer);
                                 fclose(fin);
                                 fclose(fout);
                                 if (print_melsp_flag) {
@@ -727,12 +795,15 @@ int main(int argc, char **argv) {
                         }
                     }
                     if (frame) {
-                        if (k < num_frame) printf("frame: [%ld]", k);
+                        if (k < num_frame && k > 1) printf(" [%ld]", k);
+                        else if (k < num_frame) printf("frame: [%ld]", k);
                         else printf(" [last frame]\n");
 
                         cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0);
                 
                         if (print_melsp_flag) {
+                            for (l=0;l<FEATURES_DIM;l++)
+                                features[l] = (exp(features[l])-1)/10000;
                             fwrite(features, sizeof(features), 1, fout_msp_bin);
                             for (l=0;l<FEATURES_DIM;l++)
                                 if (l < features_dim_1)
@@ -751,7 +822,7 @@ int main(int argc, char **argv) {
                 }
 
                 if (k == num_frame) {
-                    cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 1); //synth pad_right
+                    cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 1); //last_frame_flag, synth pad_right
 
                     if (n_output > 0)  {
                         fwrite(pcm, sizeof(pcm[0]), n_output, fout);
@@ -759,6 +830,7 @@ int main(int argc, char **argv) {
                     }
                 } else {
                     fprintf(stderr, "\nError input frames  %ld -- %ld\n", k, num_frame);
+                    free(buffer);
                     fclose(fin);
                     fclose(fout);
                     if (print_melsp_flag) {
@@ -769,6 +841,15 @@ int main(int argc, char **argv) {
                     exit(1);
                 }
     
+                t = clock() - t;
+                double time_taken = ((double)t)/CLOCKS_PER_SEC;
+                printf("%d [frames] %ld [samples] %.2f [sec.] synthesis in %.2f seconds \n"\
+                    "[%.2f x faster than real-time] [%.2f RTF] [%.2f kHz/sec]\n",
+                    (int)((double)samples/FRAME_SHIFT), samples, (double)samples/SAMPLING_FREQUENCY, time_taken,
+                        ((double)samples/SAMPLING_FREQUENCY)/time_taken, time_taken/((double)samples/SAMPLING_FREQUENCY),
+                            N_SAMPLE_BANDS*((double)samples/SAMPLING_FREQUENCY)/time_taken);
+
+                free(buffer);
                 fclose(fin);
                 fclose(fout);
                 if (print_melsp_flag) {
@@ -785,14 +866,6 @@ int main(int argc, char **argv) {
             exit(1);
         }
     }
-
-    t = clock() - t;
-    double time_taken = ((double)t)/CLOCKS_PER_SEC;
-    printf("%d [frames] %ld [samples] %.2f [sec.] synthesis in %.2f seconds \n"\
-        "[%.2f x faster than real-time] [%.2f RTF] [%.2f kHz/sec]\n",
-        (int)((double)samples/FRAME_SHIFT), samples, (double)samples/SAMPLING_FREQUENCY, time_taken,
-            ((double)samples/SAMPLING_FREQUENCY)/time_taken, time_taken/((double)samples/SAMPLING_FREQUENCY),
-                N_SAMPLE_BANDS*((double)samples/SAMPLING_FREQUENCY)/time_taken);
 
     return 0;
 }

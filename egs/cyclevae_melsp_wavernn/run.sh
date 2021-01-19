@@ -82,22 +82,22 @@ n_jobs=60
 #          TRAINING SETTING           #
 #######################################
 
-#spks_open=(p276)
-#spks=(SEF1 SEF2 SEM1 SEM2 TFM1 TGM1 TMM1 TEF1 TEM1 TEF2 TEM2 TFF1 TGF1 TMF1)
-spks=(SEF1 TEF1)
-data_name=vcc2020
-#spks=(VCC2SF1 VCC2SF2 VCC2SF3 VCC2SF4 VCC2SM1 VCC2SM2 VCC2SM3 VCC2SM4 VCC2TF1 VCC2TF2 VCC2TM1 VCC2TM2)
-#data_name=vcc18
-#spks=(SEF1 SEF2 SEM1 SEM2 TFM1 TGM1 TMM1 p237 p245 p251 p252 p259 p274 p304 p311 p326 p345 p360 p363 TEF1 TEM1 TEF2 TEM2 \
-#    TFF1 TGF1 TMF1 p231 p238 p248 p253 p264 p265 p266 p276 p305 p308 p318 p335)
-#data_name=vcc2020vctk
-
 ## fs: sampling rate
 fs=`awk '{if ($1 == "fs:") print $2}' conf/config.yml`
 ## shiftms: frame shift in ms
 shiftms=`awk '{if ($1 == "shiftms:") print $2}' conf/config.yml`
 ## upsampling_factor: upsampling factor for neural vocoder
 upsampling_factor=`echo "${shiftms} * ${fs} / 1000" | bc`
+
+#spks_open=(p276)
+#spks=(SEF1 SEF2 SEM1 SEM2 TFM1 TGM1 TMM1 TEF1 TEM1 TEF2 TEM2 TFF1 TGF1 TMF1)
+spks=(SEF1 TEF1)
+data_name=vcc2020_${shiftms}ms
+#spks=(VCC2SF1 VCC2SF2 VCC2SF3 VCC2SF4 VCC2SM1 VCC2SM2 VCC2SM3 VCC2SM4 VCC2TF1 VCC2TF2 VCC2TM1 VCC2TM2)
+#data_name=vcc18_${shiftms}ms
+#spks=(SEF1 SEF2 SEM1 SEM2 TFM1 TGM1 TMM1 p237 p245 p251 p252 p259 p274 p304 p311 p326 p345 p360 p363 TEF1 TEM1 TEF2 TEM2 \
+#    TFF1 TGF1 TMF1 p231 p238 p248 p253 p264 p265 p266 p276 p305 p308 p318 p335)
+#data_name=vcc2020vctk_${shiftms}ms
 
 # uv-f0 and log-f0 occupied the first two dimensions,
 # then uv-codeap, log-negative-codeap and mel-ceps
@@ -527,7 +527,7 @@ if [ `echo ${stage} | grep 0` ];then
             else
                 yq -yi ".${spk}.minf0=40" conf/spkr.yml
                 yq -yi ".${spk}.maxf0=700" conf/spkr.yml
-                echo "minF0 and maxF0 of ${spk} is initialized, please run stage init, then change accordingly"
+                echo "minF0 and maxF0 of ${spk} is initialized, please run stage init, use f0_range.py, and run stage 0 again"
             fi
             if [ -f "conf/${spk}.pow" ]; then
                 pow=`cat conf/${spk}.pow | awk '{print $1}'`
@@ -535,7 +535,7 @@ if [ `echo ${stage} | grep 0` ];then
                 echo "npow of ${spk} is initialized from .pow file"
             else
                 yq -yi ".${spk}.npow=-25" conf/spkr.yml
-                echo "npow of ${spk} is initialized, please run stage init, then change accordingly"
+                echo "npow of ${spk} is initialized, please run stage init, use min_pow.py, and run stage 0 again"
             fi
         else
             if [ -f "conf/${spk}.f0" ]; then
@@ -552,7 +552,7 @@ if [ `echo ${stage} | grep 0` ];then
                     echo "minF0 of ${spk} is initialized from .f0 file"
                 else
                     yq -yi ".${spk}.minf0=40" conf/spkr.yml
-                    echo "minF0 of ${spk} is initialized, please run stage init, then change accordingly"
+                    echo "minF0 of ${spk} is initialized, please run stage init, use f0_range.py, and run stage 0 again"
                 fi
             elif [[ $tmp -ne $minf0 ]]; then
                 yq -yi ".${spk}.minf0=${minf0}" conf/spkr.yml
@@ -565,7 +565,7 @@ if [ `echo ${stage} | grep 0` ];then
                     echo "maxF0 of ${spk} is initialized from .f0 file"
                 else
                     yq -yi ".${spk}.maxf0=700" conf/spkr.yml
-                    echo "maxF0 of ${spk} is initialized, please run stage init, then change accordingly"
+                    echo "maxF0 of ${spk} is initialized, please run stage init, use f0_range.py, and run stage 0 again"
                 fi
             elif [[ $tmp -ne $maxf0 ]]; then
                 yq -yi ".${spk}.maxf0=${maxf0}" conf/spkr.yml
@@ -578,7 +578,7 @@ if [ `echo ${stage} | grep 0` ];then
                     echo "npow of ${spk} is initialized from .pow file"
                 else
                     yq -yi ".${spk}.npow=-25" conf/spkr.yml
-                    echo "npow of ${spk} is initialized, please run stage init, then change accordingly"
+                    echo "npow of ${spk} is initialized, please run stage init, use min_pow.py, and run stage 0 again"
                 fi
             elif [[ "$tmp" != "$pow" ]]; then
                 yq -yi ".${spk}.npow=${pow}" conf/spkr.yml
@@ -2130,10 +2130,10 @@ if [ `echo ${stage} | grep ft` ];then
         feats_eval=${expdir_wave}/feats_ev.scp
         waveforms=${expdir_wave}/wavs_tr.scp
         waveforms_eval=${expdir_wave}/wavs_ev.scp
-        cat data/${trn}/feats_ft.scp | sort > ${feats}
-        cat data/${dev}/feats_ft.scp | sort > ${feats_eval}
-        cat data/${trn}/wav_ns_ft.scp | sort > ${waveforms}
-        cat data/${dev}/wav_ns_ft.scp | sort > ${waveforms_eval}
+        cat data/${trn}/feats_ft.scp > ${feats}
+        cat data/${dev}/feats_ft.scp > ${feats_eval}
+        cat data/${trn}/wav_ns_ft.scp > ${waveforms}
+        cat data/${dev}/wav_ns_ft.scp > ${waveforms_eval}
         if [ $idx_resume_ft -gt 0 ]; then
             ${cuda_cmd} ${expdir_wave}/log/train_resume-${idx_resume_ft}.log \
                 train_nstages-sparse-wavernn_dualgru_compact_lpc_mband_10bit_cf.py \
@@ -2211,10 +2211,10 @@ if [ `echo ${stage} | grep ft` ];then
         feats_eval=${expdir_wave}/feats_ev.scp
         waveforms=${expdir_wave}/wavs_tr.scp
         waveforms_eval=${expdir_wave}/wavs_ev.scp
-        cat data/${trn}/feats_ft.scp | sort > ${feats}
-        cat data/${dev}/feats_ft.scp | sort > ${feats_eval}
-        cat data/${trn}/wav_ns_ft.scp | sort > ${waveforms}
-        cat data/${dev}/wav_ns_ft.scp | sort > ${waveforms_eval}
+        cat data/${trn}/feats_ft.scp > ${feats}
+        cat data/${dev}/feats_ft.scp > ${feats_eval}
+        cat data/${trn}/wav_ns_ft.scp > ${waveforms}
+        cat data/${dev}/wav_ns_ft.scp > ${waveforms_eval}
         if [ $idx_resume_ft -gt 0 ]; then
             ${cuda_cmd} ${expdir_wave}/log/train_resume-${idx_resume_ft}.log \
                 train_nstages-sparse-wavernn_dualgru_compact_lpc_mband_9bit.py \
@@ -2292,10 +2292,10 @@ if [ `echo ${stage} | grep ft` ];then
         feats_eval=${expdir_wave}/feats_ev.scp
         waveforms=${expdir_wave}/wavs_tr.scp
         waveforms_eval=${expdir_wave}/wavs_ev.scp
-        cat data/${trn}/feats_ft.scp | sort > ${feats}
-        cat data/${dev}/feats_ft.scp | sort > ${feats_eval}
-        cat data/${trn}/wav_ns_ft.scp | sort > ${waveforms}
-        cat data/${dev}/wav_ns_ft.scp | sort > ${waveforms_eval}
+        cat data/${trn}/feats_ft.scp > ${feats}
+        cat data/${dev}/feats_ft.scp > ${feats_eval}
+        cat data/${trn}/wav_ns_ft.scp > ${waveforms}
+        cat data/${dev}/wav_ns_ft.scp > ${waveforms_eval}
         if [ $idx_resume_ft -gt 0 ]; then
             ${cuda_cmd} ${expdir_wave}/log/train_resume-${idx_resume_ft}.log \
                 train_nstages-sparse-wavernn_dualgru_compact_lpc_mband_16bit.py \

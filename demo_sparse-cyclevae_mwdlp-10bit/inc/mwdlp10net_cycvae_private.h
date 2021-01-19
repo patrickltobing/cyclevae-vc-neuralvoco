@@ -126,6 +126,7 @@ LAST n-outputs [due to frame- and pqmf-delays, w/ right-side replicate- and zero
 struct MWDLP10CycleVAEMelspExcitSpkNetState {
     MWDLP10NNetState nnet;
     CycleVAEMelspExcitSpkNNetState cv_nnet;
+    float mu_law_10_table[N_QUANTIZE];
     int last_coarse[LPC_ORDER_MBANDS];
     int last_fine[LPC_ORDER_MBANDS];
     int cv_frame_count;
@@ -153,6 +154,7 @@ struct MWDLP10CycleVAEMelspExcitSpkNetState {
 
 struct MWDLP10NetState {
     MWDLP10NNetState nnet;
+    float mu_law_10_table[N_QUANTIZE];
     int last_coarse[LPC_ORDER_MBANDS];
     int last_fine[LPC_ORDER_MBANDS];
     int frame_count;

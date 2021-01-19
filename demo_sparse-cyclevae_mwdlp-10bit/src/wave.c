@@ -22,6 +22,7 @@ short read_write_wav(FILE *fin, FILE *fout, short *num_reflected_right_edge_samp
         fclose(fout);
         return -1;
     }
+    //printf("(1-4): %u %u %u %u \n", header.riff[0], header.riff[1], header.riff[2], header.riff[3]); 
     printf("(1-4): %s \n", header.riff); 
     // write header parts [output wav, following input reading]
     fwrite(header.riff, sizeof(header.riff), 1, fout);
@@ -49,6 +50,7 @@ short read_write_wav(FILE *fin, FILE *fout, short *num_reflected_right_edge_samp
         fclose(fout);
         return -1;
     }
+    //printf("(9-12): %u %u %u %u \n", header.wave[0], header.wave[1], header.wave[2], header.wave[3]); 
     printf("(9-12) Wave marker: %s\n", header.wave);
     fwrite(header.wave, sizeof(header.wave), 1, fout);
     
@@ -58,6 +60,7 @@ short read_write_wav(FILE *fin, FILE *fout, short *num_reflected_right_edge_samp
         fclose(fout);
         return -1;
     }
+    //printf("(13-16): %u %u %u %u \n", header.fmt_chunk_marker[0], header.fmt_chunk_marker[1], header.fmt_chunk_marker[2], header.fmt_chunk_marker[3]); 
     printf("(13-16) Fmt marker: %s\n", header.fmt_chunk_marker);
     fwrite(header.fmt_chunk_marker, sizeof(header.fmt_chunk_marker), 1, fout);
     
@@ -190,6 +193,7 @@ short read_write_wav(FILE *fin, FILE *fout, short *num_reflected_right_edge_samp
         fclose(fout);
         return -1;
     }
+    //printf("(37-40): %u %u %u %u \n", header.data_chunk_header[0], header.data_chunk_header[1], header.data_chunk_header[2], header.data_chunk_header[3]); 
     printf("(37-40) Data Marker: %s \n", header.data_chunk_header);
     fwrite(header.data_chunk_header, sizeof(header.data_chunk_header), 1, fout);
     
@@ -317,7 +321,7 @@ long read_feat_write_wav(FILE* fin, FILE* fout, int bin_flag) {
     header.fmt_chunk_marker[0] = 'f';
     header.fmt_chunk_marker[1] = 'm';
     header.fmt_chunk_marker[2] = 't';
-    header.fmt_chunk_marker[3] = '\0';
+    header.fmt_chunk_marker[3] = ' ';
     printf("(13-16) Fmt marker: %s\n", header.fmt_chunk_marker);
     fwrite(header.fmt_chunk_marker, sizeof(header.fmt_chunk_marker), 1, fout);
     
