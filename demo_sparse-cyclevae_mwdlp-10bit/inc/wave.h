@@ -1,6 +1,10 @@
 /*
-    http://truelogic.org/wordpress/2015/09/04/parsing-a-wav-file-in-c/
+   Copyright 2021 Patrick Lumban Tobing (Nagoya University)
+   Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
+
+   WAV file read/write is based on http://truelogic.org/wordpress/2015/09/04/parsing-a-wav-file-in-c
 */
+
 
 // WAVE file header format
 struct HEADER {

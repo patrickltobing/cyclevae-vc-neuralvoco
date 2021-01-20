@@ -205,8 +205,7 @@ int main(int argc, char **argv) {
     clock_t t = clock();
 
     short l, features_dim_1;
-    if (print_melsp_flag)
-        features_dim_1 = FEATURES_DIM - 1;
+    if (print_melsp_flag) features_dim_1 = FEATURES_DIM - 1;
     long samples = 0;
 
     if (wav_in_flag) { //waveform input
@@ -261,8 +260,9 @@ int main(int argc, char **argv) {
                             // because zero-padding until FFT_LENGTH with centered window position
                             // (i//FRAME_SHIFT)th frame = i*FRAME_SHIFT [i: 0->(n_samples-1)]
                             dsp->samples_win[LEFT_SAMPLES_1+i] = data_in_channel;
-                            if (i <= LEFT_SAMPLES_2) //reflect only LEFT_SAMPLES-1 amount because 0 value for the 1st coeff. of window
+                            if (i <= LEFT_SAMPLES_2) { //reflect only LEFT_SAMPLES-1 amount because 0 value for the 1st coeff. of window
                                 dsp->samples_win[LEFT_SAMPLES_2-i] = data_in_channel; 
+                            }
                             if (i >= RIGHT_SAMPLES_1) { //process current buffer, and next, take for every FRAME_SHIFT amount samples
                                 apply_window(dsp); //hanning window
                                 first_buffer_flag = 1;
@@ -279,14 +279,17 @@ int main(int argc, char **argv) {
                             mwdlp10net_synthesize(net, features, pcm, &n_output, 0);
 
                             if (print_melsp_flag) {
-                                for (l=0;l<FEATURES_DIM;l++)
+                                for (l=0;l<FEATURES_DIM;l++) {
                                     features[l] = (exp(features[l])-1)/10000;
+                                }
                                 fwrite(features, sizeof(features), 1, fout_msp_bin);
-                                for (l=0;l<FEATURES_DIM;l++)
-                                    if (l < features_dim_1)
+                                for (l=0;l<FEATURES_DIM;l++) {
+                                    if (l < features_dim_1) {
                                         fprintf(fout_msp_txt, "%f ", features[l]);
-                                    else
+                                    } else {
                                         fprintf(fout_msp_txt, "%f\n", features[l]);
+                                    }
+                                }
                             }
                 
                             if (n_output > 0)  { //delay is reached, samples are generated
@@ -312,11 +315,13 @@ int main(int argc, char **argv) {
         
                 if (!waveform_buffer_flag && j > 0) {
                     //set additional reflected samples for trailing remainder samples on the right edge here
-                    for (i = 0, k=j-1; i < num_reflected_right_edge_samples; i++, j++)
+                    for (i = 0, k=j-1; i < num_reflected_right_edge_samples; i++, j++) {
                         x_buffer[j] = x_buffer[k-i];
+                    }
 
-                    if (j == FRAME_SHIFT) printf(" [last frame]\n");
-                    else {
+                    if (j == FRAME_SHIFT) {
+                        printf(" [last frame]\n");
+                    } else {
                         fprintf(stderr, "\nError remainder right-edge samples calculation %ld %d %d\n", j, FRAME_SHIFT, num_reflected_right_edge_samples);
                         fclose(fin);
                         fclose(fout);
@@ -341,14 +346,17 @@ int main(int argc, char **argv) {
                     mwdlp10net_synthesize(net, features, pcm, &n_output, 1); //last_frame_flag, synth pad_right
 
                     if (print_melsp_flag) {
-                        for (l=0;l<FEATURES_DIM;l++)
+                        for (l=0;l<FEATURES_DIM;l++) {
                             features[l] = (exp(features[l])-1)/10000;
+                        }
                         fwrite(features, sizeof(features), 1, fout_msp_bin);
-                        for (l=0;l<FEATURES_DIM;l++)
-                            if (l < features_dim_1)
+                        for (l=0;l<FEATURES_DIM;l++) {
+                            if (l < features_dim_1) {
                                 fprintf(fout_msp_txt, "%f ", features[l]);
-                            else
+                            } else {
                                 fprintf(fout_msp_txt, "%f\n", features[l]);
+                            }
+                        }
                     }
 
                     if (n_output > 0)  {
@@ -385,13 +393,15 @@ int main(int argc, char **argv) {
                     one_hot_code[spk_idx-1] = 1;
                     //N-dim 1-hot --> 2-dim --> N-dim [N_SPK]
                     printf("%d-dim 1-hot code: ", FEATURE_N_SPK);
-                    for (k = 0; k < FEATURE_N_SPK; k++)
+                    for (k = 0; k < FEATURE_N_SPK; k++) {
                         printf("[%ld] %f ", k+1, one_hot_code[k]);
+                    }
                     printf("\n");
                     compute_spkidtr(&fc_in_spk_code_transform, &fc_out_spk_code_transform, spk_code_aux, one_hot_code);
                     printf("%d-dim embed.: ", FEATURE_N_SPK);
-                    for (k = 0; k < FEATURE_N_SPK; k++)
+                    for (k = 0; k < FEATURE_N_SPK; k++) {
                         printf("[%ld] %f ", k+1, spk_code_aux[k]);
+                    }
                     printf("\n");
                 } else { //interpolated spk-code location
                     float spk_coord[2];
@@ -401,8 +411,9 @@ int main(int argc, char **argv) {
                     printf("2-dim spk-coord: %f %f\n", spk_coord[0], spk_coord[1]);
                     compute_spkidtr_coord(&fc_out_spk_code_transform, spk_code_aux, spk_coord);
                     printf("%d-dim embed.: ", FEATURE_N_SPK);
-                    for (k = 0; k < FEATURE_N_SPK; k++)
+                    for (k = 0; k < FEATURE_N_SPK; k++) {
                         printf("[%ld] %f ", k+1, spk_code_aux[k]);
+                    }
                     printf("\n");
                 }
 
@@ -431,8 +442,9 @@ int main(int argc, char **argv) {
                             // because zero-padding until FFT_LENGTH with centered window position
                             // (i//FRAME_SHIFT)th frame = i*FRAME_SHIFT [i: 0->(n_samples-1)]
                             dsp->samples_win[LEFT_SAMPLES_1+i] = data_in_channel;
-                            if (i <= LEFT_SAMPLES_2) //reflect only LEFT_SAMPLES-1 amount because 0 value for the 1st coeff. of window
+                            if (i <= LEFT_SAMPLES_2) { //reflect only LEFT_SAMPLES-1 amount because 0 value for the 1st coeff. of window
                                 dsp->samples_win[LEFT_SAMPLES_2-i] = data_in_channel; 
+                            }
                             if (i >= RIGHT_SAMPLES_1) { //process current buffer, and next, take for every FRAME_SHIFT amount samples
                                 apply_window(dsp); //hanning window
                                 first_buffer_flag = 1;
@@ -448,14 +460,17 @@ int main(int argc, char **argv) {
                             cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0);
 
                             if (print_melsp_flag) {
-                                for (l=0;l<FEATURES_DIM;l++)
+                                for (l=0;l<FEATURES_DIM;l++) {
                                     features[l] = (exp(features[l])-1)/10000;
+                                }
                                 fwrite(features, sizeof(features), 1, fout_msp_bin);
-                                for (l=0;l<FEATURES_DIM;l++)
-                                    if (l < features_dim_1)
+                                for (l=0;l<FEATURES_DIM;l++) {
+                                    if (l < features_dim_1) {
                                         fprintf(fout_msp_txt, "%f ", features[l]);
-                                    else
+                                    } else {
                                         fprintf(fout_msp_txt, "%f\n", features[l]);
+                                    }
+                                }
                             }
                 
                             if (n_output > 0)  { //delay is reached, samples are generated
@@ -482,11 +497,13 @@ int main(int argc, char **argv) {
                 if (!waveform_buffer_flag && j > 0) {
                     //set additional reflected samples for trailing remainder samples on the right edge here
                     int k;
-                    for (i = 0, k=j-1; i < num_reflected_right_edge_samples; i++, j++)
+                    for (i = 0, k=j-1; i < num_reflected_right_edge_samples; i++, j++) {
                         x_buffer[j] = x_buffer[k-i];
+                    }
 
-                    if (j == FRAME_SHIFT) printf(" [last frame]\n");
-                    else {
+                    if (j == FRAME_SHIFT) {
+                        printf(" [last frame]\n");
+                    } else {
                         fprintf(stderr, "\nError remainder right-edge samples calculation %ld %d %d\n", j, FRAME_SHIFT, num_reflected_right_edge_samples);
                         fclose(fin);
                         fclose(fout);
@@ -507,14 +524,17 @@ int main(int argc, char **argv) {
                     cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 1); //last_frame_flag, synth pad_right
 
                     if (print_melsp_flag) {
-                        for (l=0;l<FEATURES_DIM;l++)
+                        for (l=0;l<FEATURES_DIM;l++) {
                             features[l] = (exp(features[l])-1)/10000;
+                        }
                         fwrite(features, sizeof(features), 1, fout_msp_bin);
-                        for (l=0;l<FEATURES_DIM;l++)
-                            if (l < features_dim_1)
+                        for (l=0;l<FEATURES_DIM;l++) {
+                            if (l < features_dim_1) {
                                 fprintf(fout_msp_txt, "%f ", features[l]);
-                            else
+                            } else {
                                 fprintf(fout_msp_txt, "%f\n", features[l]);
+                            }
+                        }
                     }
 
                     if (n_output > 0)  {
@@ -564,97 +584,151 @@ int main(int argc, char **argv) {
                 MWDLP10NetState *net;
                 net = mwdlp10net_create();
 
-                char c;
-                char *buffer = (char*) calloc(128, sizeof(char));
-                short flag = 0; //mark current read is in a column
-                short frame = 0; //mark process rame
-                i = 0; //character counter
-                j = 0; //column counter
-                k = 0; //frame counter
-                while ((c = getc(fin)) != EOF) { //read per character
-                    if (flag) { //within a column
-                        if (c == ' ') { //add column
-                            features[j] = log(1+10000*atof(buffer));
-                            memset(buffer,'\0',i);
-                            j++;
-                            i = 0;
-                            flag = 0;
-                        } else if (c == '\n') { //found end-of-line
-                            features[j] = log(1+10000*atof(buffer));
-                            memset(buffer,'\0',i);
-                            j++;
-                            if (j == FEATURES_DIM) { //add row, process frame
-                                k++;
+                if (melsp_txt_in_flag) {
+                    char c;
+                    //char *buffer = (char*) calloc(128, sizeof(char));
+                    char buffer[128];
+                    memset(buffer,'\0',128);
+                    short flag = 0; //mark current read is in a column
+                    short frame = 0; //mark process rame
+                    i = 0; //character counter
+                    j = 0; //column counter
+                    k = 0; //frame counter
+                    while ((c = getc(fin)) != EOF) { //read per character
+                        if (flag) { //within a column
+                            if (c == ' ') { //add column
+                                features[j] = log(1+10000*atof(buffer));
+                                memset(buffer,'\0',i);
+                                j++;
                                 i = 0;
-                                j = 0;
                                 flag = 0;
-                                frame = 1;
-                            } else { //columns not appropriate
-                                fprintf(stderr, "Error input text format %d %d\n", j, FEATURES_DIM);
-                                free(buffer);
-                                fclose(fin);
-                                fclose(fout);
-                                //if (print_melsp_flag) {
-                                //    fclose(fout_msp_bin);
-                                //    fclose(fout_msp_txt);
-                                //}
-                                mwdlp10net_destroy(net);
-                                exit(1);
+                            } else if (c == '\n') { //found end-of-line
+                                features[j] = log(1+10000*atof(buffer));
+                                memset(buffer,'\0',i);
+                                j++;
+                                if (j == FEATURES_DIM) { //add row, process frame
+                                    k++;
+                                    i = 0;
+                                    j = 0;
+                                    flag = 0;
+                                    frame = 1;
+                                } else { //columns not appropriate
+                                    fprintf(stderr, "Error input text format %d %d\n", j, FEATURES_DIM);
+                                    //free(buffer);
+                                    fclose(fin);
+                                    fclose(fout);
+                                    //if (print_melsp_flag) {
+                                    //    fclose(fout_msp_bin);
+                                    //    fclose(fout_msp_txt);
+                                    //}
+                                    mwdlp10net_destroy(net);
+                                    exit(1);
+                                }
+                            } else {
+                                buffer[i] = c;
+                                i++;
+                            }
+                        } else { //finding new column
+                            if (c != ' ' && c != '\n') { //add starting column character
+                                flag = 1;
+                                buffer[i] = c;
+                                i++;
+                            } else if (c == '\n') { //found end-of-line
+                                if (j == FEATURES_DIM) { //add row, process frame
+                                    k++;
+                                    i = 0;
+                                    j = 0;
+                                    frame = 1;
+                                } else { //columns not appropriate
+                                    fprintf(stderr, "Error input text format  %d %d\n", j, FEATURES_DIM);
+                                    //free(buffer);
+                                    fclose(fin);
+                                    fclose(fout);
+                                    //if (print_melsp_flag) {
+                                    //    fclose(fout_msp_bin);
+                                    //    fclose(fout_msp_txt);
+                                    //}
+                                    mwdlp10net_destroy(net);
+                                    exit(1);
+                                }
+                            }
+                        }
+                        if (frame) {
+                            if (k < num_frame && k > 1) printf(" [%ld]", k);
+                            else if (k < num_frame) printf("frame: [%ld]", k);
+                            else printf(" [last frame]\n");
+
+                            mwdlp10net_synthesize(net, features, pcm, &n_output, 0);
+                    
+                            //if (print_melsp_flag) {
+                            //    for (l=0;l<FEATURES_DIM;l++)
+                            //        features[l] = (exp(features[l])-1)/10000;
+                            //    fwrite(features, sizeof(features), 1, fout_msp_bin);
+                            //    for (l=0;l<FEATURES_DIM;l++)
+                            //        if (l < features_dim_1)
+                            //            fprintf(fout_msp_txt, "%f ", features[l]);
+                            //        else
+                            //            fprintf(fout_msp_txt, "%f\n", features[l]);
+                            //}
+
+                            if (n_output > 0)  { //delay is reached, samples are generated
+                                fwrite(pcm, sizeof(pcm[0]), n_output, fout);
+                                samples += n_output;
+                            }
+
+                            frame = 0;
+                        }
+                    }
+                } else if (melsp_bin_in_flag) {
+                    //float *buffer = (float*) calloc(FEATURES_DIM, sizeof(float));
+                    float buffer[FEATURES_DIM];
+                    int read = 0;
+
+                    for (k = 0; k < num_frame; k++) {
+                        if ((read = fread(buffer, sizeof(buffer), 1, fin))) {
+                            for (j = 0; j < FEATURES_DIM; j++)
+                                features[j] = log(1+10000*buffer[j]);
+
+                            mwdlp10net_synthesize(net, features, pcm, &n_output, 0);
+                    
+                            //if (print_melsp_flag) {
+                            //    for (l=0;l<FEATURES_DIM;l++)
+                            //        features[l] = (exp(features[l])-1)/10000;
+                            //    fwrite(features, sizeof(features), 1, fout_msp_bin);
+                            //    for (l=0;l<FEATURES_DIM;l++)
+                            //        if (l < features_dim_1)
+                            //            fprintf(fout_msp_txt, "%f ", features[l]);
+                            //        else
+                            //            fprintf(fout_msp_txt, "%f\n", features[l]);
+                            //}
+
+                            if (n_output > 0)  { //delay is reached, samples are generated
+                                fwrite(pcm, sizeof(pcm[0]), n_output, fout);
+                                samples += n_output;
                             }
                         } else {
-                            buffer[i] = c;
-                            i++;
-                        }
-                    } else { //finding new column
-                        if (c != ' ' && c != '\n') { //add starting column character
-                            flag = 1;
-                            buffer[i] = c;
-                            i++;
-                        } else if (c == '\n') { //found end-of-line
-                            if (j == FEATURES_DIM) { //add row, process frame
-                                k++;
-                                i = 0;
-                                j = 0;
-                                frame = 1;
-                            } else { //columns not appropriate
-                                fprintf(stderr, "Error input text format  %d %d\n", j, FEATURES_DIM);
-                                free(buffer);
-                                fclose(fin);
-                                fclose(fout);
-                                //if (print_melsp_flag) {
-                                //    fclose(fout_msp_bin);
-                                //    fclose(fout_msp_txt);
-                                //}
-                                mwdlp10net_destroy(net);
-                                exit(1);
-                            }
+                            fprintf(stderr, "\nError reading input. %d %ld -- %ld\n", read, num_frame, k+1);
+                            //free(buffer);
+                            fclose(fin);
+                            fclose(fout);
+                            //if (print_melsp_flag) {
+                            //    fclose(fout_msp_bin);
+                            //    fclose(fout_msp_txt);
+                            //}
+                            mwdlp10net_destroy(net);
+                            exit(1);
                         }
                     }
-                    if (frame) {
-                        if (k < num_frame && k > 1) printf(" [%ld]", k);
-                        else if (k < num_frame) printf("frame: [%ld]", k);
-                        else printf(" [last frame]\n");
-
-                        mwdlp10net_synthesize(net, features, pcm, &n_output, 0);
-                
-                        //if (print_melsp_flag) {
-                        //    for (l=0;l<FEATURES_DIM;l++)
-                        //        features[l] = (exp(features[l])-1)/10000;
-                        //    fwrite(features, sizeof(features), 1, fout_msp_bin);
-                        //    for (l=0;l<FEATURES_DIM;l++)
-                        //        if (l < features_dim_1)
-                        //            fprintf(fout_msp_txt, "%f ", features[l]);
-                        //        else
-                        //            fprintf(fout_msp_txt, "%f\n", features[l]);
-                        //}
-
-                        if (n_output > 0)  { //delay is reached, samples are generated
-                            fwrite(pcm, sizeof(pcm[0]), n_output, fout);
-                            samples += n_output;
-                        }
-
-                        frame = 0;
-                    }
+                } else {
+                    fprintf(stderr, "\nError input option %d -- %d -- %d\n", wav_in_flag, melsp_bin_in_flag, melsp_txt_in_flag);
+                    fclose(fin);
+                    fclose(fout);
+                    //if (print_melsp_flag) {
+                    //    fclose(fout_msp_bin);
+                    //    fclose(fout_msp_txt);
+                    //}
+                    mwdlp10net_destroy(net);
+                    exit(1);
                 }
 
                 if (k == num_frame) {
@@ -666,7 +740,7 @@ int main(int argc, char **argv) {
                     }
                 } else {
                     fprintf(stderr, "\nError input frames  %ld -- %ld\n", k, num_frame);
-                    free(buffer);
+                    //free(buffer);
                     fclose(fin);
                     fclose(fout);
                     //if (print_melsp_flag) {
@@ -685,13 +759,13 @@ int main(int argc, char **argv) {
                         ((double)samples/SAMPLING_FREQUENCY)/time_taken, time_taken/((double)samples/SAMPLING_FREQUENCY),
                             N_SAMPLE_BANDS*((double)samples/SAMPLING_FREQUENCY)/time_taken);
 
-                free(buffer);
+                //free(buffer);
                 fclose(fin);
                 fclose(fout);
-                if (print_melsp_flag) {
-                    fclose(fout_msp_bin);
-                    fclose(fout_msp_txt);
-                }
+                //if (print_melsp_flag) {
+                //    fclose(fout_msp_bin);
+                //    fclose(fout_msp_txt);
+                //}
                 mwdlp10net_destroy(net);
             } else { //analysis-conversion-synthesis
                 // initialize mwdlp+cyclevae struct
@@ -705,8 +779,9 @@ int main(int argc, char **argv) {
                     one_hot_code[spk_idx-1] = 1;
                     //N-dim 1-hot --> 2-dim --> N-dim [N_SPK]
                     printf("%d-dim 1-hot code: ", FEATURE_N_SPK);
-                    for (k = 0; k < FEATURE_N_SPK; k++)
+                    for (k = 0; k < FEATURE_N_SPK; k++) {
                         printf("[%ld] %f ", k+1, one_hot_code[k]);
+                    }
                     printf("\n");
                     compute_spkidtr(&fc_in_spk_code_transform, &fc_out_spk_code_transform, spk_code_aux, one_hot_code);
                     printf("%d-dim embed.: ", FEATURE_N_SPK);
@@ -728,97 +803,151 @@ int main(int argc, char **argv) {
                     printf("\n");
                 }
 
-                char c;
-                char *buffer = (char*) calloc(128, sizeof(char));
-                short flag = 0; //mark current read is in a column
-                short frame = 0; //mark process rame
-                i = 0; //character counter
-                j = 0; //column counter
-                k = 0; //frame counter
-                while ((c = getc(fin)) != EOF) { //read per character
-                    if (flag) { //within a column
-                        if (c == ' ') { //add column
-                            features[j] = log(1+10000*atof(buffer));
-                            memset(buffer,'\0',i);
-                            j++;
-                            i = 0;
-                            flag = 0;
-                        } else if (c == '\n') { //found end-of-line
-                            features[j] = log(1+10000*atof(buffer));
-                            memset(buffer,'\0',i);
-                            j++;
-                            if (j == FEATURES_DIM) { //add row, process frame
-                                k++;
+                if (melsp_txt_in_flag) {
+                    char c;
+                    //char *buffer = (char*) calloc(128, sizeof(char));
+                    char buffer[128];
+                    memset(buffer,'\0',128);
+                    short flag = 0; //mark current read is in a column
+                    short frame = 0; //mark process rame
+                    i = 0; //character counter
+                    j = 0; //column counter
+                    k = 0; //frame counter
+                    while ((c = getc(fin)) != EOF) { //read per character
+                        if (flag) { //within a column
+                            if (c == ' ') { //add column
+                                features[j] = log(1+10000*atof(buffer));
+                                memset(buffer,'\0',i);
+                                j++;
                                 i = 0;
-                                j = 0;
                                 flag = 0;
-                                frame = 1;
-                            } else { //columns not appropriate
-                                fprintf(stderr, "Error input text format %d %d\n", j, FEATURES_DIM);
-                                free(buffer);
-                                fclose(fin);
-                                fclose(fout);
-                                if (print_melsp_flag) {
-                                    fclose(fout_msp_bin);
-                                    fclose(fout_msp_txt);
+                            } else if (c == '\n') { //found end-of-line
+                                features[j] = log(1+10000*atof(buffer));
+                                memset(buffer,'\0',i);
+                                j++;
+                                if (j == FEATURES_DIM) { //add row, process frame
+                                    k++;
+                                    i = 0;
+                                    j = 0;
+                                    flag = 0;
+                                    frame = 1;
+                                } else { //columns not appropriate
+                                    fprintf(stderr, "Error input text format %d %d\n", j, FEATURES_DIM);
+                                    //free(buffer);
+                                    fclose(fin);
+                                    fclose(fout);
+                                    if (print_melsp_flag) {
+                                        fclose(fout_msp_bin);
+                                        fclose(fout_msp_txt);
+                                    }
+                                    mwdlp10cyclevaenet_destroy(net);
+                                    exit(1);
                                 }
-                                mwdlp10cyclevaenet_destroy(net);
-                                exit(1);
+                            } else {
+                                buffer[i] = c;
+                                i++;
+                            }
+                        } else { //finding new column
+                            if (c != ' ' && c != '\n') { //add starting column character
+                                flag = 1;
+                                buffer[i] = c;
+                                i++;
+                            } else if (c == '\n') { //found end-of-line
+                                if (j == FEATURES_DIM) { //add row, process frame
+                                    k++;
+                                    i = 0;
+                                    j = 0;
+                                    frame = 1;
+                                } else { //columns not appropriate
+                                    fprintf(stderr, "Error input text format  %d %d\n", j, FEATURES_DIM);
+                                    //free(buffer);
+                                    fclose(fin);
+                                    fclose(fout);
+                                    if (print_melsp_flag) {
+                                        fclose(fout_msp_bin);
+                                        fclose(fout_msp_txt);
+                                    }
+                                    mwdlp10cyclevaenet_destroy(net);
+                                    exit(1);
+                                }
+                            }
+                        }
+                        if (frame) {
+                            if (k < num_frame && k > 1) printf(" [%ld]", k);
+                            else if (k < num_frame) printf("frame: [%ld]", k);
+                            else printf(" [last frame]\n");
+
+                            cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0);
+                    
+                            if (print_melsp_flag) {
+                                for (l=0;l<FEATURES_DIM;l++)
+                                    features[l] = (exp(features[l])-1)/10000;
+                                fwrite(features, sizeof(features), 1, fout_msp_bin);
+                                for (l=0;l<FEATURES_DIM;l++)
+                                    if (l < features_dim_1)
+                                        fprintf(fout_msp_txt, "%f ", features[l]);
+                                    else
+                                        fprintf(fout_msp_txt, "%f\n", features[l]);
+                            }
+
+                            if (n_output > 0)  { //delay is reached, samples are generated
+                                fwrite(pcm, sizeof(pcm[0]), n_output, fout);
+                                samples += n_output;
+                            }
+
+                            frame = 0;
+                        }
+                    }
+                } else if (melsp_bin_in_flag) {
+                    //float *buffer = (float*) calloc(FEATURES_DIM, sizeof(float));
+                    float buffer[FEATURES_DIM];
+                    int read = 0;
+
+                    for (k = 0; k < num_frame; k++) {
+                        if ((read = fread(buffer, sizeof(buffer), 1, fin))) {
+                            for (j = 0; j < FEATURES_DIM; j++)
+                                features[j] = log(1+10000*buffer[j]);
+
+                            cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0);
+                    
+                            if (print_melsp_flag) {
+                                for (l=0;l<FEATURES_DIM;l++)
+                                    features[l] = (exp(features[l])-1)/10000;
+                                fwrite(features, sizeof(features), 1, fout_msp_bin);
+                                for (l=0;l<FEATURES_DIM;l++)
+                                    if (l < features_dim_1)
+                                        fprintf(fout_msp_txt, "%f ", features[l]);
+                                    else
+                                        fprintf(fout_msp_txt, "%f\n", features[l]);
+                            }
+
+                            if (n_output > 0)  { //delay is reached, samples are generated
+                                fwrite(pcm, sizeof(pcm[0]), n_output, fout);
+                                samples += n_output;
                             }
                         } else {
-                            buffer[i] = c;
-                            i++;
-                        }
-                    } else { //finding new column
-                        if (c != ' ' && c != '\n') { //add starting column character
-                            flag = 1;
-                            buffer[i] = c;
-                            i++;
-                        } else if (c == '\n') { //found end-of-line
-                            if (j == FEATURES_DIM) { //add row, process frame
-                                k++;
-                                i = 0;
-                                j = 0;
-                                frame = 1;
-                            } else { //columns not appropriate
-                                fprintf(stderr, "Error input text format  %d %d\n", j, FEATURES_DIM);
-                                free(buffer);
-                                fclose(fin);
-                                fclose(fout);
-                                if (print_melsp_flag) {
-                                    fclose(fout_msp_bin);
-                                    fclose(fout_msp_txt);
-                                }
-                                mwdlp10cyclevaenet_destroy(net);
-                                exit(1);
+                            fprintf(stderr, "\nError reading input. %d %ld -- %ld\n", read, num_frame, k+1);
+                            //free(buffer);
+                            fclose(fin);
+                            fclose(fout);
+                            if (print_melsp_flag) {
+                                fclose(fout_msp_bin);
+                                fclose(fout_msp_txt);
                             }
+                            mwdlp10cyclevaenet_destroy(net);
+                            exit(1);
                         }
                     }
-                    if (frame) {
-                        if (k < num_frame && k > 1) printf(" [%ld]", k);
-                        else if (k < num_frame) printf("frame: [%ld]", k);
-                        else printf(" [last frame]\n");
-
-                        cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0);
-                
-                        if (print_melsp_flag) {
-                            for (l=0;l<FEATURES_DIM;l++)
-                                features[l] = (exp(features[l])-1)/10000;
-                            fwrite(features, sizeof(features), 1, fout_msp_bin);
-                            for (l=0;l<FEATURES_DIM;l++)
-                                if (l < features_dim_1)
-                                    fprintf(fout_msp_txt, "%f ", features[l]);
-                                else
-                                    fprintf(fout_msp_txt, "%f\n", features[l]);
-                        }
-
-                        if (n_output > 0)  { //delay is reached, samples are generated
-                            fwrite(pcm, sizeof(pcm[0]), n_output, fout);
-                            samples += n_output;
-                        }
-
-                        frame = 0;
+                } else {
+                    fprintf(stderr, "\nError input option %d -- %d -- %d\n", wav_in_flag, melsp_bin_in_flag, melsp_txt_in_flag);
+                    fclose(fin);
+                    fclose(fout);
+                    if (print_melsp_flag) {
+                        fclose(fout_msp_bin);
+                        fclose(fout_msp_txt);
                     }
+                    mwdlp10cyclevaenet_destroy(net);
+                    exit(1);
                 }
 
                 if (k == num_frame) {
@@ -830,7 +959,7 @@ int main(int argc, char **argv) {
                     }
                 } else {
                     fprintf(stderr, "\nError input frames  %ld -- %ld\n", k, num_frame);
-                    free(buffer);
+                    //free(buffer);
                     fclose(fin);
                     fclose(fout);
                     if (print_melsp_flag) {
@@ -849,7 +978,7 @@ int main(int argc, char **argv) {
                         ((double)samples/SAMPLING_FREQUENCY)/time_taken, time_taken/((double)samples/SAMPLING_FREQUENCY),
                             N_SAMPLE_BANDS*((double)samples/SAMPLING_FREQUENCY)/time_taken);
 
-                free(buffer);
+                //free(buffer);
                 fclose(fin);
                 fclose(fout);
                 if (print_melsp_flag) {
