@@ -44,9 +44,6 @@
 #include "nnet_cv_data.h"
 #include "mwdlp10net_cycvae_private.h"
 
-#define HALF_RAND_MAX (RAND_MAX / 2)
-#define HALF_RAND_MAX_FLT_MIN (HALF_RAND_MAX + FLT_MIN)
-
 #define SOFTMAX_HACK
 
 #ifdef __AVX__

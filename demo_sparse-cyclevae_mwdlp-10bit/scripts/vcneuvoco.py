@@ -1805,15 +1805,27 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
                         conv = torch.repeat_interleave(self.conv_s_c(self.conv(c_aux.transpose(1,2))).transpose(1,2),self.upsampling_factor,dim=1)
         else:
             if self.red_dim is None:
-                if self.do_prob > 0 and do:
-                    conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(self.scale_in(c.transpose(1,2)))).transpose(1,2),self.upsampling_factor,dim=1))
+                if self.scale_in_flag:
+                    if self.do_prob > 0 and do:
+                        conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(self.scale_in(c.transpose(1,2)))).transpose(1,2),self.upsampling_factor,dim=1))
+                    else:
+                        conv = torch.repeat_interleave(self.conv_s_c(self.conv(self.scale_in(c.transpose(1,2)))).transpose(1,2),self.upsampling_factor,dim=1)
                 else:
-                    conv = torch.repeat_interleave(self.conv_s_c(self.conv(self.scale_in(c.transpose(1,2)))).transpose(1,2),self.upsampling_factor,dim=1)
+                    if self.do_prob > 0 and do:
+                        conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(c.transpose(1,2))).transpose(1,2),self.upsampling_factor,dim=1))
+                    else:
+                        conv = torch.repeat_interleave(self.conv_s_c(self.conv(c.transpose(1,2))).transpose(1,2),self.upsampling_factor,dim=1)
             else:
-                if self.do_prob > 0 and do:
-                    conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(self.in_red(self.scale_in(c.transpose(1,2))))).transpose(1,2),self.upsampling_factor,dim=1))
+                if self.scale_in_flag:
+                    if self.do_prob > 0 and do:
+                        conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(self.in_red(self.scale_in(c.transpose(1,2))))).transpose(1,2),self.upsampling_factor,dim=1))
+                    else:
+                        conv = torch.repeat_interleave(self.conv_s_c(self.conv(self.in_red(self.scale_in(c.transpose(1,2))))).transpose(1,2),self.upsampling_factor,dim=1)
                 else:
-                    conv = torch.repeat_interleave(self.conv_s_c(self.conv(self.in_red(self.scale_in(c.transpose(1,2))))).transpose(1,2),self.upsampling_factor,dim=1)
+                    if self.do_prob > 0 and do:
+                        conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(self.in_red(c.transpose(1,2)))).transpose(1,2),self.upsampling_factor,dim=1))
+                    else:
+                        conv = torch.repeat_interleave(self.conv_s_c(self.conv(self.in_red(c.transpose(1,2)))).transpose(1,2),self.upsampling_factor,dim=1)
 
         # GRU1
         if x_c_prev.shape[1] < conv.shape[1]:
@@ -1929,10 +1941,16 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
                 else:
                     c = self.conv_s_c(self.conv(c_aux.transpose(1,2))).transpose(1,2)
         else:
-            if self.red_dim is None:
-                c = self.conv_s_c(self.conv(self.scale_in(c.transpose(1,2)))).transpose(1,2)
+            if self.scale_in_flag:
+                if self.red_dim is None:
+                    c = self.conv_s_c(self.conv(self.scale_in(c.transpose(1,2)))).transpose(1,2)
+                else:
+                    c = self.conv_s_c(self.conv(self.in_red(self.scale_in(c.transpose(1,2))))).transpose(1,2)
             else:
-                c = self.conv_s_c(self.conv(self.in_red(self.scale_in(c.transpose(1,2))))).transpose(1,2)
+                if self.red_dim is None:
+                    c = self.conv_s_c(self.conv(c.transpose(1,2))).transpose(1,2)
+                else:
+                    c = self.conv_s_c(self.conv(self.in_red(c.transpose(1,2)))).transpose(1,2)
 
         #c = F.pad(c.transpose(1,2), (self.pad_left,self.pad_right), "replicate").transpose(1,2)
         #c = self.conv_s_c(self.conv(self.scale_in(c.transpose(1,2)))).transpose(1,2)

@@ -53,7 +53,8 @@ import numpy as np
 
 FS = 16000
 FFTL = 1024
-SHIFTMS = 5
+#SHIFTMS = 5
+SHIFTMS = 10
 WINMS = 27.5
 HIGHPASS_CUTOFF = 65
 HPASS_FILTER_TAPS = 1023
@@ -294,11 +295,11 @@ def main():
     #Keras = (in_dim*3,hidden_dim*3)
 
     #embedding coarse and fine
-    E_coarse = model.embed_c_wav.weight.numpy()
-    E_fine = model.embed_f_wav.weight.numpy()
+    E_coarse = model.embed_c_wav.weight.data.numpy()
+    E_fine = model.embed_f_wav.weight.data.numpy()
 
     #gru_main weight_input
-    W = model.gru.weight_ih_l0.permute(1,0).numpy()
+    W = model.gru.weight_ih_l0.permute(1,0).data.numpy()
     #dump coarse_embed pre-computed input_weight contribution for all classes
     name = 'gru_a_embed_coarse'
     print("printing layer " + name)
@@ -329,7 +330,7 @@ def main():
     name = 'gru_a_dense_feature'
     print("printing layer " + name)
     weights = W[:cond_size]
-    bias = model.gru.bias_ih_l0.numpy()
+    bias = model.gru.bias_ih_l0.data.numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
     f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_LINEAR\n}};\n\n'
@@ -340,9 +341,9 @@ def main():
     #dump gru_coarse input weight cond-part and input bias
     name = 'gru_b_dense_feature'
     print("printing layer " + name)
-    W = model.gru_2.weight_ih_l0.permute(1,0).numpy()
+    W = model.gru_2.weight_ih_l0.permute(1,0).data.numpy()
     weights = W[:cond_size]
-    bias = model.gru_2.bias_ih_l0.numpy()
+    bias = model.gru_2.bias_ih_l0.data.numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
     f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_LINEAR\n}};\n\n'
@@ -362,7 +363,7 @@ def main():
     hf.write('extern const DenseLayer {};\n\n'.format(name))
 
     #gru_fine weight_input
-    W = model.gru_f.weight_ih_l0.permute(1,0).numpy()
+    W = model.gru_f.weight_ih_l0.permute(1,0).data.numpy()
     #dump coarse_embed pre-computed input_weight contribution for all classes
     name = 'gru_c_embed_coarse'
     print("printing layer " + name)
@@ -380,7 +381,7 @@ def main():
     name = 'gru_c_dense_feature'
     print("printing layer " + name)
     weights = W[:cond_size]
-    bias = model.gru_f.bias_ih_l0.numpy()
+    bias = model.gru_f.bias_ih_l0.data.numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
     f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_LINEAR\n}};\n\n'
@@ -406,8 +407,8 @@ def main():
     #dump scale_in
     name = 'feature_norm'
     print("printing layer " + name + " of type " + model.scale_in.__class__.__name__)
-    weights = model.scale_in.weight.permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
-    bias = model.scale_in.bias.numpy()
+    weights = model.scale_in.weight.permute(2,1,0)[0].data.numpy() #it's defined as conv1d with ks=1 on the model
+    bias = model.scale_in.bias.data.numpy()
     std = 1.0/np.diag(weights) #in training script, diagonal square weights matrix defined as 1/std
     mean = (-bias)*std #in training script, bias defined as -mean/std
     printVector(f, mean, name + '_mean')
@@ -421,12 +422,12 @@ def main():
     #FIXME: make model format without sequential for two-sided/causal conv
     if model.right_size <= 0:
         print("printing layer " + name + " of type " + model.conv.conv[0].__class__.__name__)
-        weights = model.conv.conv[0].weight.permute(2,1,0).numpy()
-        bias = model.conv.conv[0].bias.numpy()
+        weights = model.conv.conv[0].weight.permute(2,1,0).data.numpy()
+        bias = model.conv.conv[0].bias.data.numpy()
     else:
         print("printing layer " + name + " of type " + model.conv.conv.__class__.__name__)
-        weights = model.conv.conv.weight.permute(2,1,0).numpy()
-        bias = model.conv.conv.bias.numpy()
+        weights = model.conv.conv.weight.permute(2,1,0).data.numpy()
+        bias = model.conv.conv.bias.data.numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
     f.write('const Conv1DLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, {}, ACTIVATION_LINEAR\n}};\n\n'
@@ -440,8 +441,8 @@ def main():
     #dump dense_relu
     name = 'feature_dense'
     print("printing layer " + name + " of type " + model.conv_s_c[0].__class__.__name__)
-    weights = model.conv_s_c[0].weight.permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
-    bias = model.conv_s_c[0].bias.numpy()
+    weights = model.conv_s_c[0].weight.permute(2,1,0)[0].data.numpy() #it's defined as conv1d with ks=1 on the model
+    bias = model.conv_s_c[0].bias.data.numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
     f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_RELU\n}};\n\n'
@@ -452,8 +453,8 @@ def main():
     #dump sparse_main_gru
     name = 'sparse_gru_a'
     print("printing layer " + name + " of type sparse " + model.gru.__class__.__name__)
-    weights = model.gru.weight_hh_l0.transpose(0,1).numpy()
-    bias = model.gru.bias_hh_l0.numpy()
+    weights = model.gru.weight_hh_l0.transpose(0,1).data.numpy()
+    bias = model.gru.bias_hh_l0.data.numpy()
     printSparseVector(f, weights, name + '_recurrent_weights')
     printVector(f, bias, name + '_bias')
     activation = 'TANH'
@@ -470,9 +471,9 @@ def main():
     #dump dense_gru_coarse
     name = "gru_b"
     print("printing layer " + name + " of type " + model.gru_2.__class__.__name__)
-    weights_ih = model.gru_2.weight_ih_l0.transpose(0,1)[cond_size:].numpy()
-    weights_hh = model.gru_2.weight_hh_l0.transpose(0,1).numpy()
-    bias = model.gru_2.bias_hh_l0.numpy()
+    weights_ih = model.gru_2.weight_ih_l0.transpose(0,1)[cond_size:].data.numpy()
+    weights_hh = model.gru_2.weight_hh_l0.transpose(0,1).data.numpy()
+    bias = model.gru_2.bias_hh_l0.data.numpy()
     printVector(f, weights_ih, name + '_weights')
     printVector(f, weights_hh, name + '_recurrent_weights')
     printVector(f, bias, name + '_bias')
@@ -490,9 +491,9 @@ def main():
     #dump dense_gru_fine
     name = "gru_c"
     print("printing layer " + name + " of type " + model.gru_f.__class__.__name__)
-    weights_ih = model.gru_f.weight_ih_l0.transpose(0,1)[-model.hidden_units_2:].numpy()
-    weights_hh = model.gru_f.weight_hh_l0.transpose(0,1).numpy()
-    bias = model.gru_f.bias_hh_l0.numpy()
+    weights_ih = model.gru_f.weight_ih_l0.transpose(0,1)[-model.hidden_units_2:].data.numpy()
+    weights_hh = model.gru_f.weight_hh_l0.transpose(0,1).data.numpy()
+    bias = model.gru_f.bias_hh_l0.data.numpy()
     printVector(f, weights_ih, name + '_weights')
     printVector(f, weights_hh, name + '_recurrent_weights')
     printVector(f, bias, name + '_bias')
@@ -510,9 +511,9 @@ def main():
     #dump dual_fc_coarse
     name = "dual_fc_coarse"
     print("printing layer " + name)
-    weights = model.out.conv.weight.permute(2,1,0)[0].numpy()
-    bias = model.out.conv.bias.numpy()
-    factors = (0.5*torch.exp(model.out.fact.weight[0])).numpy()
+    weights = model.out.conv.weight.permute(2,1,0)[0].data.numpy()
+    bias = model.out.conv.bias.data.numpy()
+    factors = (0.5*torch.exp(model.out.fact.weight[0])).data.numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
     ## Previous implementation (as in ICASSP 2021) uses shared factors between bands for signs and mags [for data-driven LPC],
@@ -529,8 +530,8 @@ def main():
     #dump dense_fc_out_coarse
     name = 'fc_out_coarse'
     print("printing layer " + name)
-    weights = model.out.out.weight.permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
-    bias = model.out.out.bias.numpy()
+    weights = model.out.out.weight.permute(2,1,0)[0].data.numpy() #it's defined as conv1d with ks=1 on the model
+    bias = model.out.out.bias.data.numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
     f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_TANHSHRINK\n}};\n\n'
@@ -541,9 +542,9 @@ def main():
     #dump dual_fc_fine
     name = "dual_fc_fine"
     print("printing layer " + name)
-    weights = model.out_f.conv.weight.permute(2,1,0)[0].numpy()
-    bias = model.out_f.conv.bias.numpy()
-    factors = (0.5*torch.exp(model.out_f.fact.weight[0])).numpy()
+    weights = model.out_f.conv.weight.permute(2,1,0)[0].data.numpy()
+    bias = model.out_f.conv.bias.data.numpy()
+    factors = (0.5*torch.exp(model.out_f.fact.weight[0])).data.numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
     ## Previous implementation (as in ICASSP 2021) uses shared factors between bands for signs and mags [for data-driven LPC],
@@ -560,8 +561,8 @@ def main():
     #dump dense_fc_out_fine
     name = 'fc_out_fine'
     print("printing layer " + name)
-    weights = model.out_f.out.weight.permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
-    bias = model.out_f.out.bias.numpy()
+    weights = model.out_f.out.weight.permute(2,1,0)[0].data.numpy() #it's defined as conv1d with ks=1 on the model
+    bias = model.out_f.out.bias.data.numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
     f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_TANHSHRINK\n}};\n\n'
@@ -575,7 +576,7 @@ def main():
     pqmf = PQMF(model.n_bands)
     pqmf_order = pqmf.taps
     pqmf_delay = pqmf_order // 2
-    weights = pqmf.synthesis_filter.permute(2,1,0).numpy()
+    weights = pqmf.synthesis_filter.permute(2,1,0).data.numpy()
     bias = np.zeros(1)
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
@@ -585,6 +586,7 @@ def main():
     hf.write('#define {}_STATE_SIZE ({}*{})\n'.format(name.upper(), weights.shape[1], pqmf_delay+1))
     hf.write('#define {}_DELAY {}\n'.format(name.upper(), pqmf_delay))
     hf.write('extern const Conv1DLayer {};\n\n'.format(name))
+    print(f'{pqmf.subbands} {pqmf.err} {pqmf.A} {pqmf.taps} {pqmf.cutoff_ratio} {pqmf.beta}')
 
     #hf.write('#define MAX_RNN_NEURONS {}\n\n'.format(max_rnn_neurons))
     hf.write('#define RNN_MAIN_NEURONS {}\n\n'.format(model.hidden_units))
@@ -627,8 +629,8 @@ def main():
     ## Dump melsp_norm
     name = 'melsp_norm'
     print("printing layer " + name + " of type " + model_encoder_melsp.scale_in.__class__.__name__)
-    weights = model_encoder_melsp.scale_in.weight.permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
-    bias = model_encoder_melsp.scale_in.bias.numpy()
+    weights = model_encoder_melsp.scale_in.weight.permute(2,1,0)[0].data.numpy() #it's defined as conv1d with ks=1 on the model
+    bias = model_encoder_melsp.scale_in.bias.data.numpy()
     std = 1.0/np.diag(weights) #in training script, diagonal square weights matrix defined as 1/std
     mean = (-bias)*std #in training script, bias defined as -mean/std
     printVector(f, mean, name + '_mean')
@@ -640,8 +642,8 @@ def main():
     ## Dump uvf0_norm
     name = 'uvf0_norm'
     print("printing layer " + name + " of type " + model_decoder_melsp.scale_in.__class__.__name__)
-    weights = model_decoder_melsp.scale_in.weight.permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
-    bias = model_decoder_melsp.scale_in.bias.numpy()
+    weights = model_decoder_melsp.scale_in.weight.permute(2,1,0)[0].data.numpy() #it's defined as conv1d with ks=1 on the model
+    bias = model_decoder_melsp.scale_in.bias.data.numpy()
     std = 1.0/np.diag(weights)[:1] #in training script, diagonal square weights matrix defined as 1/std
     mean = (-bias[:1])*std #in training script, bias defined as -mean/std
     printVector(f, mean, name + '_mean')
@@ -654,8 +656,8 @@ def main():
     name = 'fc_red_spk'
     print("printing layer " + name)
     #defined as sequential with relu activation
-    weights = model_spk.in_red[0].weight.permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
-    bias = model_spk.in_red[0].bias.numpy()
+    weights = model_spk.in_red[0].weight.permute(2,1,0)[0].data.numpy() #it's defined as conv1d with ks=1 on the model
+    bias = model_spk.in_red[0].bias.data.numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
     f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_RELU\n}};\n\n'
@@ -667,8 +669,8 @@ def main():
     name = 'fc_red_dec_excit'
     print("printing layer " + name)
     #defined as sequential with relu activation
-    weights = model_decoder_excit.in_red[0].weight.permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
-    bias = model_decoder_excit.in_red[0].bias.numpy()
+    weights = model_decoder_excit.in_red[0].weight.permute(2,1,0)[0].data.numpy() #it's defined as conv1d with ks=1 on the model
+    bias = model_decoder_excit.in_red[0].bias.data.numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
     f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_RELU\n}};\n\n'
@@ -680,8 +682,8 @@ def main():
     name = 'fc_red_dec_melsp'
     print("printing layer " + name)
     #defined as sequential with relu activation
-    weights = model_decoder_melsp.in_red[0].weight.permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
-    bias = model_decoder_melsp.in_red[0].bias.numpy()
+    weights = model_decoder_melsp.in_red[0].weight.permute(2,1,0)[0].data.numpy() #it's defined as conv1d with ks=1 on the model
+    bias = model_decoder_melsp.in_red[0].bias.data.numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
     f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_RELU\n}};\n\n'
@@ -694,12 +696,12 @@ def main():
     #FIXME: make model format without sequential for two-sided/causal conv
     if model_encoder_melsp.right_size <= 0:
         print("printing layer " + name + " of type " + model_encoder_melsp.conv.conv[0].__class__.__name__)
-        weights = model_encoder_melsp.conv.conv[0].weight.permute(2,1,0).numpy()
-        bias = model_encoder_melsp.conv.conv[0].bias.numpy()
+        weights = model_encoder_melsp.conv.conv[0].weight.permute(2,1,0).data.numpy()
+        bias = model_encoder_melsp.conv.conv[0].bias.data.numpy()
     else:
         print("printing layer " + name + " of type " + model_encoder_melsp.conv.conv.__class__.__name__)
-        weights = model_encoder_melsp.conv.conv.weight.permute(2,1,0).numpy()
-        bias = model_encoder_melsp.conv.conv.bias.numpy()
+        weights = model_encoder_melsp.conv.conv.weight.permute(2,1,0).data.numpy()
+        bias = model_encoder_melsp.conv.conv.bias.data.numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
     f.write('const Conv1DLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, {}, ACTIVATION_LINEAR\n}};\n\n'
@@ -716,12 +718,12 @@ def main():
     #FIXME: make model format without sequential for two-sided/causal conv
     if model_encoder_excit.right_size <= 0:
         print("printing layer " + name + " of type " + model_encoder_excit.conv.conv[0].__class__.__name__)
-        weights = model_encoder_excit.conv.conv[0].weight.permute(2,1,0).numpy()
-        bias = model_encoder_excit.conv.conv[0].bias.numpy()
+        weights = model_encoder_excit.conv.conv[0].weight.permute(2,1,0).data.numpy()
+        bias = model_encoder_excit.conv.conv[0].bias.data.numpy()
     else:
         print("printing layer " + name + " of type " + model_encoder_excit.conv.conv.__class__.__name__)
-        weights = model_encoder_excit.conv.conv.weight.permute(2,1,0).numpy()
-        bias = model_encoder_excit.conv.conv.bias.numpy()
+        weights = model_encoder_excit.conv.conv.weight.permute(2,1,0).data.numpy()
+        bias = model_encoder_excit.conv.conv.bias.data.numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
     f.write('const Conv1DLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, {}, ACTIVATION_LINEAR\n}};\n\n'
@@ -744,12 +746,12 @@ def main():
     #FIXME: make model format without sequential for two-sided/causal conv
     if model_spk.right_size <= 0:
         print("printing layer " + name + " of type " + model_spk.conv.conv[0].__class__.__name__)
-        weights = model_spk.conv.conv[0].weight.permute(2,1,0).numpy()
-        bias = model_spk.conv.conv[0].bias.numpy()
+        weights = model_spk.conv.conv[0].weight.permute(2,1,0).data.numpy()
+        bias = model_spk.conv.conv[0].bias.data.numpy()
     else:
         print("printing layer " + name + " of type " + model_spk.conv.conv.__class__.__name__)
-        weights = model_spk.conv.conv.weight.permute(2,1,0).numpy()
-        bias = model_spk.conv.conv.bias.numpy()
+        weights = model_spk.conv.conv.weight.permute(2,1,0).data.numpy()
+        bias = model_spk.conv.conv.bias.data.numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
     f.write('const Conv1DLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, {}, ACTIVATION_LINEAR\n}};\n\n'
@@ -765,12 +767,12 @@ def main():
     #FIXME: make model format without sequential for two-sided/causal conv
     if model_decoder_excit.right_size <= 0:
         print("printing layer " + name + " of type " + model_decoder_excit.conv.conv[0].__class__.__name__)
-        weights = model_decoder_excit.conv.conv[0].weight.permute(2,1,0).numpy()
-        bias = model_decoder_excit.conv.conv[0].bias.numpy()
+        weights = model_decoder_excit.conv.conv[0].weight.permute(2,1,0).data.numpy()
+        bias = model_decoder_excit.conv.conv[0].bias.data.numpy()
     else:
         print("printing layer " + name + " of type " + model_decoder_excit.conv.conv.__class__.__name__)
-        weights = model_decoder_excit.conv.conv.weight.permute(2,1,0).numpy()
-        bias = model_decoder_excit.conv.conv.bias.numpy()
+        weights = model_decoder_excit.conv.conv.weight.permute(2,1,0).data.numpy()
+        bias = model_decoder_excit.conv.conv.bias.data.numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
     f.write('const Conv1DLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, {}, ACTIVATION_LINEAR\n}};\n\n'
@@ -786,12 +788,12 @@ def main():
     #FIXME: make model format without sequential for two-sided/causal conv
     if model_decoder_melsp.right_size <= 0:
         print("printing layer " + name + " of type " + model_decoder_melsp.conv.conv[0].__class__.__name__)
-        weights = model_decoder_melsp.conv.conv[0].weight.permute(2,1,0).numpy()
-        bias = model_decoder_melsp.conv.conv[0].bias.numpy()
+        weights = model_decoder_melsp.conv.conv[0].weight.permute(2,1,0).data.numpy()
+        bias = model_decoder_melsp.conv.conv[0].bias.data.numpy()
     else:
         print("printing layer " + name + " of type " + model_decoder_melsp.conv.conv.__class__.__name__)
-        weights = model_decoder_melsp.conv.conv.weight.permute(2,1,0).numpy()
-        bias = model_decoder_melsp.conv.conv.bias.numpy()
+        weights = model_decoder_melsp.conv.conv.weight.permute(2,1,0).data.numpy()
+        bias = model_decoder_melsp.conv.conv.bias.data.numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
     f.write('const Conv1DLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, {}, ACTIVATION_LINEAR\n}};\n\n'
@@ -805,10 +807,10 @@ def main():
     #dump sparse_gru_enc_melsp
     name = 'sparse_gru_enc_melsp'
     print("printing layer " + name + " of type sparse " + model_encoder_melsp.gru.__class__.__name__)
-    weights_ih = model_encoder_melsp.gru.weight_ih_l0.transpose(0,1).numpy()
-    weights_hh = model_encoder_melsp.gru.weight_hh_l0.transpose(0,1).numpy()
-    bias_ih = model_encoder_melsp.gru.bias_ih_l0.numpy()
-    bias_hh = model_encoder_melsp.gru.bias_hh_l0.numpy()
+    weights_ih = model_encoder_melsp.gru.weight_ih_l0.transpose(0,1).data.numpy()
+    weights_hh = model_encoder_melsp.gru.weight_hh_l0.transpose(0,1).data.numpy()
+    bias_ih = model_encoder_melsp.gru.bias_ih_l0.data.numpy()
+    bias_hh = model_encoder_melsp.gru.bias_hh_l0.data.numpy()
     printVector(f, weights_ih, name + '_input_weights')
     printSparseVector(f, weights_hh, name + '_recurrent_weights')
     printVector(f, bias_ih, name + '_input_bias')
@@ -828,10 +830,10 @@ def main():
     #dump sparse_gru_enc_excit
     name = 'sparse_gru_enc_excit'
     print("printing layer " + name + " of type sparse " + model_encoder_excit.gru.__class__.__name__)
-    weights_ih = model_encoder_excit.gru.weight_ih_l0.transpose(0,1).numpy()
-    weights_hh = model_encoder_excit.gru.weight_hh_l0.transpose(0,1).numpy()
-    bias_ih = model_encoder_excit.gru.bias_ih_l0.numpy()
-    bias_hh = model_encoder_excit.gru.bias_hh_l0.numpy()
+    weights_ih = model_encoder_excit.gru.weight_ih_l0.transpose(0,1).data.numpy()
+    weights_hh = model_encoder_excit.gru.weight_hh_l0.transpose(0,1).data.numpy()
+    bias_ih = model_encoder_excit.gru.bias_ih_l0.data.numpy()
+    bias_hh = model_encoder_excit.gru.bias_hh_l0.data.numpy()
     printVector(f, weights_ih, name + '_input_weights')
     printSparseVector(f, weights_hh, name + '_recurrent_weights')
     printVector(f, bias_ih, name + '_input_bias')
@@ -851,8 +853,8 @@ def main():
     #dump dense_gru_spk
     name = "gru_spk"
     print("printing layer " + name + " of type " + model_spk.gru.__class__.__name__)
-    weights_ih = model_spk.gru.weight_ih_l0.transpose(0,1).numpy()
-    weights_hh = model_spk.gru.weight_hh_l0.transpose(0,1).numpy()
+    weights_ih = model_spk.gru.weight_ih_l0.transpose(0,1).data.numpy()
+    weights_hh = model_spk.gru.weight_hh_l0.transpose(0,1).data.numpy()
     bias_ih = model_spk.gru.bias_ih_l0
     bias_hh = model_spk.gru.bias_hh_l0
     printVector(f, weights_ih, name + '_input_weights')
@@ -873,8 +875,8 @@ def main():
     #dump dense_gru_dec_excit
     name = "gru_dec_excit"
     print("printing layer " + name + " of type " + model_decoder_excit.gru.__class__.__name__)
-    weights_ih = model_decoder_excit.gru.weight_ih_l0.transpose(0,1).numpy()
-    weights_hh = model_decoder_excit.gru.weight_hh_l0.transpose(0,1).numpy()
+    weights_ih = model_decoder_excit.gru.weight_ih_l0.transpose(0,1).data.numpy()
+    weights_hh = model_decoder_excit.gru.weight_hh_l0.transpose(0,1).data.numpy()
     bias_ih = model_decoder_excit.gru.bias_ih_l0
     bias_hh = model_decoder_excit.gru.bias_hh_l0
     printVector(f, weights_ih, name + '_input_weights')
@@ -895,10 +897,10 @@ def main():
     #dump sparse_gru_dec_melsp
     name = 'sparse_gru_dec_melsp'
     print("printing layer " + name + " of type sparse " + model_decoder_melsp.gru.__class__.__name__)
-    weights_ih = model_decoder_melsp.gru.weight_ih_l0.transpose(0,1).numpy()
-    weights_hh = model_decoder_melsp.gru.weight_hh_l0.transpose(0,1).numpy()
-    bias_ih = model_decoder_melsp.gru.bias_ih_l0.numpy()
-    bias_hh = model_decoder_melsp.gru.bias_hh_l0.numpy()
+    weights_ih = model_decoder_melsp.gru.weight_ih_l0.transpose(0,1).data.numpy()
+    weights_hh = model_decoder_melsp.gru.weight_hh_l0.transpose(0,1).data.numpy()
+    bias_ih = model_decoder_melsp.gru.bias_ih_l0.data.numpy()
+    bias_hh = model_decoder_melsp.gru.bias_hh_l0.data.numpy()
     printVector(f, weights_ih, name + '_input_weights')
     printSparseVector(f, weights_hh, name + '_recurrent_weights')
     printVector(f, bias_ih, name + '_input_bias')
@@ -923,8 +925,8 @@ def main():
     name = 'fc_out_enc_melsp'
     print("printing layer " + name)
     #take only mean-part output [latent without sampling, i.e., MAP estimate]
-    weights = model_encoder_melsp.out.weight[n_spk:-model_encoder_melsp.lat_dim].permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
-    bias = model_encoder_melsp.out.bias[n_spk:-model_encoder_melsp.lat_dim].numpy()
+    weights = model_encoder_melsp.out.weight[n_spk:-model_encoder_melsp.lat_dim].permute(2,1,0)[0].data.numpy() #it's defined as conv1d with ks=1 on the model
+    bias = model_encoder_melsp.out.bias[n_spk:-model_encoder_melsp.lat_dim].data.numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
     f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_TANHSHRINK\n}};\n\n'
@@ -936,8 +938,8 @@ def main():
     name = 'fc_out_enc_excit'
     print("printing layer " + name)
     #take only mean-part output [latent without sampling, i.e., MAP estimate]
-    weights = model_encoder_excit.out.weight[n_spk:-model_encoder_excit.lat_dim].permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
-    bias = model_encoder_excit.out.bias[n_spk:-model_encoder_excit.lat_dim].numpy()
+    weights = model_encoder_excit.out.weight[n_spk:-model_encoder_excit.lat_dim].permute(2,1,0)[0].data.numpy() #it's defined as conv1d with ks=1 on the model
+    bias = model_encoder_excit.out.bias[n_spk:-model_encoder_excit.lat_dim].data.numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
     f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_TANHSHRINK\n}};\n\n'
@@ -948,8 +950,8 @@ def main():
     #dump fc_out_spk
     name = 'fc_out_spk'
     print("printing layer " + name)
-    weights = model_spk.out.weight.permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
-    bias = model_spk.out.bias.numpy()
+    weights = model_spk.out.weight.permute(2,1,0)[0].data.numpy() #it's defined as conv1d with ks=1 on the model
+    bias = model_spk.out.bias.data.numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
     f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_TANHSHRINK\n}};\n\n'
@@ -960,8 +962,8 @@ def main():
     #dump fc_out_dec_excit
     name = 'fc_out_dec_excit'
     print("printing layer " + name)
-    weights = model_decoder_excit.out.weight.permute(2,1,0)[0,:,:2].numpy() #it's defined as conv1d with ks=1 on the model
-    bias = model_decoder_excit.out.bias[:2].numpy()
+    weights = model_decoder_excit.out.weight.permute(2,1,0)[0,:,:2].data.numpy() #it's defined as conv1d with ks=1 on the model
+    bias = model_decoder_excit.out.bias[:2].data.numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
     f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_LINEAR\n}};\n\n'
@@ -972,8 +974,8 @@ def main():
     #dump fc_out_dec_melsp
     name = 'fc_out_dec_melsp'
     print("printing layer " + name)
-    weights = model_decoder_melsp.out.weight.permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
-    bias = model_decoder_melsp.out.bias.numpy()
+    weights = model_decoder_melsp.out.weight.permute(2,1,0)[0].data.numpy() #it's defined as conv1d with ks=1 on the model
+    bias = model_decoder_melsp.out.bias.data.numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
     f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_TANHSHRINK\n}};\n\n'
@@ -985,8 +987,8 @@ def main():
     if (config_cycvae.spkidtr_dim > 0):
         name = 'fc_in_spk_code_transform'
         print("printing layer " + name)
-        weights = model_spkidtr.conv.weight.permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
-        bias = model_spkidtr.conv.bias.numpy()
+        weights = model_spkidtr.conv.weight.permute(2,1,0)[0].data.numpy() #it's defined as conv1d with ks=1 on the model
+        bias = model_spkidtr.conv.bias.data.numpy()
         printVector(f, weights, name + '_weights')
         printVector(f, bias, name + '_bias')
         f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_TANHSHRINK\n}};\n\n'
@@ -997,8 +999,8 @@ def main():
         name = 'fc_out_spk_code_transform'
         print("printing layer " + name)
         #defined as sequential with relu activation
-        weights = model_spkidtr.deconv[0].weight.permute(2,1,0)[0].numpy() #it's defined as conv1d with ks=1 on the model
-        bias = model_spkidtr.deconv[0].bias.numpy()
+        weights = model_spkidtr.deconv[0].weight.permute(2,1,0)[0].data.numpy() #it's defined as conv1d with ks=1 on the model
+        bias = model_spkidtr.deconv[0].bias.data.numpy()
         printVector(f, weights, name + '_weights')
         printVector(f, bias, name + '_bias')
         f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_RELU\n}};\n\n'

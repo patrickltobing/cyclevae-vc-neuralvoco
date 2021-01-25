@@ -7,8 +7,8 @@ fs: 24000
 #fs: 48000
 
 ## Frame-shift mel-cep/mel-spec extraction
-shiftms: 5
-#shiftms: 10
+#shiftms: 5
+shiftms: 10
 
 ## Window length mel-spectrogram extraction
 winms: 27.5
@@ -31,9 +31,9 @@ hidden_units_dec: 640
 hidden_units_lf0: 128
 
 ## GRU hidden units wavernn
-#[for high-quality, 0.5 RT with 10-bit mu-law]
+#[for high-quality, 0.36 RT with 10-bit mu-law 10 ms shift]
 #hidden_units_wave: 800
-#[for natural-quality, 0.59 RT with 10-bit mu-law]
+#[for natural-quality, 0.45 RT with 10-bit mu-law 10 ms shift]
 hidden_units_wave: 896
 
 hidden_units_wave_2: 32
@@ -75,11 +75,13 @@ dilation_depth: 3
 dilation_repeat: 2
 
 ## for using skewed input convolution (> 0), or balanced (0) [only for encoder]
-right_size_enc: 2
+right_size_enc: 1
+#right_size_enc: 2
 right_size_dec: 0
 right_size_lf0: 0
-## lookup frame limited to only 2 frame [for allowing low-latency/real-time processing]
-right_size_wave: 2
+## lookup frame limited to only 1/2 frame [for allowing low-latency/real-time processing]
+right_size_wave: 1
+#right_size_wave: 2
 
 ## number of cycles :  n_half_cyc // 2
 n_half_cyc: 2
@@ -118,7 +120,7 @@ do_prob: 0.5
 
 ## maximum step count
 step_count: 1155000
-step_count_wave: 3810000
+step_count_wave: 3670000
 
 ## use get_max_frame.sh to get max_frame of the current train/dev sets as the value of pad_len
 ## zero pad length [in frames] for batch processing; for neural vocoder, still use in frame length, but in computation it is multiplied by number of samples per frame
@@ -132,10 +134,8 @@ step_count_wave: 3810000
 pad_len: 2215
 
 ## Batch setting for spectral/excitation modeling
-## 30 frames for 5 ms shift
+## 30 frames
 batch_size: 30
-## 15 frames for 10 ms shift
-#batch_size: 15
 
 ## Batch setting for waveform modeling
 ## 30 frames x number of samples per frame, e.g., 30 x 120 for 24 kHz with 5 ms frame shift = 3600 batch smples
@@ -150,10 +150,10 @@ batch_size: 30
 #batch_size_wave: 45
 ## 23 for 16 kHz with 10 ms shift --> 3680 samples
 #batch_size_wave: 23
-## 8 for wavernn with 5 ms frame shift regardless of sampling rate
-batch_size_wave: 8
-## 4 for wavernn with 10 ms frame shift regardless of sampling rate
-#batch_size_wave: 4
+## 4 for wavernn with 10 ms
+batch_size_wave: 4
+## 8 for wavernn with 5 ms
+#batch_size_wave: 8
 
 # number of workers (threads) for batch data handling
 n_workers: 2

@@ -1335,7 +1335,7 @@ if [ `echo ${stage} | grep 5` ];then
                             --string_path ${string_path_rec} \
                             --n_gpus ${n_gpus}
                             #--GPU_device ${GPU_device} \
-                elif [ $mdl_name == "cycmelspxlf0capvae-laplace_sparse" ];then
+                elif [ $mdl_name == "cycmelspxlf0capspkvae-laplace_sparse" ];then
                     model=${expdir}/checkpoint-${min_idx_cycvae}.pkl
                     ${cuda_cmd} ${expdir}/log/decode_rec-cycrec_${spk_trg}_${min_idx_cycvae}.log \
                         calc_rec-cycrec-gv_gru-cycle-melspxlf0capspkvae-laplace_noar.py \
@@ -1364,19 +1364,19 @@ if [ `echo ${stage} | grep 5` ];then
     for spk in ${spks_trg_rec[@]}; do
         echo $spk
         ## org
-        #find hdf5/${trn}/${spk} -name "*.h5" | sort >> ${feats_ft_scp}
-        #cat ${waveforms} | grep "\/${spk}\/" >> ${waveforms_ft_scp}
+        find hdf5/${trn}/${spk} -name "*.h5" | sort >> ${feats_ft_scp}
+        cat ${waveforms} | grep "\/${spk}\/" >> ${waveforms_ft_scp}
         ## rec/cycrec
         find hdf5/${trn}/${spk}-${spk} -name "*.h5" | sort >> ${feats_ft_scp}
         cat ${waveforms} | grep "\/${spk}\/" >> ${waveforms_ft_scp}
         #find hdf5/${trn}/${spk}-${spk}-${spk} -name "*.h5" | sort >> ${feats_ft_scp}
         #cat ${waveforms} | grep "\/${spk}\/" >> ${waveforms_ft_scp}
-        #n_feats=`find hdf5/${dev}/${spk} -name "*.h5" | wc -l `
         if [ -z "$(echo $spk | sed -n 's/\(p\)/\1/p')" ]; then
-            #if [ $n_feats -gt 0 ]; then
-            #    find hdf5/${dev}/${spk} -name "*.h5" | sort >> ${feats_ft_eval_scp}
-            #    cat ${waveforms_eval} | grep "\/${spk}\/" >> ${waveforms_ft_eval_scp}
-            #fi
+            n_feats=`find hdf5/${dev}/${spk} -name "*.h5" | wc -l `
+            if [ $n_feats -gt 0 ]; then
+                find hdf5/${dev}/${spk} -name "*.h5" | sort >> ${feats_ft_eval_scp}
+                cat ${waveforms_eval} | grep "\/${spk}\/" >> ${waveforms_ft_eval_scp}
+            fi
             n_feats=`find hdf5/${dev}/${spk}-${spk} -name "*.h5" | wc -l `
             if [ $n_feats -gt 0 ]; then
                 find hdf5/${dev}/${spk}-${spk} -name "*.h5" | sort >> ${feats_ft_eval_scp}
@@ -2100,15 +2100,26 @@ fi
 
 
 pretrained_wave=${expdir_wave}
-
 echo $mdl_name_wave
-if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_16bit" ] \
-    || [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_9bit" ] \
-        || [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf" ]; then
-    if [ $use_mcep == "true" ]; then
-        setting_wave=ft-${mdl_name_wave}_${data_name}_lr${lr}_bs${batch_size_wave}_huw${hidden_units_wave}_hu2w${hidden_units_wave_2}_ksw${kernel_size_wave}_dsw${dilation_size_wave}_do${do_prob}_st${step_count_wave}_mcep${use_mcep}_ts${t_start}_te${t_end}_i${interval}_d${densities}_ns${n_stage}_lpc${lpc}_rs${right_size_wave}_nb${n_bands}_c${min_idx_cycvae}-${min_idx}-${min_idx_wave}
-    else
-        setting_wave=ft-${mdl_name_wave}_${data_name}_lr${lr}_bs${batch_size_wave}_huw${hidden_units_wave}_hu2w${hidden_units_wave_2}_ksw${kernel_size_wave}_dsw${dilation_size_wave}_do${do_prob}_st${step_count_wave}_mcep${use_mcep}_ts${t_start}_te${t_end}_i${interval}_d${densities}_ns${n_stage}_lpc${lpc}_rs${right_size_wave}_nb${n_bands}_exc${with_excit}_m${mid_dim}_c${min_idx_cycvae}-${min_idx}-${min_idx_wave}
+if [ $mdl_name_post == "cycmelspxlf0capspkvae-laplace_sparse_ftdec" ]; then
+    if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_16bit" ] \
+        || [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_9bit" ] \
+            || [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf" ]; then
+        if [ $use_mcep == "true" ]; then
+            setting_wave=ft-${mdl_name_wave}_${data_name}_lr${lr}_bs${batch_size_wave}_huw${hidden_units_wave}_hu2w${hidden_units_wave_2}_ksw${kernel_size_wave}_dsw${dilation_size_wave}_do${do_prob}_st${step_count_wave}_mcep${use_mcep}_ts${t_start}_te${t_end}_i${interval}_d${densities}_ns${n_stage}_lpc${lpc}_rs${right_size_wave}_nb${n_bands}_c${min_idx_cycvae}-${min_idx}-${min_idx_wave}
+        else
+            setting_wave=ft-${mdl_name_wave}_${data_name}_lr${lr}_bs${batch_size_wave}_huw${hidden_units_wave}_hu2w${hidden_units_wave_2}_ksw${kernel_size_wave}_dsw${dilation_size_wave}_do${do_prob}_st${step_count_wave}_mcep${use_mcep}_ts${t_start}_te${t_end}_i${interval}_d${densities}_ns${n_stage}_lpc${lpc}_rs${right_size_wave}_nb${n_bands}_exc${with_excit}_m${mid_dim}_c${min_idx_cycvae}-${min_idx}-${min_idx_wave}
+        fi
+    fi
+elif [ $mdl_name == "cycmelspxlf0capspkvae-laplace_sparse" ];then
+    if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_16bit" ] \
+        || [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_9bit" ] \
+            || [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf" ]; then
+        if [ $use_mcep == "true" ]; then
+            setting_wave=spklat-${mdl_name_wave}_${data_name}_lr${lr}_bs${batch_size_wave}_huw${hidden_units_wave}_hu2w${hidden_units_wave_2}_ksw${kernel_size_wave}_dsw${dilation_size_wave}_do${do_prob}_st${step_count_wave}_mcep${use_mcep}_ts${t_start}_te${t_end}_i${interval}_d${densities}_ns${n_stage}_lpc${lpc}_rs${right_size_wave}_nb${n_bands}_c${min_idx_cycvae}
+        else
+            setting_wave=spklat-${mdl_name_wave}_${data_name}_lr${lr}_bs${batch_size_wave}_huw${hidden_units_wave}_hu2w${hidden_units_wave_2}_ksw${kernel_size_wave}_dsw${dilation_size_wave}_do${do_prob}_st${step_count_wave}_mcep${use_mcep}_ts${t_start}_te${t_end}_i${interval}_d${densities}_ns${n_stage}_lpc${lpc}_rs${right_size_wave}_nb${n_bands}_exc${with_excit}_m${mid_dim}_c${min_idx_cycvae}
+        fi
     fi
 fi
 
@@ -2124,249 +2135,178 @@ if [ `echo ${stage} | grep ft` ];then
     echo "#               WAVEFORM MODELING STEP                    #"
     echo "###########################################################"
     echo $expdir_wave
-   
-    if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf" ];then
-        feats=${expdir_wave}/feats_tr.scp
-        feats_eval=${expdir_wave}/feats_ev.scp
-        waveforms=${expdir_wave}/wavs_tr.scp
-        waveforms_eval=${expdir_wave}/wavs_ev.scp
-        cat data/${trn}/feats_ft.scp > ${feats}
-        cat data/${dev}/feats_ft.scp > ${feats_eval}
-        cat data/${trn}/wav_ns_ft.scp > ${waveforms}
-        cat data/${dev}/wav_ns_ft.scp > ${waveforms_eval}
-        if [ $idx_resume_ft -gt 0 ]; then
-            ${cuda_cmd} ${expdir_wave}/log/train_resume-${idx_resume_ft}.log \
-                train_nstages-sparse-wavernn_dualgru_compact_lpc_mband_10bit_cf.py \
-                    --waveforms ${waveforms} \
-                    --waveforms_eval $waveforms_eval \
-                    --feats ${feats} \
-                    --feats_eval $feats_eval \
-                    --stats data/${trn}/stats_jnt.h5 \
-                    --expdir ${expdir_wave} \
-                    --lr ${lr} \
-                    --do_prob ${do_prob} \
-                    --step_count ${step_count_wave} \
-                    --upsampling_factor ${upsampling_factor} \
-                    --hidden_units_wave ${hidden_units_wave} \
-                    --hidden_units_wave_2 ${hidden_units_wave_2} \
-                    --batch_size ${batch_size_wave} \
-                    --mcep_dim ${powmcep_dim} \
-                    --kernel_size_wave ${kernel_size_wave} \
-                    --dilation_size_wave ${dilation_size_wave} \
-                    --n_workers ${n_workers} \
-                    --pad_len ${pad_len} \
-                    --t_start ${t_start} \
-                    --t_end ${t_end} \
-                    --interval ${interval} \
-                    --densities ${densities} \
-                    --n_stage ${n_stage} \
-                    --lpc ${lpc} \
-                    --right_size ${right_size_wave} \
-                    --n_bands ${n_bands} \
-                    --with_excit ${with_excit} \
-                    --string_path ${string_path} \
-                    --string_path_ft ${string_path_rec} \
-                    --mid_dim ${mid_dim} \
-                    --pretrained ${pretrained_wave}/checkpoint-${min_idx_wave}.pkl \
-                    --resume ${expdir_wave}/checkpoint-${idx_resume_ft}.pkl \
-                    --GPU_device ${GPU_device}
-        else
-            ${cuda_cmd} ${expdir_wave}/log/train.log \
-                train_nstages-sparse-wavernn_dualgru_compact_lpc_mband_10bit_cf.py \
-                    --waveforms ${waveforms} \
-                    --waveforms_eval $waveforms_eval \
-                    --feats ${feats} \
-                    --feats_eval $feats_eval \
-                    --stats data/${trn}/stats_jnt.h5 \
-                    --expdir ${expdir_wave} \
-                    --lr ${lr} \
-                    --do_prob ${do_prob} \
-                    --step_count ${step_count_wave} \
-                    --upsampling_factor ${upsampling_factor} \
-                    --hidden_units_wave ${hidden_units_wave} \
-                    --hidden_units_wave_2 ${hidden_units_wave_2} \
-                    --batch_size ${batch_size_wave} \
-                    --mcep_dim ${powmcep_dim} \
-                    --kernel_size_wave ${kernel_size_wave} \
-                    --dilation_size_wave ${dilation_size_wave} \
-                    --n_workers ${n_workers} \
-                    --pad_len ${pad_len} \
-                    --t_start ${t_start} \
-                    --t_end ${t_end} \
-                    --interval ${interval} \
-                    --densities ${densities} \
-                    --n_stage ${n_stage} \
-                    --lpc ${lpc} \
-                    --right_size ${right_size_wave} \
-                    --n_bands ${n_bands} \
-                    --with_excit ${with_excit} \
-                    --string_path ${string_path} \
-                    --string_path_ft ${string_path_rec} \
-                    --mid_dim ${mid_dim} \
-                    --pretrained ${pretrained_wave}/checkpoint-${min_idx_wave}.pkl \
-                    --GPU_device ${GPU_device}
+
+    if [ $mdl_name_post == "cycmelspxlf0capspkvae-laplace_sparse_ftdec" ]; then
+        if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf" ];then
+            feats=${expdir_wave}/feats_tr.scp
+            feats_eval=${expdir_wave}/feats_ev.scp
+            waveforms=${expdir_wave}/wavs_tr.scp
+            waveforms_eval=${expdir_wave}/wavs_ev.scp
+            #cat data/${trn}/feats_ft.scp | sort > ${feats}
+            #cat data/${dev}/feats_ft.scp | sort > ${feats_eval}
+            #cat data/${trn}/wav_ns_ft.scp | sort > ${waveforms}
+            #cat data/${dev}/wav_ns_ft.scp | sort > ${waveforms_eval}
+            cat data/${trn}/feats_ft.scp > ${feats}
+            cat data/${dev}/feats_ft.scp > ${feats_eval}
+            cat data/${trn}/wav_ns_ft.scp > ${waveforms}
+            cat data/${dev}/wav_ns_ft.scp > ${waveforms_eval}
+            if [ $idx_resume_ft -gt 0 ]; then
+                ${cuda_cmd} ${expdir_wave}/log/train_resume-${idx_resume_ft}.log \
+                    train_nstages-sparse-wavernn_dualgru_compact_lpc_mband_10bit_cf.py \
+                        --waveforms ${waveforms} \
+                        --waveforms_eval $waveforms_eval \
+                        --feats ${feats} \
+                        --feats_eval $feats_eval \
+                        --stats data/${trn}/stats_jnt.h5 \
+                        --expdir ${expdir_wave} \
+                        --lr ${lr} \
+                        --do_prob ${do_prob} \
+                        --step_count ${step_count_wave} \
+                        --upsampling_factor ${upsampling_factor} \
+                        --hidden_units_wave ${hidden_units_wave} \
+                        --hidden_units_wave_2 ${hidden_units_wave_2} \
+                        --batch_size ${batch_size_wave} \
+                        --mcep_dim ${powmcep_dim} \
+                        --kernel_size_wave ${kernel_size_wave} \
+                        --dilation_size_wave ${dilation_size_wave} \
+                        --n_workers ${n_workers} \
+                        --pad_len ${pad_len} \
+                        --t_start ${t_start} \
+                        --t_end ${t_end} \
+                        --interval ${interval} \
+                        --densities ${densities} \
+                        --n_stage ${n_stage} \
+                        --lpc ${lpc} \
+                        --right_size ${right_size_wave} \
+                        --n_bands ${n_bands} \
+                        --with_excit ${with_excit} \
+                        --string_path ${string_path} \
+                        --string_path_ft ${string_path_rec} \
+                        --mid_dim ${mid_dim} \
+                        --pretrained ${pretrained_wave}/checkpoint-${min_idx_wave}.pkl \
+                        --resume ${expdir_wave}/checkpoint-${idx_resume_ft}.pkl \
+                        --GPU_device ${GPU_device}
+            else
+                ${cuda_cmd} ${expdir_wave}/log/train.log \
+                    train_nstages-sparse-wavernn_dualgru_compact_lpc_mband_10bit_cf.py \
+                        --waveforms ${waveforms} \
+                        --waveforms_eval $waveforms_eval \
+                        --feats ${feats} \
+                        --feats_eval $feats_eval \
+                        --stats data/${trn}/stats_jnt.h5 \
+                        --expdir ${expdir_wave} \
+                        --lr ${lr} \
+                        --do_prob ${do_prob} \
+                        --step_count ${step_count_wave} \
+                        --upsampling_factor ${upsampling_factor} \
+                        --hidden_units_wave ${hidden_units_wave} \
+                        --hidden_units_wave_2 ${hidden_units_wave_2} \
+                        --batch_size ${batch_size_wave} \
+                        --mcep_dim ${powmcep_dim} \
+                        --kernel_size_wave ${kernel_size_wave} \
+                        --dilation_size_wave ${dilation_size_wave} \
+                        --n_workers ${n_workers} \
+                        --pad_len ${pad_len} \
+                        --t_start ${t_start} \
+                        --t_end ${t_end} \
+                        --interval ${interval} \
+                        --densities ${densities} \
+                        --n_stage ${n_stage} \
+                        --lpc ${lpc} \
+                        --right_size ${right_size_wave} \
+                        --n_bands ${n_bands} \
+                        --with_excit ${with_excit} \
+                        --string_path ${string_path} \
+                        --string_path_ft ${string_path_rec} \
+                        --mid_dim ${mid_dim} \
+                        --pretrained ${pretrained_wave}/checkpoint-${min_idx_wave}.pkl \
+                        --GPU_device ${GPU_device}
+            fi
         fi
-    elif [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_9bit" ];then
-        feats=${expdir_wave}/feats_tr.scp
-        feats_eval=${expdir_wave}/feats_ev.scp
-        waveforms=${expdir_wave}/wavs_tr.scp
-        waveforms_eval=${expdir_wave}/wavs_ev.scp
-        cat data/${trn}/feats_ft.scp > ${feats}
-        cat data/${dev}/feats_ft.scp > ${feats_eval}
-        cat data/${trn}/wav_ns_ft.scp > ${waveforms}
-        cat data/${dev}/wav_ns_ft.scp > ${waveforms_eval}
-        if [ $idx_resume_ft -gt 0 ]; then
-            ${cuda_cmd} ${expdir_wave}/log/train_resume-${idx_resume_ft}.log \
-                train_nstages-sparse-wavernn_dualgru_compact_lpc_mband_9bit.py \
-                    --waveforms ${waveforms} \
-                    --waveforms_eval $waveforms_eval \
-                    --feats ${feats} \
-                    --feats_eval $feats_eval \
-                    --stats data/${trn}/stats_jnt.h5 \
-                    --expdir ${expdir_wave} \
-                    --lr ${lr} \
-                    --do_prob ${do_prob} \
-                    --step_count ${step_count_wave} \
-                    --upsampling_factor ${upsampling_factor} \
-                    --hidden_units_wave ${hidden_units_wave} \
-                    --hidden_units_wave_2 ${hidden_units_wave_2} \
-                    --batch_size ${batch_size_wave} \
-                    --mcep_dim ${powmcep_dim} \
-                    --kernel_size_wave ${kernel_size_wave} \
-                    --dilation_size_wave ${dilation_size_wave} \
-                    --n_workers ${n_workers} \
-                    --pad_len ${pad_len} \
-                    --t_start ${t_start} \
-                    --t_end ${t_end} \
-                    --interval ${interval} \
-                    --densities ${densities} \
-                    --n_stage ${n_stage} \
-                    --lpc ${lpc} \
-                    --right_size ${right_size_wave} \
-                    --n_bands ${n_bands} \
-                    --with_excit ${with_excit} \
-                    --string_path ${string_path} \
-                    --string_path_ft ${string_path_rec} \
-                    --mid_dim ${mid_dim} \
-                    --pretrained ${pretrained_wave}/checkpoint-${min_idx_wave}.pkl \
-                    --resume ${expdir_wave}/checkpoint-${idx_resume_wave}.pkl \
-                    --GPU_device ${GPU_device}
-        else
-            ${cuda_cmd} ${expdir_wave}/log/train.log \
-                train_nstages-sparse-wavernn_dualgru_compact_lpc_mband_9bit.py \
-                    --waveforms ${waveforms} \
-                    --waveforms_eval $waveforms_eval \
-                    --feats ${feats} \
-                    --feats_eval $feats_eval \
-                    --stats data/${trn}/stats_jnt.h5 \
-                    --expdir ${expdir_wave} \
-                    --lr ${lr} \
-                    --do_prob ${do_prob} \
-                    --step_count ${step_count_wave} \
-                    --upsampling_factor ${upsampling_factor} \
-                    --hidden_units_wave ${hidden_units_wave} \
-                    --hidden_units_wave_2 ${hidden_units_wave_2} \
-                    --batch_size ${batch_size_wave} \
-                    --mcep_dim ${powmcep_dim} \
-                    --kernel_size_wave ${kernel_size_wave} \
-                    --dilation_size_wave ${dilation_size_wave} \
-                    --n_workers ${n_workers} \
-                    --pad_len ${pad_len} \
-                    --t_start ${t_start} \
-                    --t_end ${t_end} \
-                    --interval ${interval} \
-                    --densities ${densities} \
-                    --n_stage ${n_stage} \
-                    --lpc ${lpc} \
-                    --right_size ${right_size_wave} \
-                    --n_bands ${n_bands} \
-                    --with_excit ${with_excit} \
-                    --string_path ${string_path} \
-                    --string_path_ft ${string_path_rec} \
-                    --mid_dim ${mid_dim} \
-                    --pretrained ${pretrained_wave}/checkpoint-${min_idx_wave}.pkl \
-                    --GPU_device ${GPU_device}
-        fi
-    elif [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_16bit" ];then
-        feats=${expdir_wave}/feats_tr.scp
-        feats_eval=${expdir_wave}/feats_ev.scp
-        waveforms=${expdir_wave}/wavs_tr.scp
-        waveforms_eval=${expdir_wave}/wavs_ev.scp
-        cat data/${trn}/feats_ft.scp > ${feats}
-        cat data/${dev}/feats_ft.scp > ${feats_eval}
-        cat data/${trn}/wav_ns_ft.scp > ${waveforms}
-        cat data/${dev}/wav_ns_ft.scp > ${waveforms_eval}
-        if [ $idx_resume_ft -gt 0 ]; then
-            ${cuda_cmd} ${expdir_wave}/log/train_resume-${idx_resume_ft}.log \
-                train_nstages-sparse-wavernn_dualgru_compact_lpc_mband_16bit.py \
-                    --waveforms ${waveforms} \
-                    --waveforms_eval $waveforms_eval \
-                    --feats ${feats} \
-                    --feats_eval $feats_eval \
-                    --stats data/${trn}/stats_jnt.h5 \
-                    --expdir ${expdir_wave} \
-                    --lr ${lr} \
-                    --do_prob ${do_prob} \
-                    --step_count ${step_count_wave} \
-                    --upsampling_factor ${upsampling_factor} \
-                    --hidden_units_wave ${hidden_units_wave} \
-                    --hidden_units_wave_2 ${hidden_units_wave_2} \
-                    --batch_size ${batch_size_wave} \
-                    --mcep_dim ${powmcep_dim} \
-                    --kernel_size_wave ${kernel_size_wave} \
-                    --dilation_size_wave ${dilation_size_wave} \
-                    --n_workers ${n_workers} \
-                    --pad_len ${pad_len} \
-                    --t_start ${t_start} \
-                    --t_end ${t_end} \
-                    --interval ${interval} \
-                    --densities ${densities} \
-                    --n_stage ${n_stage} \
-                    --lpc ${lpc} \
-                    --right_size ${right_size_wave} \
-                    --n_bands ${n_bands} \
-                    --with_excit ${with_excit} \
-                    --string_path ${string_path} \
-                    --string_path_ft ${string_path_rec} \
-                    --mid_dim ${mid_dim} \
-                    --pretrained ${pretrained_wave}/checkpoint-${min_idx_wave}.pkl \
-                    --resume ${expdir_wave}/checkpoint-${idx_resume_ft}.pkl \
-                    --GPU_device ${GPU_device}
-        else
-            ${cuda_cmd} ${expdir_wave}/log/train.log \
-                train_nstages-sparse-wavernn_dualgru_compact_lpc_mband_16bit.py \
-                    --waveforms ${waveforms} \
-                    --waveforms_eval $waveforms_eval \
-                    --feats ${feats} \
-                    --feats_eval $feats_eval \
-                    --stats data/${trn}/stats_jnt.h5 \
-                    --expdir ${expdir_wave} \
-                    --lr ${lr} \
-                    --do_prob ${do_prob} \
-                    --step_count ${step_count_wave} \
-                    --upsampling_factor ${upsampling_factor} \
-                    --hidden_units_wave ${hidden_units_wave} \
-                    --hidden_units_wave_2 ${hidden_units_wave_2} \
-                    --batch_size ${batch_size_wave} \
-                    --mcep_dim ${powmcep_dim} \
-                    --kernel_size_wave ${kernel_size_wave} \
-                    --dilation_size_wave ${dilation_size_wave} \
-                    --n_workers ${n_workers} \
-                    --pad_len ${pad_len} \
-                    --t_start ${t_start} \
-                    --t_end ${t_end} \
-                    --interval ${interval} \
-                    --densities ${densities} \
-                    --n_stage ${n_stage} \
-                    --lpc ${lpc} \
-                    --right_size ${right_size_wave} \
-                    --n_bands ${n_bands} \
-                    --with_excit ${with_excit} \
-                    --string_path ${string_path} \
-                    --string_path_ft ${string_path_rec} \
-                    --mid_dim ${mid_dim} \
-                    --pretrained ${pretrained_wave}/checkpoint-${min_idx_wave}.pkl \
-                    --GPU_device ${GPU_device}
+    elif [ $mdl_name == "cycmelspxlf0capspkvae-laplace_sparse" ];then
+        if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf" ];then
+            feats=${expdir_wave}/feats_tr.scp
+            feats_eval=${expdir_wave}/feats_ev.scp
+            waveforms=${expdir_wave}/wavs_tr.scp
+            waveforms_eval=${expdir_wave}/wavs_ev.scp
+            #cat data/${trn}/feats_ft.scp | sort > ${feats}
+            #cat data/${dev}/feats_ft.scp | sort > ${feats_eval}
+            #cat data/${trn}/wav_ns_ft.scp | sort > ${waveforms}
+            #cat data/${dev}/wav_ns_ft.scp | sort > ${waveforms_eval}
+            cat data/${trn}/feats_ft.scp > ${feats}
+            cat data/${dev}/feats_ft.scp > ${feats_eval}
+            cat data/${trn}/wav_ns_ft.scp > ${waveforms}
+            cat data/${dev}/wav_ns_ft.scp > ${waveforms_eval}
+            if [ $idx_resume_ft -gt 0 ]; then
+                ${cuda_cmd} ${expdir_wave}/log/train_resume-${idx_resume_ft}.log \
+                    train_nstages-sparse-wavernn_dualgru_compact_lpc_mband_10bit_cf.py \
+                        --waveforms ${waveforms} \
+                        --waveforms_eval $waveforms_eval \
+                        --feats ${feats} \
+                        --feats_eval $feats_eval \
+                        --stats data/${trn}/stats_jnt.h5 \
+                        --expdir ${expdir_wave} \
+                        --lr ${lr} \
+                        --do_prob ${do_prob} \
+                        --step_count ${step_count_wave} \
+                        --upsampling_factor ${upsampling_factor} \
+                        --hidden_units_wave ${hidden_units_wave} \
+                        --hidden_units_wave_2 ${hidden_units_wave_2} \
+                        --batch_size ${batch_size_wave} \
+                        --mcep_dim ${powmcep_dim} \
+                        --kernel_size_wave ${kernel_size_wave} \
+                        --dilation_size_wave ${dilation_size_wave} \
+                        --n_workers ${n_workers} \
+                        --pad_len ${pad_len} \
+                        --t_start ${t_start} \
+                        --t_end ${t_end} \
+                        --interval ${interval} \
+                        --densities ${densities} \
+                        --n_stage ${n_stage} \
+                        --lpc ${lpc} \
+                        --right_size ${right_size_wave} \
+                        --n_bands ${n_bands} \
+                        --with_excit ${with_excit} \
+                        --string_path ${string_path} \
+                        --string_path_ft ${string_path_rec}"_spk-lat" \
+                        --mid_dim ${mid_dim} \
+                        --resume ${expdir_wave}/checkpoint-${idx_resume_ft}.pkl \
+                        --GPU_device ${GPU_device}
+            else
+                ${cuda_cmd} ${expdir_wave}/log/train.log \
+                    train_nstages-sparse-wavernn_dualgru_compact_lpc_mband_10bit_cf.py \
+                        --waveforms ${waveforms} \
+                        --waveforms_eval $waveforms_eval \
+                        --feats ${feats} \
+                        --feats_eval $feats_eval \
+                        --stats data/${trn}/stats_jnt.h5 \
+                        --expdir ${expdir_wave} \
+                        --lr ${lr} \
+                        --do_prob ${do_prob} \
+                        --step_count ${step_count_wave} \
+                        --upsampling_factor ${upsampling_factor} \
+                        --hidden_units_wave ${hidden_units_wave} \
+                        --hidden_units_wave_2 ${hidden_units_wave_2} \
+                        --batch_size ${batch_size_wave} \
+                        --mcep_dim ${powmcep_dim} \
+                        --kernel_size_wave ${kernel_size_wave} \
+                        --dilation_size_wave ${dilation_size_wave} \
+                        --n_workers ${n_workers} \
+                        --pad_len ${pad_len} \
+                        --t_start ${t_start} \
+                        --t_end ${t_end} \
+                        --interval ${interval} \
+                        --densities ${densities} \
+                        --n_stage ${n_stage} \
+                        --lpc ${lpc} \
+                        --right_size ${right_size_wave} \
+                        --n_bands ${n_bands} \
+                        --with_excit ${with_excit} \
+                        --string_path ${string_path} \
+                        --string_path_ft ${string_path_rec}"_spk-lat" \
+                        --mid_dim ${mid_dim} \
+                        --GPU_device ${GPU_device}
+            fi
         fi
     fi
 fi

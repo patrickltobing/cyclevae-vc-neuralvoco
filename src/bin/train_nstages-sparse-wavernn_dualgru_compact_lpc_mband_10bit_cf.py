@@ -388,8 +388,23 @@ def main():
     torch.save(args, args.expdir + "/model.conf")
 
     # define network
+    scale_in_flag = True
+    feat_dim=args.mcep_dim+args.excit_dim
+    red_dim=None
+    if args.string_path_ft is not None and "spk-lat" in args.string_path_ft:
+        scale_in_flag = False
+        if os.path.isdir(args.feats):
+            feat_list = [args.feats + "/" + filename for filename in filenames]
+        elif os.path.isfile(args.feats):
+            feat_list = read_txt(args.feats)
+        else:
+            logging.error("--feats should be directory or list.")
+            sys.exit(1)
+        feat_dim=read_hdf5(feat_list[0], args.string_path_ft).shape[1]
+        logging.info(feat_dim)
+        red_dim=args.mcep_dim
     model_waveform = GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(
-        feat_dim=args.mcep_dim+args.excit_dim,
+        feat_dim=feat_dim,
         upsampling_factor=args.upsampling_factor,
         hidden_units=args.hidden_units_wave,
         hidden_units_2=args.hidden_units_wave_2,
@@ -402,6 +417,8 @@ def main():
         n_bands=args.n_bands,
         pad_first=True,
         mid_dim=args.mid_dim,
+        scale_in_flag=scale_in_flag,
+        red_dim=red_dim,
         do_prob=args.do_prob)
     logging.info(model_waveform)
     criterion_ce = torch.nn.CrossEntropyLoss(reduction='none')
@@ -412,7 +429,7 @@ def main():
         model_waveform.cuda()
         criterion_ce.cuda()
         criterion_l1.cuda()
-        if args.pretrained is None:
+        if args.pretrained is None and scale_in_flag:
             mean_stats = mean_stats.cuda()
             scale_stats = scale_stats.cuda()
     else:
@@ -421,14 +438,15 @@ def main():
 
     model_waveform.train()
 
-    if args.pretrained is None:
+    if args.pretrained is None and scale_in_flag:
         model_waveform.scale_in.weight = torch.nn.Parameter(torch.unsqueeze(torch.diag(1.0/scale_stats.data),2))
         model_waveform.scale_in.bias = torch.nn.Parameter(-(mean_stats.data/scale_stats.data))
 
     for param in model_waveform.parameters():
         param.requires_grad = True
-    for param in model_waveform.scale_in.parameters():
-        param.requires_grad = False
+    if scale_in_flag:
+        for param in model_waveform.scale_in.parameters():
+            param.requires_grad = False
     if args.lpc > 0:
         for param in model_waveform.logits.parameters():
             param.requires_grad = False
@@ -437,7 +455,10 @@ def main():
     parameters = sum([np.prod(p.size()) for p in parameters]) / 1000000
     logging.info('Trainable Parameters (waveform): %.3f million' % parameters)
 
-    module_list = list(model_waveform.conv.parameters()) + list(model_waveform.conv_s_c.parameters())
+    if red_dim is not None:
+        module_list = list(model_waveform.in_red.parameters()) + list(model_waveform.conv.parameters()) + list(model_waveform.conv_s_c.parameters())
+    else:
+        module_list = list(model_waveform.conv.parameters()) + list(model_waveform.conv_s_c.parameters())
     module_list += list(model_waveform.embed_c_wav.parameters()) + list(model_waveform.embed_f_wav.parameters())
     module_list += list(model_waveform.gru.parameters())
     module_list += list(model_waveform.gru_2.parameters()) + list(model_waveform.out.parameters())
@@ -501,6 +522,7 @@ def main():
                         pad_left=model_waveform.pad_left, pad_right=model_waveform.pad_right, string_path_ft=args.string_path_ft)
     dataloader = DataLoader(dataset, batch_size=batch_size_utt, shuffle=True, num_workers=args.n_workers)
     #generator = data_generator(dataloader, device, args.batch_size, args.upsampling_factor, limit_count=1, n_bands=args.n_bands)
+    #generator = data_generator(dataloader, device, args.batch_size, args.upsampling_factor, limit_count=20, n_bands=args.n_bands)
     generator = data_generator(dataloader, device, args.batch_size, args.upsampling_factor, limit_count=None, n_bands=args.n_bands)
 
     # define generator evaluation
@@ -987,8 +1009,9 @@ def main():
             model_waveform.train()
             for param in model_waveform.parameters():
                 param.requires_grad = True
-            for param in model_waveform.scale_in.parameters():
-                param.requires_grad = False
+            if scale_in_flag:
+                for param in model_waveform.scale_in.parameters():
+                    param.requires_grad = False
             if args.lpc > 0:
                 for param in model_waveform.logits.parameters():
                     param.requires_grad = False

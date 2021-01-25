@@ -800,6 +800,7 @@ def main():
     dataset = FeatureDatasetCycMceplf0WavVAE(feat_list, pad_feat_transform, spk_list, stats_list,
                     args.n_half_cyc, args.string_path, excit_dim=args.full_excit_dim)
     dataloader = DataLoader(dataset, batch_size=batch_size_utt, shuffle=True, num_workers=args.n_workers)
+    #generator = train_generator(dataloader, device, args.batch_size, n_cv, limit_count=1)
     #generator = train_generator(dataloader, device, args.batch_size, n_cv, limit_count=20)
     generator = train_generator(dataloader, device, args.batch_size, n_cv, limit_count=None)
 

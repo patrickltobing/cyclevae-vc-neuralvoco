@@ -68,8 +68,6 @@
 
 #define MAGSP_DIM (HALF_FFT_LENGTH + 1)
 #define MELSP_MAGSP_DIM (MAGSP_DIM * MEL_DIM)
-#define MEL_DIM 80
-#define MEL_DIM_16_BLOCK ((MEL_DIM % 16) == 0)
 
 
 //PLT_Dec20

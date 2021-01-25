@@ -56,7 +56,7 @@ MWDLP10NET_CYCVAE_EXPORT MWDLP10CycleVAEMelspExcitSpkNetState *mwdlp10cyclevaene
 
 MWDLP10NET_CYCVAE_EXPORT void mwdlp10cyclevaenet_destroy(MWDLP10CycleVAEMelspExcitSpkNetState *mwdlp10cyclevaenet);
 
-MWDLP10NET_CYCVAE_EXPORT int mwdlp10cyclevaenet_get_size();
+MWDLP10NET_CYCVAE_EXPORT int mwdlp10net_get_size();
 
 MWDLP10NET_CYCVAE_EXPORT MWDLP10NetState *mwdlp10net_create();
 

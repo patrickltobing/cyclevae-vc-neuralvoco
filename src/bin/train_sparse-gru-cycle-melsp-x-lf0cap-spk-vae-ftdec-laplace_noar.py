@@ -527,10 +527,12 @@ def main():
     # save args as conf
     args.fftsize = 2 ** (len(bin(200)) - 2 + 1)
     args.string_path = "/log_1pmelmagsp"
-    args.t_start = args.t_start // 2
-    args.t_end = args.t_end // 2
-    args.interval = args.interval // 2
-    args.step_count = round(0.658008658*args.step_count)
+    #args.factor = 0.658008658 #5ms
+    args.factor = 0.846153846 #10ms
+    args.t_start = round(args.t_start * args.factor)
+    args.t_end = round(args.t_end * args.factor)
+    args.interval = round(args.interval * args.factor)
+    args.step_count = round(args.step_count * args.factor)
     logging.info(args.step_count)
     torch.save(args, args.expdir + "/model.conf")
 
