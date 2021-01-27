@@ -25,10 +25,11 @@ mel_dim: 80
 ## Pre-emphasis noise-shaping coefficient
 alpha: 0.85
 
-## GRU hidden units encoder, decoder spec, decoder excit
+## GRU hidden units encoder, decoder spec, decoder excit, post-net
 hidden_units_enc: 512
 hidden_units_dec: 640
 hidden_units_lf0: 128
+hidden_units_post: 160
 
 ## GRU hidden units wavernn
 #[for high-quality, 0.36 RT with 10-bit mu-law 10 ms shift]
@@ -43,10 +44,11 @@ hidden_units_wave_2: 32
 #[for 10-bit mu-law]
 mid_dim: 16
 
-## GRU hidden layers encoder, decoder spec, decoder excit
+## GRU hidden layers encoder, decoder spec, decoder excit, post-net
 hidden_layers_enc: 1
 hidden_layers_dec: 1
 hidden_layers_lf0: 1
+hidden_layers_post: 1
 
 ## GRU hidden layers wavernn
 hidden_layers_wave: 1
@@ -60,6 +62,10 @@ kernel_size_dec: 5
 dilation_size_dec: 1
 
 ## kernel-size input conv encoder excit
+kernel_size_lf0: 7
+dilation_size_lf0: 1
+
+## kernel-size input conv post-net
 kernel_size_lf0: 7
 dilation_size_lf0: 1
 
@@ -79,6 +85,7 @@ right_size_enc: 1
 #right_size_enc: 2
 right_size_dec: 0
 right_size_lf0: 0
+right_size_post: 0
 ## lookup frame limited to only 1/2 frame [for allowing low-latency/real-time processing]
 right_size_wave: 1
 #right_size_wave: 2
@@ -104,6 +111,7 @@ ctr_size: 128
 causal_conv_enc: false
 causal_conv_dec: true
 causal_conv_lf0: true
+causal_conv_post: true
 causal_conv_wave: false
 ## if right_size > 0 (skewed conv encoder, i.e., future frame is limited), set causal_conv dec/lf0 to true [low-latency/real-time proc.]
 
@@ -119,40 +127,17 @@ lr: 1e-4
 do_prob: 0.5
 
 ## maximum step count
-step_count: 1155000
+step_count: 1065000
 step_count_wave: 3670000
 
-## use get_max_frame.sh to get max_frame of the current train/dev sets as the value of pad_len
-## zero pad length [in frames] for batch processing; for neural vocoder, still use in frame length, but in computation it is multiplied by number of samples per frame
-##arctic [bdl] 5 ms shift
-#pad_len: 1207
-##vctk [p252] 5 ms shift
-#pad_len: 1955
-##vcc18 [VCC2SM4,20026] 5 ms shift
-#pad_len: 2149
-##vcc20 [TMM1,M10036] 5 ms shift
-pad_len: 2215
-
-## Batch setting for spectral/excitation modeling
+## Batch sequence length setting for spectral/excitation modeling
 ## 30 frames
 batch_size: 30
 
-## Batch setting for waveform modeling
-## 30 frames x number of samples per frame, e.g., 30 x 120 for 24 kHz with 5 ms frame shift = 3600 batch smples
-#batch_size_wave: 30
-## 15 for 24 kHz with 10 ms shift --> 3600 samples
-#batch_size_wave: 15
-## 33 frames x number of samples per frame, e.g., 33 x 110 for 22.05 kHz with 5 ms frame shift = 3630 batch smples
-#batch_size_wave: 33
-## 17 for 22.05 kHz with 10 ms shift --> 3740 samples
-#batch_size_wave: 17
-## 45 for 16 kHz wavenet with 5 ms shift --> 3600 samples; rule of thumb is for wavenet use batch_size = 3600, and batch_size_utt = 2, regardless sampling rate and frame shift
-#batch_size_wave: 45
-## 23 for 16 kHz with 10 ms shift --> 3680 samples
-#batch_size_wave: 23
-## 4 for wavernn with 10 ms
+## Batch sequence length setting for waveform modeling
+## 4 frames for wavernn with 10 ms
 batch_size_wave: 4
-## 8 for wavernn with 5 ms
+## 8 frames for wavernn with 5 ms
 #batch_size_wave: 8
 
 # number of workers (threads) for batch data handling
@@ -160,7 +145,7 @@ n_workers: 2
 
 mdl_name: cycmelspxlf0capspkvae-laplace_sparse
 
-mdl_name_post: cycmelspxlf0capspkvae-laplace_sparse_ftdec
+mdl_name_post: cycmelspxlf0capspkvae-laplace_post-smpl
 
 ##[8 kHz, 16 kHz, 22.05 kHz, 24 kHz]
 #mdl_name_wave: wavernn_dualgru_compact_lpc_mband_9bit
@@ -170,7 +155,6 @@ mdl_name_wave: wavernn_dualgru_compact_lpc_mband_10bit_cf
 #mdl_name_wave: wavernn_dualgru_compact_lpc_mband_16bit
 
 ## sparsification scheduling settings for cyclevae
-## obtained 0.5 RT with 512-GRU encoders and 640-GRU decoder-melsp
 t_start_cycvae: 5000
 t_end_cycvae: 245000
 interval_cycvae: 10
@@ -188,21 +172,6 @@ n_stage: 4
 #lpc: 0
 #lpc: 4
 lpc: 6
-
-### The frequency range per band must not be too narrow, otherwise the quality will be degraded.
-### Optimum is at least 4 kHz per band.
-##[8 kHz]
-#n_bands: 2
-##[16 kHz]
-#n_bands: 4
-##[22.05 kHz]
-#n_bands: 5
-##[24 kHz]
-n_bands: 6
-##[44.1 kHz]
-#n_bands: 10
-##[48 kHz]
-#n_bands: 12
 
 #use_mcep: true
 ## mel-spectrogram-based modeling (wavernn)

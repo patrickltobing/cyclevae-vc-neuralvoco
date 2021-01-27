@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# Copyright 2020 Patrick Lumban Tobing (Nagoya University)
+# Copyright 2021 Patrick Lumban Tobing (Nagoya University)
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
 from __future__ import division
@@ -348,6 +348,7 @@ def main():
                         src_code = src_code[:,model_decoder_excit.pad_left:]
                         trj_src_code = trj_src_code[:,model_decoder_excit.pad_left:]
                     cvmelsp_cyc, _ = model_decoder_melsp(lat_cat, y=src_code, aux=trj_src_code, e=cvlf0_cyc[:,:,:config.excit_dim])
+                    src_trj_code_lat_cat_cyc = torch.cat((src_code, trj_src_code, lat_cat), 2)
 
                     #if outpad_rights[0] > 0:
                     #    lat_src = lat_src[:,outpad_lefts[0]:-outpad_rights[0]]
@@ -377,12 +378,16 @@ def main():
                     #    lat_rec_e = lat_rec_e[:,outpad_lefts[5]:]
                     if outpad_rights[6] > 0:
                         cvlf0_cyc = cvlf0_cyc[:,outpad_lefts[6]:-outpad_rights[6]]
+                        src_trj_code_lat_cat_cyc = src_trj_code_lat_cat_cyc[:,outpad_lefts[6]:-outpad_rights[6]]
                     else:
                         cvlf0_cyc = cvlf0_cyc[:,outpad_lefts[6]:]
+                        src_trj_code_lat_cat_cyc = src_trj_code_lat_cat_cyc[:,outpad_lefts[6]:]
 
                     feat_rec = cvmelsp_src[0].cpu().data.numpy()
                     feat_cyc = cvmelsp_cyc[0].cpu().data.numpy()
                     feat_spk_lat = src_trj_code_lat_cat[0].cpu().data.numpy()
+                    feat_spk_exc_melsp = torch.cat((src_trj_code_lat_cat[:,:,:n_spk*2], cvlf0_src, cvmelsp_src), 2)[0].cpu().data.numpy()
+                    feat_spk_exc_melsp_cyc = torch.cat((src_trj_code_lat_cat_cyc[:,:,:n_spk*2], cvlf0_cyc, cvmelsp_cyc), 2)[0].cpu().data.numpy()
 
                     #lat_src = lat_src[0].cpu().data.numpy()
                     #lat_src_e = lat_src_e[0].cpu().data.numpy()
@@ -500,18 +505,29 @@ def main():
                     cvlist_cyc_dv.append(np.var(melsp_cyc_rest, axis=0))
 
                 #logging.info('write rec to h5')
+                #logging.info('write spk exc melsp to h5')
+                #outh5dir = os.path.join(os.path.dirname(os.path.dirname(feat_file)), args.spk)
+                #feat_file = os.path.join(outh5dir, os.path.basename(feat_file))
+                #logging.info(feat_file + ' ' + args.string_path+'_spk-exc-melsp')
+                #logging.info(feat_spk_exc_melsp.shape)
+                #write_hdf5(feat_file, args.string_path+'_spk-exc-melsp', feat_spk_exc_melsp)
+
+                logging.info('write spk exct melsp cyc to h5')
                 outh5dir = os.path.join(os.path.dirname(os.path.dirname(feat_file)), args.spk+"-"+args.spk)
                 if not os.path.exists(outh5dir):
                     os.makedirs(outh5dir)
                 feat_file = os.path.join(outh5dir, os.path.basename(feat_file))
+                logging.info(feat_file + ' ' + args.string_path+'_spk-exc-melsp')
+                logging.info(feat_spk_exc_melsp_cyc.shape)
+                write_hdf5(feat_file, args.string_path+'_spk-exc-melsp', feat_spk_exc_melsp_cyc)
                 #logging.info(feat_file + ' ' + args.string_path)
                 #logging.info(feat_rec.shape)
                 #write_hdf5(feat_file, args.string_path, feat_rec)
 
-                logging.info('write spk lat src to h5')
-                logging.info(feat_file + ' ' + args.string_path+'_spk-lat')
-                logging.info(feat_spk_lat.shape)
-                write_hdf5(feat_file, args.string_path+'_spk-lat', feat_spk_lat)
+                #logging.info('write spk lat src to h5')
+                #logging.info(feat_file + ' ' + args.string_path+'_spk-lat')
+                #logging.info(feat_spk_lat.shape)
+                #write_hdf5(feat_file, args.string_path+'_spk-lat', feat_spk_lat)
 
                 #logging.info('write lat_e src to h5')
                 #logging.info(feat_file + ' ' + args.string_path+'_lat_e')

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# Copyright 2020 Patrick Lumban Tobing (Nagoya University)
+# Copyright 2021 Patrick Lumban Tobing (Nagoya University)
 # based on PyTorch implementation for WaveNet vocoder by Tomoki Hayashi (Nagoya University)
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
@@ -588,4 +588,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

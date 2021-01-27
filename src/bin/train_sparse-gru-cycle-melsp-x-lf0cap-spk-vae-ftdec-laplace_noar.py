@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# Copyright 2020 Patrick Lumban Tobing (Nagoya University)
+# Copyright 2021 Patrick Lumban Tobing (Nagoya University)
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
 from __future__ import division
@@ -31,7 +31,7 @@ from utils import read_hdf5
 from utils import read_txt
 from vcneuvoco import GRU_VAE_ENCODER, GRU_SPEC_DECODER, GRU_LAT_FEAT_CLASSIFIER
 from vcneuvoco import GRU_EXCIT_DECODER, SPKID_TRANSFORM_LAYER, GRU_SPK
-from vcneuvoco import kl_laplace, ModulationSpectrumLoss, kl_categorical_categorical_logits
+from vcneuvoco import kl_laplace, ModulationSpectrumLoss
 
 import torch_optimizer as optim
 
@@ -785,6 +785,7 @@ def main():
                     args.n_half_cyc, args.string_path, excit_dim=args.full_excit_dim, magsp=True)
     dataloader = DataLoader(dataset, batch_size=batch_size_utt, shuffle=True, num_workers=args.n_workers)
     #generator = train_generator(dataloader, device, args.batch_size, n_cv, limit_count=1)
+    #generator = train_generator(dataloader, device, args.batch_size, n_cv, limit_count=20)
     generator = train_generator(dataloader, device, args.batch_size, n_cv, limit_count=None)
 
     # define generator evaluation
@@ -1167,7 +1168,7 @@ def main():
                         np.mean(loss_melsp[i]), np.std(loss_melsp[i]), np.mean(loss_melsp_dB[i]), np.std(loss_melsp_dB[i]),
                         np.mean(loss_magsp[i]), np.std(loss_magsp[i]), np.mean(loss_magsp_dB[i]), np.std(loss_magsp_dB[i]))
             logging.info("%s (%.3f min., %.3f sec / batch)" % (text_log, total / 60.0, total / iter_count))
-            logging.info("estimated time until max. epoch = {0.days:02}:{0.hours:02}:{0.minutes:02}:"\
+            logging.info("estimated time until max. steps = {0.days:02}:{0.hours:02}:{0.minutes:02}:"\
             "{0.seconds:02}".format(relativedelta(seconds=int((args.step_count - (iter_idx + 1)) * total))))
             # compute loss in evaluation data
             total = 0
@@ -2136,7 +2137,7 @@ def main():
                         eval_loss_magsp[i], eval_loss_magsp_std[i], eval_loss_magsp_dB[i], eval_loss_magsp_dB_std[i])
             logging.info("%s (%.3f min., %.3f sec / batch)" % (text_log, total / 60.0, total / iter_count))
             if (round(eval_loss_gv_src_trg-0.03,2) <= round(min_eval_loss_gv_src_trg,2)) and \
-                (round(eval_loss_melsp_cv[0]-eval_loss_melsp[0],1) >= round(min_eval_loss_melsp_cv[0]-min_eval_loss_melsp[0],1)) and \
+                (round(eval_loss_melsp_cv[0]-eval_loss_melsp[0],1) >= (round(min_eval_loss_melsp_cv[0]-min_eval_loss_melsp[0],1)-0.2)) and \
                 ((round(eval_loss_melsp_dB[0],2)-0.02) <= round(min_eval_loss_melsp_dB[0],2)) and \
                     (pair_exist and \
                         (round(eval_loss_melsp_dB_src_trg-0.01,2) <= round(min_eval_loss_melsp_dB_src_trg,2) \

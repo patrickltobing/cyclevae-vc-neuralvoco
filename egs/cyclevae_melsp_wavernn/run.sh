@@ -4,7 +4,7 @@
 #                              and Multiband WaveRNN with Data-driven Linear Prediction (MWDLP)   #
 ###################################################################################################
 
-# Copyright 2020 Patrick Lumban Tobing (Nagoya University)
+# Copyright 2021 Patrick Lumban Tobing (Nagoya University)
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
 . ./path.sh
@@ -16,22 +16,22 @@
 #######################################
 # {{{
 # 0: data preparation step
-# init: feature extraction with initial speaker config for f0 and power histogram calculation to obtain correct speaker config
+# init: feature extraction w/ initial speaker conf. for f0 and power histogram calc. to obtain proper speaker conf.
 # 1: feature extraction step
-# 2: statistics calculation step
+# 2: feature statistics calculation step
 # 3: apply noise shaping [pre-emphasis] and multiband processing [neural vocoder waveform train. data]
 # 4: vc training step
-# post: vc fine-tuning step
+# post: vc post-net training step
 # 5: reconstruction decoding step [for neural vocoder fine-tuning data]
 # 6: conversion decoding step [converted waveform with Griffin-Lim]
 # 7: wavernn training step
 # 8: copy-synthesis decoding step with wavernn [original waveform with neural vocoder]
 # 9: restore noise shaping step [de-emphasis] from copy-synthesis
 # a: vc decoding step with wavernn [converted waveform with neural vocoder]
-# b: restore noise shaping step [de-emphasis] from vc
-# ft: fine-tune pretrained wavernn with reconst. featurs
-# c: vc decoding step with fine-tuned wavernn [converted waveform with neural vocoder]
-# d: restore noise shaping step [de-emphasis] from vc using fine-tuned wavernn
+# b: restore noise shaping step [de-emphasis] from vc w/ wavernn
+# ft: fine-tune pretrained wavernn with reconst. features
+# c: vc decoding step with fine-tuned wavernn [converted waveform with fine-tuned neural vocoder]
+# d: restore noise shaping step [de-emphasis] from vc w/ fine-tuned wavernn
 # }}}
 #stage=0
 #stage=init
@@ -67,7 +67,7 @@
 #stage=d
 #stage=cd
 
-##number of parallel jobs in feature extraction / noise-shaping proc. / statistics calculation
+##number of parallel jobs in feature extraction / noise-shaping & pqmf proc. / statistics calculation
 n_jobs=1
 #n_jobs=10
 #n_jobs=25
@@ -90,14 +90,13 @@ shiftms=`awk '{if ($1 == "shiftms:") print $2}' conf/config.yml`
 upsampling_factor=`echo "${shiftms} * ${fs} / 1000" | bc`
 
 #spks_open=(p276)
-#spks=(SEF1 SEF2 SEM1 SEM2 TFM1 TGM1 TMM1 TEF1 TEM1 TEF2 TEM2 TFF1 TGF1 TMF1)
-spks=(SEF1 TEF1)
-data_name=vcc2020_${shiftms}ms
+spks=(SEF1 SEF2 SEM1 SEM2 TFM1 TGM1 TMM1 TEF1 TEM1 TEF2 TEM2 TFF1 TGF1 TMF1)
+data_name=vcc20_${shiftms}ms
 #spks=(VCC2SF1 VCC2SF2 VCC2SF3 VCC2SF4 VCC2SM1 VCC2SM2 VCC2SM3 VCC2SM4 VCC2TF1 VCC2TF2 VCC2TM1 VCC2TM2)
 #data_name=vcc18_${shiftms}ms
 #spks=(SEF1 SEF2 SEM1 SEM2 TFM1 TGM1 TMM1 p237 p245 p251 p252 p259 p274 p304 p311 p326 p345 p360 p363 TEF1 TEM1 TEF2 TEM2 \
 #    TFF1 TGF1 TMF1 p231 p238 p248 p253 p264 p265 p266 p276 p305 p308 p318 p335)
-#data_name=vcc2020vctk_${shiftms}ms
+#data_name=vcc20vctk_${shiftms}ms
 
 # uv-f0 and log-f0 occupied the first two dimensions,
 # then uv-codeap, log-negative-codeap and mel-ceps
@@ -106,6 +105,7 @@ data_name=vcc2020_${shiftms}ms
 ## WORLD F0_floor for cheaptrick: 3.0 * fs / (fft_size - 3.0)
 ## [https://github.com/mmorise/World/blob/master/src/cheaptrick.cpp] line 197
 ## mcep_alpha: frequency warping parameter for mel-cepstrum
+## n_bands: number of bands for multiband modeling [a minimum of 4 kHz per band for proper modeling]
 if [ $fs -eq 22050 ]; then
     wav_org_dir=wav_22.05kHz
     data_name=${data_name}_22.05kHz
@@ -117,18 +117,21 @@ if [ $fs -eq 22050 ]; then
         shiftms=9.9773242630385487528344671201814 #22.05k rounding 220/22050 10ms shift
     fi
     full_excit_dim=5
+    n_bands=5
 elif [ $fs -eq 24000 ]; then
     wav_org_dir=wav_24kHz
     data_name=${data_name}_24kHz
     mcep_alpha=0.466 #24k
     fftl=2048
     full_excit_dim=6
+    n_bands=6
 elif [ $fs -eq 48000 ]; then
     wav_org_dir=wav_48kHz
     data_name=${data_name}_48kHz
     mcep_alpha=0.554 #48k
     fftl=4096
     full_excit_dim=8
+    n_bands=12
 elif [ $fs -eq 44100 ]; then
     wav_org_dir=wav_44.1kHz
     data_name=${data_name}_44.1kHz
@@ -140,18 +143,21 @@ elif [ $fs -eq 44100 ]; then
         shiftms=9.9773242630385487528344671201814 #44.1k rounding 440/44100 10ms shift
     fi
     full_excit_dim=8
+    n_bands=10
 elif [ $fs -eq 16000 ]; then
     wav_org_dir=wav_16kHz
     data_name=${data_name}_16kHz
     mcep_alpha=0.41000000000000003 #16k
     fftl=1024
     full_excit_dim=4
+    n_bands=4
 elif [ $fs -eq 8000 ]; then
     wav_org_dir=wav_8kHz
     data_name=${data_name}_8kHz
     mcep_alpha=0.312 #8k
     fftl=1024
     full_excit_dim=4
+    n_bands=2
 else
     echo "sampling rate not available"
     exit 1
@@ -171,8 +177,6 @@ mel_dim=`awk '{if ($1 == "mel_dim:") print $2}' conf/config.yml`
 highpass_cutoff=`awk '{if ($1 == "highpass_cutoff:") print $2}' conf/config.yml`
 ## alpha: coefficient for pre-emphasis
 alpha=`awk '{if ($1 == "alpha:") print $2}' conf/config.yml`
-## n_bands: number of bands for multiband modeling
-n_bands=`awk '{if ($1 == "n_bands:") print $2}' conf/config.yml`
 
 trn=tr_${data_name}
 dev=dv_${data_name}
@@ -219,15 +223,20 @@ hidden_units_dec=`awk '{if ($1 == "hidden_units_dec:") print $2}' conf/config.ym
 hidden_layers_dec=`awk '{if ($1 == "hidden_layers_dec:") print $2}' conf/config.yml`
 hidden_units_lf0=`awk '{if ($1 == "hidden_units_lf0:") print $2}' conf/config.yml`
 hidden_layers_lf0=`awk '{if ($1 == "hidden_layers_lf0:") print $2}' conf/config.yml`
+hidden_units_post=`awk '{if ($1 == "hidden_units_post:") print $2}' conf/config.yml`
+hidden_layers_post=`awk '{if ($1 == "hidden_layers_post:") print $2}' conf/config.yml`
 kernel_size_enc=`awk '{if ($1 == "kernel_size_enc:") print $2}' conf/config.yml`
 dilation_size_enc=`awk '{if ($1 == "dilation_size_enc:") print $2}' conf/config.yml`
 kernel_size_dec=`awk '{if ($1 == "kernel_size_dec:") print $2}' conf/config.yml`
 dilation_size_dec=`awk '{if ($1 == "dilation_size_dec:") print $2}' conf/config.yml`
 kernel_size_lf0=`awk '{if ($1 == "kernel_size_lf0:") print $2}' conf/config.yml`
 dilation_size_lf0=`awk '{if ($1 == "dilation_size_lf0:") print $2}' conf/config.yml`
+kernel_size_post=`awk '{if ($1 == "kernel_size_post:") print $2}' conf/config.yml`
+dilation_size_post=`awk '{if ($1 == "dilation_size_post:") print $2}' conf/config.yml`
 causal_conv_enc=`awk '{if ($1 == "causal_conv_enc:") print $2}' conf/config.yml`
 causal_conv_dec=`awk '{if ($1 == "causal_conv_dec:") print $2}' conf/config.yml`
 causal_conv_lf0=`awk '{if ($1 == "causal_conv_lf0:") print $2}' conf/config.yml`
+causal_conv_post=`awk '{if ($1 == "causal_conv_post:") print $2}' conf/config.yml`
 do_prob=`awk '{if ($1 == "do_prob:") print $2}' conf/config.yml`
 n_workers=`awk '{if ($1 == "n_workers:") print $2}' conf/config.yml`
 pad_len=`awk '{if ($1 == "pad_len:") print $2}' conf/config.yml`
@@ -235,6 +244,7 @@ spkidtr_dim=`awk '{if ($1 == "spkidtr_dim:") print $2}' conf/config.yml`
 right_size_enc=`awk '{if ($1 == "right_size_enc:") print $2}' conf/config.yml`
 right_size_dec=`awk '{if ($1 == "right_size_dec:") print $2}' conf/config.yml`
 right_size_lf0=`awk '{if ($1 == "right_size_lf0:") print $2}' conf/config.yml`
+right_size_post=`awk '{if ($1 == "right_size_post:") print $2}' conf/config.yml`
 t_start_cycvae=`awk '{if ($1 == "t_start_cycvae:") print $2}' conf/config.yml`
 t_end_cycvae=`awk '{if ($1 == "t_end_cycvae:") print $2}' conf/config.yml`
 interval_cycvae=`awk '{if ($1 == "interval_cycvae:") print $2}' conf/config.yml`
@@ -274,7 +284,7 @@ mid_dim=`awk '{if ($1 == "mid_dim:") print $2}' conf/config.yml`
 #idx_resume_cycvae=1 #for resume cyclevae
 idx_resume_cycvae=0 #set <= 0 for not resume
 
-#idx_resume=1 #for resume fine-tuned cyclevae
+#idx_resume=1 #for resume post-net
 idx_resume=0 #set <= 0 for not resume
 
 #idx_resume_wave=1 #for resume wavernn
@@ -287,9 +297,9 @@ min_idx_cycvae= #for raw cyclevae
 #min_idx_cycvae=2
 
 if [ $mdl_name_post == none ]; then
-    min_idx= #for cyclevae without fine-tuning
+    min_idx= #for cyclevae without post-net
 else
-    min_idx= #for cyclevae with fine-tuning
+    min_idx= #for cyclevae with post-net
     #min_idx=2
 fi
 
@@ -304,7 +314,7 @@ n_interp=0
 #n_interp=10 #for speaker interpolation in 2-dim space with spec-excit cyclevae/cyclevqvae
 #n_interp=20
 
-if [ $mdl_name_post == "cycmelspxlf0capspkvae-laplace_sparse_ftdec" ]; then
+if [ $mdl_name_post == "cycmelspxlf0capspkvae-laplace_post-smpl" ]; then
     string_path_rec=/feat_rec_${mdl_name_post}-${mdl_name}-${step_count}-${lat_dim}-${lat_dim_e}-${densities_cycvae}-${spkidtr_dim}-${n_half_cyc}-${min_idx_cycvae}-${min_idx}
     string_path_cv=/feat_cv_${mdl_name_post}-${mdl_name}-${step_count}-${lat_dim}-${lat_dim_e}-${densities_cycvae}-${spkidtr_dim}-${n_half_cyc}-${min_idx_cycvae}-${min_idx}
 elif [ $mdl_name == "cycmelspxlf0capspkvae-laplace_sparse" ]; then
@@ -527,7 +537,7 @@ if [ `echo ${stage} | grep 0` ];then
             else
                 yq -yi ".${spk}.minf0=40" conf/spkr.yml
                 yq -yi ".${spk}.maxf0=700" conf/spkr.yml
-                echo "minF0 and maxF0 of ${spk} is initialized, please run stage init, use f0_range.py, and run stage 0 again"
+                echo "minF0 and maxF0 of ${spk} is initialized, please run stage init to obtain the proper config."
             fi
             if [ -f "conf/${spk}.pow" ]; then
                 pow=`cat conf/${spk}.pow | awk '{print $1}'`
@@ -535,7 +545,7 @@ if [ `echo ${stage} | grep 0` ];then
                 echo "npow of ${spk} is initialized from .pow file"
             else
                 yq -yi ".${spk}.npow=-25" conf/spkr.yml
-                echo "npow of ${spk} is initialized, please run stage init, use min_pow.py, and run stage 0 again"
+                echo "npow of ${spk} is initialized, please run stage init to obtain the proper config."
             fi
         else
             if [ -f "conf/${spk}.f0" ]; then
@@ -552,7 +562,7 @@ if [ `echo ${stage} | grep 0` ];then
                     echo "minF0 of ${spk} is initialized from .f0 file"
                 else
                     yq -yi ".${spk}.minf0=40" conf/spkr.yml
-                    echo "minF0 of ${spk} is initialized, please run stage init, use f0_range.py, and run stage 0 again"
+                    echo "minF0 of ${spk} is initialized, please run stage init to obtain the proper config."
                 fi
             elif [[ $tmp -ne $minf0 ]]; then
                 yq -yi ".${spk}.minf0=${minf0}" conf/spkr.yml
@@ -565,7 +575,7 @@ if [ `echo ${stage} | grep 0` ];then
                     echo "maxF0 of ${spk} is initialized from .f0 file"
                 else
                     yq -yi ".${spk}.maxf0=700" conf/spkr.yml
-                    echo "maxF0 of ${spk} is initialized, please run stage init, use f0_range.py, and run stage 0 again"
+                    echo "maxF0 of ${spk} is initialized, please run stage init to obtain the proper config."
                 fi
             elif [[ $tmp -ne $maxf0 ]]; then
                 yq -yi ".${spk}.maxf0=${maxf0}" conf/spkr.yml
@@ -578,7 +588,7 @@ if [ `echo ${stage} | grep 0` ];then
                     echo "npow of ${spk} is initialized from .pow file"
                 else
                     yq -yi ".${spk}.npow=-25" conf/spkr.yml
-                    echo "npow of ${spk} is initialized, please run stage init, use min_pow.py, and run stage 0 again"
+                    echo "npow of ${spk} is initialized, please run stage init to get the proper config."
                 fi
             elif [[ "$tmp" != "$pow" ]]; then
                 yq -yi ".${spk}.npow=${pow}" conf/spkr.yml
@@ -601,10 +611,11 @@ if [ `echo ${stage} | grep open` ];then
     if true; then
     #if false; then
     for spk in ${spks_open[@]};do
-        if printf '%s\0' "${spks_atr_todalab[@]}" | grep -xq --null "$spk";then
-            echo todalab $spk
+        if printf '%s\0' "${spks_open[@]}" | grep -xq --null "$spk";then
+            echo open $spk
             find ${wav_org_dir}/${spk} -name "*.wav" \
-                | sort | head -n +50 >> data/${tst}/wav.scp
+                | sort | head -n 23 >> data/${tst}/wav.scp
+                #| sort | head -n +50 >> data/${tst}/wav.scp
         elif [ -n "$(echo $spk | sed -n 's/\(p237\)/\1/p')" ] \
                 || [ -n "$(echo $spk | sed -n 's/\(p274\)/\1/p')" ] \
                     || [ -n "$(echo $spk | sed -n 's/\(p231\)/\1/p')" ] \
@@ -627,7 +638,7 @@ if [ `echo ${stage} | grep open` ];then
             else
                 yq -yi ".${spk}.minf0=40" conf/spkr.yml
                 yq -yi ".${spk}.maxf0=700" conf/spkr.yml
-                echo "minF0 and maxF0 of ${spk} is initialized, please run stage init, then change accordingly"
+                echo "minF0 and maxF0 of ${spk} is initialized, please run stage init with using spks_open list"
             fi
             if [ -f "conf/${spk}.pow" ]; then
                 pow=`cat conf/${spk}.pow | awk '{print $1}'`
@@ -635,7 +646,7 @@ if [ `echo ${stage} | grep open` ];then
                 echo "npow of ${spk} is initialized from .pow file"
             else
                 yq -yi ".${spk}.npow=-25" conf/spkr.yml
-                echo "npow of ${spk} is initialized, please run stage init, then change accordingly"
+                echo "npow of ${spk} is initialized, please run stage init with using spks_open list"
             fi
         else
             tmp=`yq ".${spk}.minf0" conf/spkr.yml`
@@ -646,7 +657,7 @@ if [ `echo ${stage} | grep open` ];then
                     echo "minF0 of ${spk} is initialized .f0 file"
                 else
                     yq -yi ".${spk}.minf0=40" conf/spkr.yml
-                    echo "minF0 of ${spk} is initialized, please run stage init, then change accordingly"
+                    echo "minF0 of ${spk} is initialized, please run stage init with using spks_open list"
                 fi
             fi
             tmp=`yq ".${spk}.maxf0" conf/spkr.yml`
@@ -657,7 +668,7 @@ if [ `echo ${stage} | grep open` ];then
                     echo "maxF0 of ${spk} is initialized .f0 file"
                 else
                     yq -yi ".${spk}.maxf0=700" conf/spkr.yml
-                    echo "maxF0 of ${spk} is initialized, please run stage init, then change accordingly"
+                    echo "maxF0 of ${spk} is initialized, please run stage init with using spks_open list"
                 fi
             fi
             tmp=`yq ".${spk}.npow" conf/spkr.yml`
@@ -668,7 +679,7 @@ if [ `echo ${stage} | grep open` ];then
                     echo "npow of ${spk} is initialized from .pow file"
                 else
                     yq -yi ".${spk}.npow=-25" conf/spkr.yml
-                    echo "npow of ${spk} is initialized, please run stage init, then change accordingly"
+                    echo "npow of ${spk} is initialized, please run stage init with using spks_open list"
                 fi
             fi
         fi
@@ -693,6 +704,7 @@ if [ `echo ${stage} | grep "init"` ];then
             expdir=exp/feature_extract_init/${set}
             mkdir -p $expdir
             for spk in ${spks[@]}; do
+            #for spk in ${spks_open[@]}; do
                 echo $spk
                 scp=${expdir}/wav_${spk}.scp
                 n_wavs=`cat data/${set}/wav.scp | grep "\/${spk}\/" | wc -l`
@@ -714,7 +726,7 @@ if [ `echo ${stage} | grep "init"` ];then
                             --n_jobs ${n_jobs}
         
                     # check the number of feature files
-                    n_feats=`find hdf5/${set}/${spk} -name "*.h5" | wc -l`
+                    n_feats=`find hdf5_init/${set}/${spk} -name "*.h5" | wc -l`
                     echo "${n_feats}/${n_wavs} files are successfully processed."
 
                     # update job counts
@@ -727,17 +739,20 @@ if [ `echo ${stage} | grep "init"` ];then
             done
         done
     fi
+    set +e
     for set in ${trn} ${dev};do
         echo $set
         find hdf5_init/${set} -name "*.h5" | sort > tmp2
         rm -f data/${set}/feats_init.scp
         for spk in ${spks[@]}; do
+        #for spk in ${spks_open[@]}; do
             cat tmp2 | grep "\/${spk}\/" >> data/${set}/feats_init.scp
         done
         rm -f tmp2
     done
+    set -e
     echo "###########################################################"
-    echo "#              INIT SPEAKER STATISTICS STEP               #"
+    echo "#              SPEAKER HISTOGRAM CALC. STEP               #"
     echo "###########################################################"
     expdir=exp/init_spk_stat/${trn}
     mkdir -p $expdir
@@ -745,6 +760,7 @@ if [ `echo ${stage} | grep "init"` ];then
     #if false; then
         rm -f $expdir/spk_stat.log
         for spk in ${spks[@]};do
+        #for spk in ${spks_open[@]};do
             echo $spk
             cat data/${trn}/feats_init.scp | grep \/${spk}\/ > data/${trn}/feats_init_all_spk-${spk}.scp
             n_feats_dev=`cat data/${dev}/feats_init.scp | grep "\/${spk}\/" | wc -l`
@@ -756,7 +772,95 @@ if [ `echo ${stage} | grep "init"` ];then
                     --expdir ${expdir} \
                     --feats data/${trn}/feats_init_all_spk-${spk}.scp
         done
-        echo "init spk statistics are successfully calculated. please change the initial values accordingly"
+        echo "spk histograms are successfully calculated"
+    fi
+    echo "###########################################################"
+    echo "#             F0 RANGE and MIN. POW CALC. STEP            #"
+    echo "###########################################################"
+    featdir=${expdir}
+    expdir=exp/spk_conf/${trn}
+    mkdir -p $expdir
+    if true; then
+    #if false; then
+        rm -f $expdir/f0_range.log
+        spk_list="$(IFS="@"; echo "${spks[*]}")"
+        #spk_list="$(IFS="@"; echo "${spks_open[*]}")"
+        echo ${spk_list}
+        ${train_cmd} exp/spk_conf/f0_range_${data_name}.log \
+            f0_range.py \
+                --expdir ${expdir} \
+                --featdir ${featdir} \
+                --confdir conf/ \
+                --spk_list ${spk_list}
+        echo "f0 range spk confs. are successfully calculated"
+        rm -f $expdir/min_pow.log
+        ${train_cmd} exp/spk_conf/min_pow_${data_name}.log \
+            min_pow.py \
+                --expdir ${expdir} \
+                --featdir ${featdir} \
+                --confdir conf/ \
+                --spk_list ${spk_list}
+        echo "min. pow spk confs. are successfully calculated"
+    fi
+    echo "###########################################################"
+    echo "#     PUTTING PROPER F0 RANGE and MIN. POW CONFS. STEP    #"
+    echo "###########################################################"
+    if true; then
+    #if false; then
+    set +e
+    for spk in ${spks[@]};do
+    #for spk in ${spks_open[@]};do
+        echo $spk
+        tmp=`yq ".${spk}" conf/spkr.yml`
+        if [[ -z $tmp ]] || [[ $tmp == "null" ]]; then
+            echo $spk: >> conf/spkr.yml
+            minf0=`cat conf/${spk}.f0 | awk '{print $1}'`
+            maxf0=`cat conf/${spk}.f0 | awk '{print $2}'`
+            echo $minf0 $maxf0
+            yq -yi ".${spk}.minf0=${minf0}" conf/spkr.yml
+            yq -yi ".${spk}.maxf0=${maxf0}" conf/spkr.yml
+            echo "minF0 and maxF0 of ${spk} is initialized from .f0 file"
+            pow=`cat conf/${spk}.pow | awk '{print $1}'`
+            echo $pow
+            yq -yi ".${spk}.npow=${pow}" conf/spkr.yml
+            echo "npow of ${spk} is initialized from .pow file"
+        else
+            if [ -f "conf/${spk}.f0" ]; then
+                minf0=`cat conf/${spk}.f0 | awk '{print $1}'`
+                maxf0=`cat conf/${spk}.f0 | awk '{print $2}'`
+            fi
+            echo $minf0 $maxf0
+            if [ -f "conf/${spk}.pow" ]; then
+                pow=`cat conf/${spk}.pow | awk '{print $1}'`
+            fi
+            echo $pow
+            tmp=`yq ".${spk}.minf0" conf/spkr.yml`
+            if [[ $tmp == "null" ]]; then
+                yq -yi ".${spk}.minf0=${minf0}" conf/spkr.yml
+                echo "minF0 of ${spk} is initialized from .f0 file"
+            elif [[ $tmp -ne $minf0 ]]; then
+                yq -yi ".${spk}.minf0=${minf0}" conf/spkr.yml
+                echo "minF0 of ${spk} is changed based on .f0 file"
+            fi
+            tmp=`yq ".${spk}.maxf0" conf/spkr.yml`
+            if [[ $tmp == "null" ]]; then
+                yq -yi ".${spk}.maxf0=${maxf0}" conf/spkr.yml
+                echo "maxF0 of ${spk} is initialized from .f0 file"
+            elif [[ $tmp -ne $maxf0 ]]; then
+                yq -yi ".${spk}.maxf0=${maxf0}" conf/spkr.yml
+                echo "maxF0 of ${spk} is changed based on .f0 file"
+            fi
+            tmp=`yq ".${spk}.npow" conf/spkr.yml`
+            if [[ $tmp == "null" ]]; then
+                yq -yi ".${spk}.npow=${pow}" conf/spkr.yml
+                echo "npow of ${spk} is initialized from .pow file"
+            elif [[ "$tmp" != "$pow" ]]; then
+                yq -yi ".${spk}.npow=${pow}" conf/spkr.yml
+                echo "npow of ${spk} is changed based on .pow file"
+            fi
+        fi
+    done
+    set -e
     fi
 fi
 # }}}
@@ -1012,6 +1116,47 @@ fi
 # }}}
 
 
+if [ -d "exp/feature_extract/tr_${data_name}" ]; then
+    tmp=`yq ".${data_name}" conf/spkr.yml`
+    if [[ -z $tmp ]] || [[ $tmp == "null" ]]; then
+        echo $${data_name}: >> conf/spkr.yml
+    fi
+    pad_len=`yq ".${data_name}.pad_len" conf/spkr.yml`
+    if [[ $pad_len == "null" ]]; then
+        echo $${data_name}: >> conf/spkr.yml
+        max_frame=0
+        max_spk=""
+        for spk in ${spks[*]}; do
+        if [ -f "exp/feature_extract/tr_${data_name}/feature_extract_${spk}.log" ]; then
+            echo $spk tr
+            max_frame_spk=`awk '{if ($1 == "max_frame:") print $2}' exp/feature_extract/tr_${data_name}/feature_extract_${spk}.log`
+            echo $max_frame_spk
+            if [[ $max_frame_spk -gt $max_frame ]]; then
+                max_frame=$max_frame_spk
+                max_spk=$spk
+            fi 
+            echo $spk dv
+            max_frame_spk=`awk '{if ($1 == "max_frame:") print $2}' exp/feature_extract/dv_${data_name}/feature_extract_${spk}.log`
+            echo $max_frame_spk
+            if [[ $max_frame_spk -gt $max_frame ]]; then
+                max_frame=$max_frame_spk
+                max_spk=$spk
+            fi 
+        else
+            echo exp/feature_extract/tr_${data_name}/feature_extract_${spk}.log does not exist, please run stage 1 for feature extraction on speaker ${spk} and frame length checking
+            exit
+        fi
+        done
+        echo $max_spk $max_frame
+        pad_len=$max_frame
+        yq -yi ".${data_name}.pad_len=${pad_len}" conf/spkr.yml
+    fi
+    echo $pad_len
+else
+    echo exp/feature_extract/tr_${data_name} does not exist, please run stage 1 for feature extraction and frame length checking
+    exit
+fi
+
 stats_list=()
 feats_eval_list=()
 wavs_eval_list=()
@@ -1160,8 +1305,8 @@ fi
 echo $min_idx_cycvae $setting
 echo $mdl_name_post
 setting_cycvae=${setting}
-if [ $mdl_name_post == "cycmelspxlf0capspkvae-laplace_sparse_ftdec" ]; then
-    setting=${mdl_name_post}_${data_name}_lr${lr}_bs${batch_size}_lat${lat_dim}_late${lat_dim_e}_hue${hidden_units_enc}_hud${hidden_units_dec}_huf${hidden_units_lf0}_kse${kernel_size_enc}_kss${kernel_size_spk}_ksd${kernel_size_dec}_ksf${kernel_size_lf0}_rse${right_size_enc}_rss${right_size_spk}_rsd${right_size_dec}_rsf${right_size_lf0}_do${do_prob}_st${step_count}_mel${mel_dim}_nhcyc${n_half_cyc}_s${spkidtr_dim}_ts${t_start_cycvae}_te${t_end_cycvae}_i${interval_cycvae}_d${densities_cycvae}_ns${n_stage_cycvae}_c${min_idx_cycvae}
+if [ $mdl_name_post == "cycmelspxlf0capspkvae-laplace_post-smpl" ]; then
+    setting=${mdl_name_post}_${data_name}_lr${lr}_bs${batch_size}_lat${lat_dim}_late${lat_dim_e}_hue${hidden_units_enc}_hud${hidden_units_dec}_huf${hidden_units_lf0}_hup${hidden_units_post}_kse${kernel_size_enc}_kss${kernel_size_spk}_ksd${kernel_size_dec}_ksf${kernel_size_lf0}_ksp${kernel_size_post}_rse${right_size_enc}_rss${right_size_spk}_rsd${right_size_dec}_rsf${right_size_lf0}_rsp${right_size_post}_do${do_prob}_st${step_count}_mel${mel_dim}_nhcyc${n_half_cyc}_s${spkidtr_dim}_ts${t_start_cycvae}_te${t_end_cycvae}_i${interval_cycvae}_d${densities_cycvae}_ns${n_stage_cycvae}_c${min_idx_cycvae}
 fi
 
 # STAGE post {{
@@ -1175,11 +1320,11 @@ if [ `echo ${stage} | grep post` ];then
     echo "###########################################################"
     echo $expdir
 
-    if [ $mdl_name_post == "cycmelspxlf0capspkvae-laplace_sparse_ftdec" ];then
+    if [ $mdl_name_post == "cycmelspxlf0capspkvae-laplace_post-smpl" ];then
         feats=data/${trn}/feats.scp
         if [ $idx_resume -gt 0 ]; then
             ${cuda_cmd} ${expdir}/log/train_resume-${idx_resume}.log \
-                train_sparse-gru-cycle-melsp-x-lf0cap-spk-vae-ftdec-laplace_noar.py \
+                train_gru-cycle-melsp-x-lf0cap-spk-vae-post-smpl-laplace_noar.py \
                     --feats ${feats} \
                     --feats_eval_list $feats_list_eval_list \
                     --stats data/${trn}/stats_jnt.h5 \
@@ -1200,15 +1345,20 @@ if [ `echo ${stage} | grep post` ];then
                     --hidden_layers_dec ${hidden_layers_dec} \
                     --hidden_units_lf0 ${hidden_units_lf0} \
                     --hidden_layers_lf0 ${hidden_layers_lf0} \
+                    --hidden_units_post ${hidden_units_post} \
+                    --hidden_layers_post ${hidden_layers_post} \
                     --kernel_size_enc ${kernel_size_enc} \
                     --dilation_size_enc ${dilation_size_enc} \
                     --kernel_size_dec ${kernel_size_dec} \
                     --dilation_size_dec ${dilation_size_dec} \
                     --kernel_size_lf0 ${kernel_size_lf0} \
                     --dilation_size_lf0 ${dilation_size_lf0} \
+                    --kernel_size_post ${kernel_size_post} \
+                    --dilation_size_post ${dilation_size_post} \
                     --causal_conv_enc ${causal_conv_enc} \
                     --causal_conv_dec ${causal_conv_dec} \
                     --causal_conv_lf0 ${causal_conv_lf0} \
+                    --causal_conv_post ${causal_conv_post} \
                     --batch_size ${batch_size} \
                     --n_half_cyc ${n_half_cyc} \
                     --n_workers ${n_workers} \
@@ -1218,11 +1368,8 @@ if [ `echo ${stage} | grep post` ];then
                     --right_size_spk ${right_size_spk} \
                     --right_size_dec ${right_size_dec} \
                     --right_size_lf0 ${right_size_lf0} \
+                    --right_size_post ${right_size_post} \
                     --full_excit_dim ${full_excit_dim} \
-                    --t_start ${t_start_cycvae} \
-                    --t_end ${t_end_cycvae} \
-                    --interval ${interval_cycvae} \
-                    --densities ${densities_cycvae} \
                     --n_stage ${n_stage_cycvae} \
                     --fftl ${fftl} \
                     --fs ${fs} \
@@ -1231,7 +1378,7 @@ if [ `echo ${stage} | grep post` ];then
                     --GPU_device ${GPU_device}
         else
             ${cuda_cmd} ${expdir}/log/train.log \
-                train_sparse-gru-cycle-melsp-x-lf0cap-spk-vae-ftdec-laplace_noar.py \
+                train_gru-cycle-melsp-x-lf0cap-spk-vae-post-smpl-laplace_noar.py \
                     --feats ${feats} \
                     --feats_eval_list $feats_list_eval_list \
                     --stats data/${trn}/stats_jnt.h5 \
@@ -1250,6 +1397,8 @@ if [ `echo ${stage} | grep post` ];then
                     --hidden_layers_dec ${hidden_layers_dec} \
                     --hidden_units_lf0 ${hidden_units_lf0} \
                     --hidden_layers_lf0 ${hidden_layers_lf0} \
+                    --hidden_units_post ${hidden_units_post} \
+                    --hidden_layers_post ${hidden_layers_post} \
                     --kernel_size_enc ${kernel_size_enc} \
                     --dilation_size_enc ${dilation_size_enc} \
                     --kernel_size_spk ${kernel_size_spk} \
@@ -1258,9 +1407,12 @@ if [ `echo ${stage} | grep post` ];then
                     --dilation_size_dec ${dilation_size_dec} \
                     --kernel_size_lf0 ${kernel_size_lf0} \
                     --dilation_size_lf0 ${dilation_size_lf0} \
+                    --kernel_size_post ${kernel_size_post} \
+                    --dilation_size_post ${dilation_size_post} \
                     --causal_conv_enc ${causal_conv_enc} \
                     --causal_conv_dec ${causal_conv_dec} \
                     --causal_conv_lf0 ${causal_conv_lf0} \
+                    --causal_conv_post ${causal_conv_post} \
                     --batch_size ${batch_size} \
                     --n_half_cyc ${n_half_cyc} \
                     --n_workers ${n_workers} \
@@ -1270,10 +1422,7 @@ if [ `echo ${stage} | grep post` ];then
                     --right_size_spk ${right_size_spk} \
                     --right_size_dec ${right_size_dec} \
                     --right_size_lf0 ${right_size_lf0} \
-                    --t_start ${t_start_cycvae} \
-                    --t_end ${t_end_cycvae} \
-                    --interval ${interval_cycvae} \
-                    --densities ${densities_cycvae} \
+                    --right_size_post ${right_size_post} \
                     --n_stage ${n_stage_cycvae} \
                     --full_excit_dim ${full_excit_dim} \
                     --fftl ${fftl} \
@@ -1322,10 +1471,10 @@ if [ `echo ${stage} | grep 5` ];then
                 if [ $n_feats_dev -gt 0 ]; then
                     cat ${feats_dv} | grep "\/${spk_trg}\/" >> ${feats_scp}
                 fi
-                if [ $mdl_name_post == "cycmelspxlf0capspkvae-laplace_sparse_ftdec" ]; then
+                if [ $mdl_name_post == "cycmelspxlf0capspkvae-laplace_post-smpl" ]; then
                     model=${expdir}/checkpoint-${min_idx}.pkl
                     ${cuda_cmd} ${expdir}/log/decode_rec-cycrec_${spk_trg}_${min_idx_cycvae}-${min_idx}.log \
-                        calc_rec-cycrec-gv_gru-cycle-melspxlf0capspkvae-laplace-ftdec_noar.py \
+                        /calc_rec-cycrec-gv_gru-cycle-melspxlf0capspkvae-post-smpl-laplace_noar.py \
                             --feats ${feats_scp} \
                             --spk ${spk_trg} \
                             --outdir ${outdir} \
@@ -1428,7 +1577,7 @@ if [ $spkr != $spk_trg ]; then
     echo "######################################################"
     echo "#                DECODING CONV. FEAT DEV             #"
     echo "######################################################"
-    if [ $mdl_name_post == "cycmelspxlf0capspkvae-laplace_sparse_ftdec" ]; then
+    if [ $mdl_name_post == "cycmelspxlf0capspkvae-laplace_post-smpl" ]; then
         model=${expdir}/checkpoint-${min_idx}.pkl
         if [ $spkidtr_dim != "0" ]; then
             outdir=${expdir}/wav_cv_${mdl_name_post}-${data_name}-${lat_dim}-${lat_dim_e}-${spkidtr_dim}-${n_half_cyc}-${step_count}-${batch_size}-${min_idx_cycvae}-${min_idx}_${spkr}-${spk_trg}-${n_interp}_d${densities_cycvae}_dev
@@ -1447,10 +1596,10 @@ if [ $spkr != $spk_trg ]; then
     feats_scp=${outdir}/feats.scp
     #cat data/${dev}/feats.scp | grep "\/${spkr}\/" > ${feats_scp}
     cat data/${dev}/feats.scp | grep "\/${spkr}\/" | head -n 10 > ${feats_scp}
-    if [ $mdl_name_post == "cycmelspxlf0capspkvae-laplace_sparse_ftdec" ]; then
+    if [ $mdl_name_post == "cycmelspxlf0capspkvae-laplace_post-smpl" ]; then
         if [ $spkidtr_dim != "0" ]; then
             ${cuda_cmd} ${expdir}/log/decode_dev_${min_idx_cycvae}-${min_idx}_${spkr}-${spk_trg}-${n_interp}.log \
-                decode_gru-cycle-melspxlf0capspkvae-laplace_noar.py \
+                decode_gru-cycle-melspxlf0capspkvae-laplace-post-smpl_noar.py \
                     --feats ${feats_scp} \
                     --spk_trg ${spk_trg} \
                     --outdir ${outdir} \
@@ -1467,7 +1616,7 @@ if [ $spkr != $spk_trg ]; then
                     #--GPU_device ${GPU_device} \
         else
             ${cuda_cmd} ${expdir}/log/decode_dev_${min_idx_cycvae}-${min_idx}_${spkr}-${spk_trg}.log \
-                decode_gru-cycle-melspxlf0capspkvae-laplace_noar.py \
+                decode_gru-cycle-melspxlf0capspkvae-laplace-post-smpl_noar.py \
                     --feats ${feats_scp} \
                     --spk_trg ${spk_trg} \
                     --outdir ${outdir} \
@@ -1530,7 +1679,7 @@ if [ $spkr != $spk_trg ]; then
     echo "######################################################"
     echo "#                DECODING CONV. FEAT TST             #"
     echo "######################################################"
-    if [ $mdl_name_post == "cycmelspxlf0capspkvae-laplace_sparse_ftdec" ]; then
+    if [ $mdl_name_post == "cycmelspxlf0capspkvae-laplace_post-smpl" ]; then
         model=${expdir}/checkpoint-${min_idx}.pkl
         if [ $spkidtr_dim != "0" ]; then
             outdir=${expdir}/wav_cv_${mdl_name_post}-${data_name}-${lat_dim}-${lat_dim_e}-${spkidtr_dim}-${n_half_cyc}-${step_count}-${batch_size}-${min_idx_cycvae}-${min_idx}_${spkr}-${spk_trg}-${n_interp}_d${densities_cycvae}_tst
@@ -1549,10 +1698,10 @@ if [ $spkr != $spk_trg ]; then
     feats_scp=${outdir}/feats.scp
     #cat data/${tst}/feats.scp | grep "\/${spkr}\/" > ${feats_scp}
     cat data/${tst}/feats.scp | grep "\/${spkr}\/" | head -n 10 > ${feats_scp}
-    if [ $mdl_name_post == "cycmelspxlf0capspkvae-laplace_sparse_ftdec" ]; then
+    if [ $mdl_name_post == "cycmelspxlf0capspkvae-laplace_post-smpl" ]; then
         if [ $spkidtr_dim != "0" ]; then
             ${cuda_cmd} ${expdir}/log/decode_tst_${min_idx_cycvae}-${min_idx}_${spkr}-${spk_trg}-${n_interp}.log \
-                decode_gru-cycle-melspxlf0capspkvae-laplace_noar.py \
+                decode_gru-cycle-melspxlf0capspkvae-laplace-post-smpl_noar.py \
                     --feats ${feats_scp} \
                     --spk_trg ${spk_trg} \
                     --outdir ${outdir} \
@@ -1569,7 +1718,7 @@ if [ $spkr != $spk_trg ]; then
                     #--GPU_device ${GPU_device} \
         else
             ${cuda_cmd} ${expdir}/log/decode_tst_${min_idx_cycvae}-${min_idx}_${spkr}-${spk_trg}.log \
-                decode_gru-cycle-melspxlf0capspkvae-laplace_noar.py \
+                decode_gru-cycle-melspxlf0capspkvae-laplace-post-smpl_noar.py \
                     --feats ${feats_scp} \
                     --spk_trg ${spk_trg} \
                     --outdir ${outdir} \
@@ -2101,7 +2250,7 @@ fi
 
 pretrained_wave=${expdir_wave}
 echo $mdl_name_wave
-if [ $mdl_name_post == "cycmelspxlf0capspkvae-laplace_sparse_ftdec" ]; then
+if [ $mdl_name_post == "cycmelspxlf0capspkvae-laplace_post-smpl" ]; then
     if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_16bit" ] \
         || [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_9bit" ] \
             || [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf" ]; then
@@ -2136,7 +2285,7 @@ if [ `echo ${stage} | grep ft` ];then
     echo "###########################################################"
     echo $expdir_wave
 
-    if [ $mdl_name_post == "cycmelspxlf0capspkvae-laplace_sparse_ftdec" ]; then
+    if [ $mdl_name_post == "cycmelspxlf0capspkvae-laplace_post-smpl" ]; then
         if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf" ];then
             feats=${expdir_wave}/feats_tr.scp
             feats_eval=${expdir_wave}/feats_ev.scp
@@ -2268,7 +2417,7 @@ if [ `echo ${stage} | grep ft` ];then
                         --n_bands ${n_bands} \
                         --with_excit ${with_excit} \
                         --string_path ${string_path} \
-                        --string_path_ft ${string_path_rec}"_spk-lat" \
+                        --string_path_ft ${string_path_rec} \
                         --mid_dim ${mid_dim} \
                         --resume ${expdir_wave}/checkpoint-${idx_resume_ft}.pkl \
                         --GPU_device ${GPU_device}
@@ -2303,7 +2452,7 @@ if [ `echo ${stage} | grep ft` ];then
                         --n_bands ${n_bands} \
                         --with_excit ${with_excit} \
                         --string_path ${string_path} \
-                        --string_path_ft ${string_path_rec}"_spk-lat" \
+                        --string_path_ft ${string_path_rec} \
                         --mid_dim ${mid_dim} \
                         --GPU_device ${GPU_device}
             fi

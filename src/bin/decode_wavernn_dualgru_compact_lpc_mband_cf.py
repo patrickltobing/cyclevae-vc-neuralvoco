@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# Copyright 2020 Patrick Lumban Tobing (Nagoya University)
+# Copyright 2021 Patrick Lumban Tobing (Nagoya University)
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
 from __future__ import division
@@ -238,20 +238,41 @@ def main():
     def gpu_decode(feat_list, gpu):
         with torch.cuda.device(gpu):
             with torch.no_grad():
-                model_waveform = GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(
-                    feat_dim=config.mcep_dim+config.excit_dim,
-                    upsampling_factor=config.upsampling_factor,
-                    hidden_units=config.hidden_units_wave,
-                    hidden_units_2=config.hidden_units_wave_2,
-                    kernel_size=config.kernel_size_wave,
-                    dilation_size=config.dilation_size_wave,
-                    n_quantize=config.n_quantize,
-                    causal_conv=config.causal_conv_wave,
-                    right_size=config.right_size,
-                    n_bands=config.n_bands,
-                    pad_first=True,
-                    lpc=config.lpc)
-                logging.info(model_waveform)
+                if args.string_path is not None and "spk-lat" in args.string_path:
+                    feat_dim = read_hdf5(feat_list[0], args.string_path).shape[1]
+                    model_waveform = GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(
+                        feat_dim=feat_dim,
+                        upsampling_factor=config.upsampling_factor,
+                        hidden_units=config.hidden_units_wave,
+                        hidden_units_2=config.hidden_units_wave_2,
+                        kernel_size=config.kernel_size_wave,
+                        dilation_size=config.dilation_size_wave,
+                        n_quantize=config.n_quantize,
+                        causal_conv=config.causal_conv_wave,
+                        right_size=config.right_size,
+                        n_bands=config.n_bands,
+                        pad_first=True,
+                        mid_dim=config.mid_dim,
+                        scale_in_flag=False,
+                        red_dim=config.mcep_dim,
+                        lpc=config.lpc)
+                    logging.info(model_waveform)
+                else:
+                    model_waveform = GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(
+                        feat_dim=config.mcep_dim+config.excit_dim,
+                        upsampling_factor=config.upsampling_factor,
+                        hidden_units=config.hidden_units_wave,
+                        hidden_units_2=config.hidden_units_wave_2,
+                        kernel_size=config.kernel_size_wave,
+                        dilation_size=config.dilation_size_wave,
+                        n_quantize=config.n_quantize,
+                        causal_conv=config.causal_conv_wave,
+                        right_size=config.right_size,
+                        n_bands=config.n_bands,
+                        pad_first=True,
+                        mid_dim=config.mid_dim,
+                        lpc=config.lpc)
+                    logging.info(model_waveform)
                 model_waveform.cuda()
                 model_waveform.load_state_dict(torch.load(args.checkpoint)["model_waveform"])
                 model_waveform.remove_weight_norm()

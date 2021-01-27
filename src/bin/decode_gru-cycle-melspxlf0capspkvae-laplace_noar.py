@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# Copyright 2020 Patrick Lumban Tobing (Nagoya University)
+# Copyright 2021 Patrick Lumban Tobing (Nagoya University)
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
 from __future__ import division
@@ -431,6 +431,7 @@ def main():
                             trj_trg_code = trj_trg_code[:,model_decoder_excit.pad_left:]
                         cvmelsp_src, _ = model_decoder_melsp(lat_cat, y=src_code, aux=trj_src_code, e=cvlf0_src[:,:,:config.excit_dim])
                         cvmelsp, _ = model_decoder_melsp(lat_cat, y=trg_code, aux=trj_trg_code, e=cvlf0[:,:,:config.excit_dim])
+                        trg_trj_code_lat_cat = torch.cat((trg_code, trj_trg_code, lat_cat), 2)
 
                         spk_logits, _, lat_rec, _ = model_encoder_melsp(cvmelsp_src, sampling=False)
                         spk_logits_e, _, lat_rec_e, _ = model_encoder_excit(cvmelsp_src, sampling=False)
@@ -616,9 +617,11 @@ def main():
                     if outpad_rights[2] > 0:
                         cvlf0_src = cvlf0_src[:,outpad_lefts[2]:-outpad_rights[2]]
                         cvlf0 = cvlf0[:,outpad_lefts[2]:-outpad_rights[2]]
+                        trg_trj_code_lat_cat = trg_trj_code_lat_cat[:,outpad_lefts[2]:-outpad_rights[2]]
                     else:
                         cvlf0_src = cvlf0_src[:,outpad_lefts[2]:]
                         cvlf0 = cvlf0[:,outpad_lefts[2]:]
+                        trg_trj_code_lat_cat = trg_trj_code_lat_cat[:,outpad_lefts[2]:-outpad_rights[2]]
                     if outpad_rights[3] > 0:
                         cvmelsp_src = cvmelsp_src[:,outpad_lefts[3]:-outpad_rights[3]]
                         cvmelsp = cvmelsp[:,outpad_lefts[3]:-outpad_rights[3]]
@@ -631,6 +634,7 @@ def main():
                         cvlf0_cyc = cvlf0_cyc[:,outpad_lefts[6]:]
 
                     feat_cv = cvmelsp[0].cpu().data.numpy()
+                    feat_spk_lat = trg_trj_code_lat_cat[0].cpu().data.numpy()
 
                     cvmelsp_src = np.array(cvmelsp_src[0].cpu().data.numpy(), dtype=np.float64)
                     cvlf0_src = np.array(cvlf0_src[0].cpu().data.numpy(), dtype=np.float64)
@@ -1057,6 +1061,11 @@ def main():
                 logging.info(feat_file + ' ' + write_path)
                 logging.info(feat_cv.shape)
                 write_hdf5(feat_file, write_path, feat_cv)
+
+                logging.info('write spk lat cv to h5')
+                logging.info(feat_file + ' ' + args.string_path+'_spk-lat')
+                logging.info(feat_spk_lat.shape)
+                write_hdf5(feat_file, args.string_path+'_spk-lat', feat_spk_lat)
 
                 count += 1
                 #if count >= 3:

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# Copyright 2020 Patrick Lumban Tobing (Nagoya University)
+# Copyright 2021 Patrick Lumban Tobing (Nagoya University)
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
 from __future__ import division
@@ -1253,7 +1253,7 @@ def main():
                         np.mean(loss_uv[i]), np.std(loss_uv[i]), np.mean(loss_f0[i]), np.std(loss_f0[i]),
                         np.mean(loss_uvcap[i]), np.std(loss_uvcap[i]), np.mean(loss_cap[i]), np.std(loss_cap[i]))
             logging.info("%s (%.3f min., %.3f sec / batch)" % (text_log, total / 60.0, total / iter_count))
-            logging.info("estimated time until max. epoch = {0.days:02}:{0.hours:02}:{0.minutes:02}:"\
+            logging.info("estimated time until max. steps = {0.days:02}:{0.hours:02}:{0.minutes:02}:"\
             "{0.seconds:02}".format(relativedelta(seconds=int((args.step_count - (iter_idx + 1)) * total))))
             # compute loss in evaluation data
             total = 0
@@ -2435,7 +2435,7 @@ def main():
                         eval_loss_uvcap[i], eval_loss_uvcap_std[i], eval_loss_cap[i], eval_loss_cap_std[i])
             logging.info("%s (%.3f min., %.3f sec / batch)" % (text_log, total / 60.0, total / iter_count))
             if (round(eval_loss_gv_src_trg-0.03,2) <= round(min_eval_loss_gv_src_trg,2)) and \
-                (round(eval_loss_melsp_cv[0]-eval_loss_melsp[0],1) >= round(min_eval_loss_melsp_cv[0]-min_eval_loss_melsp[0],1)) and \
+                (round(eval_loss_melsp_cv[0]-eval_loss_melsp[0],1) >= (round(min_eval_loss_melsp_cv[0]-min_eval_loss_melsp[0],1)-0.2)) and \
                 ((round(eval_loss_melsp_dB[0],2)-0.02) <= round(min_eval_loss_melsp_dB[0],2)) and \
                     (pair_exist and \
                         (round(eval_loss_melsp_dB_src_trg-0.01,2) <= round(min_eval_loss_melsp_dB_src_trg,2) \
