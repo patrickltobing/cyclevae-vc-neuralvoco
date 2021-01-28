@@ -42,7 +42,7 @@ from dataset import FeatureDatasetNeuVoco, padding
 #torch.set_printoptions(threshold=np.inf)
 
 
-def data_generator(dataloader, device, batch_size, upsampling_factor, limit_count=None, batch_sizes=None, n_bands=10):
+def data_generator(dataloader, device, batch_size, upsampling_factor, limit_count=None, batch_sizes=None, n_bands=10, wlat_flag=False):
     """TRAINING BATCH GENERATOR
 
     Args:
@@ -67,6 +67,8 @@ def data_generator(dataloader, device, batch_size, upsampling_factor, limit_coun
             xs_c = batch['x_c'][:,:max_slen].to(device)
             xs_f = batch['x_f'][:,:max_slen].to(device)
             feat = batch['feat'][:,:max_flen].to(device)
+            if wlat_flag:
+                lat = batch['lat'][:,:max_flen].to(device)
             #spcidx_s = batch['spcidx_s_e'][0]
             #spcidx_s = batch['spcidx_s'].data.numpy()
             #spcidx_e = batch['spcidx_s_e'][1]
@@ -102,6 +104,8 @@ def data_generator(dataloader, device, batch_size, upsampling_factor, limit_coun
                     xs_f = torch.LongTensor(np.delete(xs_f.cpu().data.numpy(), del_index_utt, axis=0)).to(device)
                     #cs = torch.LongTensor(np.delete(cs.cpu().data.numpy(), del_index_utt, axis=0)).to(device)
                     feat = torch.FloatTensor(np.delete(feat.cpu().data.numpy(), del_index_utt, axis=0)).to(device)
+                    if wlat_flag:
+                        lat = torch.FloatTensor(np.delete(lat.cpu().data.numpy(), del_index_utt, axis=0)).to(device)
                     featfiles = np.delete(featfiles, del_index_utt, axis=0)
                     slens_acc = np.delete(slens_acc, del_index_utt, axis=0)
                     flens_acc = np.delete(flens_acc, del_index_utt, axis=0)
@@ -113,8 +117,12 @@ def data_generator(dataloader, device, batch_size, upsampling_factor, limit_coun
                 if len(idx_select) > 0:
                     idx_select_full = torch.LongTensor(np.delete(np.arange(n_batch_utt), idx_select, axis=0)).to(device)
                     idx_select = torch.LongTensor(idx_select).to(device)
-                yield xs_c, xs_f, feat, c_idx, idx, featfiles, x_bs, f_bs, x_ss, f_ss, n_batch_utt, del_index_utt, max_slen, \
-                    max_flen, idx_select, idx_select_full, slens_acc, flens_acc
+                if wlat_flag:
+                    yield xs_c, xs_f, feat, lat, c_idx, idx, featfiles, x_bs, f_bs, x_ss, f_ss, n_batch_utt, del_index_utt, max_slen, \
+                        max_flen, idx_select, idx_select_full, slens_acc, flens_acc
+                else:
+                    yield xs_c, xs_f, feat, c_idx, idx, featfiles, x_bs, f_bs, x_ss, f_ss, n_batch_utt, del_index_utt, max_slen, \
+                        max_flen, idx_select, idx_select_full, slens_acc, flens_acc
                 for i in range(n_batch_utt):
                     slens_acc[i] -= delta
                     flens_acc[i] -= delta_frm
@@ -137,7 +145,10 @@ def data_generator(dataloader, device, batch_size, upsampling_factor, limit_coun
             #if c_idx > 2:
             #    break
 
-        yield [], [], [], -1, -1, [], [], [], [], [], [], [], [], [], [], [], [], []
+        if wlat_flag:
+            yield [], [], [], [], -1, -1, [], [], [], [], [], [], [], [], [], [], [], [], []
+        else:
+            yield [], [], [], -1, -1, [], [], [], [], [], [], [], [], [], [], [], [], []
 
 
 def save_checkpoint(checkpoint_dir, model_waveform, optimizer,
@@ -285,6 +296,8 @@ def main():
                         type=int, help="number of bands")
     parser.add_argument("--with_excit", default=False,
                         type=strtobool, help="flag to use excit (U/V and F0) if using mel-spec")
+    parser.add_argument("--wlat_flag", default=False,
+                        type=strtobool, help="flag to use excit (U/V and F0) if using mel-spec")
     # other setting
     parser.add_argument("--pad_len", default=3000,
                         type=int, help="seed number")
@@ -391,6 +404,7 @@ def main():
     scale_in_flag = True
     feat_dim=args.mcep_dim+args.excit_dim
     red_dim=None
+    aux_dim = None
     if args.string_path_ft is not None and "spk-lat" in args.string_path_ft:
         scale_in_flag = False
         if os.path.isdir(args.feats):
@@ -403,8 +417,20 @@ def main():
         feat_dim=read_hdf5(feat_list[0], args.string_path_ft).shape[1]
         logging.info(feat_dim)
         red_dim=args.mcep_dim
+    elif args.string_path_ft is not None and args.wlat_flag:
+        if os.path.isdir(args.feats):
+            feat_list = [args.feats + "/" + filename for filename in filenames]
+        elif os.path.isfile(args.feats):
+            feat_list = read_txt(args.feats)
+        else:
+            logging.error("--feats should be directory or list.")
+            sys.exit(1)
+        aux_dim=read_hdf5(feat_list[0], args.string_path_ft+"_lat").shape[1]
+        logging.info(aux_dim)
+        red_dim=args.mcep_dim
     model_waveform = GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(
         feat_dim=feat_dim,
+        aux_dim=aux_dim,
         upsampling_factor=args.upsampling_factor,
         hidden_units=args.hidden_units_wave,
         hidden_units_2=args.hidden_units_wave_2,
@@ -519,11 +545,11 @@ def main():
     logging.info("number of training_data -- batch_size = %d -- %d" % (len(feat_list), batch_size_utt))
     dataset = FeatureDatasetNeuVoco(wav_list, feat_list, pad_wav_transform, pad_feat_transform, args.upsampling_factor, 
                     args.string_path, wav_transform=wav_transform, n_bands=args.n_bands, with_excit=with_excit, cf_dim=args.cf_dim, spcidx=True,
-                        pad_left=model_waveform.pad_left, pad_right=model_waveform.pad_right, string_path_ft=args.string_path_ft)
+                        pad_left=model_waveform.pad_left, pad_right=model_waveform.pad_right, string_path_ft=args.string_path_ft, wlat_flag=args.wlat_flag)
     dataloader = DataLoader(dataset, batch_size=batch_size_utt, shuffle=True, num_workers=args.n_workers)
-    #generator = data_generator(dataloader, device, args.batch_size, args.upsampling_factor, limit_count=1, n_bands=args.n_bands)
-    #generator = data_generator(dataloader, device, args.batch_size, args.upsampling_factor, limit_count=20, n_bands=args.n_bands)
-    generator = data_generator(dataloader, device, args.batch_size, args.upsampling_factor, limit_count=None, n_bands=args.n_bands)
+    #generator = data_generator(dataloader, device, args.batch_size, args.upsampling_factor, limit_count=1, n_bands=args.n_bands, wlat_flag=args.wlat_flag)
+    #generator = data_generator(dataloader, device, args.batch_size, args.upsampling_factor, limit_count=20, n_bands=args.n_bands, wlat_flag=args.wlat_flag)
+    generator = data_generator(dataloader, device, args.batch_size, args.upsampling_factor, limit_count=None, n_bands=args.n_bands, wlat_flag=args.wlat_flag)
 
     # define generator evaluation
     if os.path.isdir(args.waveforms_eval):
@@ -549,10 +575,10 @@ def main():
     logging.info("number of evaluation_data -- batch_size_eval = %d -- %d" % (n_eval_data, batch_size_utt_eval))
     dataset_eval = FeatureDatasetNeuVoco(wav_list_eval, feat_list_eval, pad_wav_transform, pad_feat_transform, args.upsampling_factor, 
                     args.string_path, wav_transform=wav_transform, n_bands=args.n_bands, with_excit=with_excit, cf_dim=args.cf_dim, spcidx=True,
-                        pad_left=model_waveform.pad_left, pad_right=model_waveform.pad_right, string_path_ft=args.string_path_ft)
+                        pad_left=model_waveform.pad_left, pad_right=model_waveform.pad_right, string_path_ft=args.string_path_ft, wlat_flag=args.wlat_flag)
     dataloader_eval = DataLoader(dataset_eval, batch_size=batch_size_utt_eval, shuffle=False, num_workers=args.n_workers)
-    #generator_eval = data_generator(dataloader_eval, device, args.batch_size, args.upsampling_factor, limit_count=1, n_bands=args.n_bands)
-    generator_eval = data_generator(dataloader_eval, device, args.batch_size, args.upsampling_factor, limit_count=None, n_bands=args.n_bands)
+    #generator_eval = data_generator(dataloader_eval, device, args.batch_size, args.upsampling_factor, limit_count=1, n_bands=args.n_bands, wlat_flag=args.wlat_flag)
+    generator_eval = data_generator(dataloader_eval, device, args.batch_size, args.upsampling_factor, limit_count=None, n_bands=args.n_bands, wlat_flag=args.wlat_flag)
 
     writer = SummaryWriter(args.expdir)
     total_train_loss = defaultdict(list)
@@ -670,8 +696,12 @@ def main():
     logging.info("Training data")
     while True:
         start = time.time()
-        batch_x_c, batch_x_f, batch_feat, c_idx, utt_idx, featfile, x_bs, f_bs, x_ss, f_ss, n_batch_utt, \
-            del_index_utt, max_slen, max_flen, idx_select, idx_select_full, slens_acc, flens_acc = next(generator)
+        if args.wlat_flag:
+            batch_x_c, batch_x_f, batch_feat, batch_lat, c_idx, utt_idx, featfile, x_bs, f_bs, x_ss, f_ss, n_batch_utt, \
+                del_index_utt, max_slen, max_flen, idx_select, idx_select_full, slens_acc, flens_acc = next(generator)
+        else:
+            batch_x_c, batch_x_f, batch_feat, c_idx, utt_idx, featfile, x_bs, f_bs, x_ss, f_ss, n_batch_utt, \
+                del_index_utt, max_slen, max_flen, idx_select, idx_select_full, slens_acc, flens_acc = next(generator)
         if c_idx < 0: # summarize epoch
             # save current epoch model
             numpy_random_state = np.random.get_state()
@@ -710,8 +740,12 @@ def main():
             while True:
                 with torch.no_grad():
                     start = time.time()
-                    batch_x_c, batch_x_f, batch_feat, c_idx, utt_idx, featfile, x_bs, f_bs, x_ss, f_ss, n_batch_utt, \
-                        del_index_utt, max_slen, max_flen, idx_select, idx_select_full, slens_acc, flens_acc = next(generator_eval)
+                    if args.wlat_flag:
+                        batch_x_c, batch_x_f, batch_feat, batch_lat, c_idx, utt_idx, featfile, x_bs, f_bs, x_ss, f_ss, n_batch_utt, \
+                            del_index_utt, max_slen, max_flen, idx_select, idx_select_full, slens_acc, flens_acc = next(generator_eval)
+                    else:
+                        batch_x_c, batch_x_f, batch_feat, c_idx, utt_idx, featfile, x_bs, f_bs, x_ss, f_ss, n_batch_utt, \
+                            del_index_utt, max_slen, max_flen, idx_select, idx_select_full, slens_acc, flens_acc = next(generator_eval)
                     if c_idx < 0:
                         break
 
@@ -764,6 +798,17 @@ def main():
                         batch_feat = F.pad(batch_feat[:,f_ss_pad_left:max_flen].transpose(1,2), (0,f_es_pad_right-max_flen), "replicate").transpose(1,2)
                     else: # pad left and right need additional replicate
                         batch_feat = F.pad(batch_feat[:,:max_flen].transpose(1,2), (-f_ss_pad_left,f_es_pad_right-max_flen), "replicate").transpose(1,2)
+                    if args.wlat_flag:
+                        if f_ss_pad_left >= 0 and f_es_pad_right <= max_flen: # pad left and right available
+                            batch_lat = batch_lat[:,f_ss_pad_left:f_es_pad_right]
+                        elif f_es_pad_right <= max_flen: # pad right available, left need additional replicate
+                            batch_lat = F.pad(batch_lat[:,:f_es_pad_right].transpose(1,2), (-f_ss_pad_left,0), "replicate").transpose(1,2)
+                        elif f_ss_pad_left >= 0: # pad left available, right need additional replicate
+                            batch_lat = F.pad(batch_lat[:,f_ss_pad_left:max_flen].transpose(1,2), (0,f_es_pad_right-max_flen), "replicate").transpose(1,2)
+                        else: # pad left and right need additional replicate
+                            batch_lat = F.pad(batch_lat[:,:max_flen].transpose(1,2), (-f_ss_pad_left,f_es_pad_right-max_flen), "replicate").transpose(1,2)
+                    else:
+                        batch_lat = None
 
                     if f_ss > 0:
                         if len(del_index_utt) > 0:
@@ -772,17 +817,18 @@ def main():
                             h_f = torch.FloatTensor(np.delete(h_f.cpu().data.numpy(), del_index_utt, axis=1)).to(device)
                         if args.lpc > 0:
                             batch_x_c_output, batch_x_f_output, h_x, h_x_2, h_f \
-                                = model_waveform(batch_feat, batch_x_c_prev, batch_x_f_prev, batch_x_c, h=h_x, h_2=h_x_2, h_f=h_f, x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc)
+                                = model_waveform(batch_feat, batch_x_c_prev, batch_x_f_prev, batch_x_c, h=h_x, h_2=h_x_2, h_f=h_f,
+                                        aux=batch_lat, x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc)
                         else:
                             batch_x_c_output, batch_x_f_output, h_x, h_x_2, h_f \
-                                = model_waveform(batch_feat, batch_x_c_prev, batch_x_f_prev, batch_x_c, h=h_x, h_2=h_x_2, h_f=h_f)
+                                = model_waveform(batch_feat, batch_x_c_prev, batch_x_f_prev, batch_x_c, h=h_x, h_2=h_x_2, h_f=h_f, aux=batch_lat)
                     else:
                         if args.lpc > 0:
                             batch_x_c_output, batch_x_f_output, h_x, h_x_2, h_f \
-                                = model_waveform(batch_feat, batch_x_c_prev, batch_x_f_prev, batch_x_c, x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc)
+                                = model_waveform(batch_feat, batch_x_c_prev, batch_x_f_prev, batch_x_c, aux=batch_lat, x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc)
                         else:
                             batch_x_c_output, batch_x_f_output, h_x, h_x_2, h_f \
-                                = model_waveform(batch_feat, batch_x_c_prev, batch_x_f_prev, batch_x_c)
+                                = model_waveform(batch_feat, batch_x_c_prev, batch_x_f_prev, batch_x_c, aux=batch_lat)
 
                     # samples check
                     #i = np.random.randint(0, batch_x_c_output.shape[0])
@@ -1020,8 +1066,12 @@ def main():
                 start = time.time()
                 logging.info("==%d EPOCH==" % (epoch_idx+1))
                 logging.info("Training data")
-                batch_x_c, batch_x_f, batch_feat, c_idx, utt_idx, featfile, x_bs, f_bs, x_ss, f_ss, n_batch_utt, \
-                    del_index_utt, max_slen, max_flen, idx_select, idx_select_full, slens_acc, flens_acc = next(generator)
+                if args.wlat_flag:
+                    batch_x_c, batch_x_f, batch_feat, batch_lat, c_idx, utt_idx, featfile, x_bs, f_bs, x_ss, f_ss, n_batch_utt, \
+                        del_index_utt, max_slen, max_flen, idx_select, idx_select_full, slens_acc, flens_acc = next(generator)
+                else:
+                    batch_x_c, batch_x_f, batch_feat, c_idx, utt_idx, featfile, x_bs, f_bs, x_ss, f_ss, n_batch_utt, \
+                        del_index_utt, max_slen, max_flen, idx_select, idx_select_full, slens_acc, flens_acc = next(generator)
             else:
                 break
         # feedforward and backpropagate current batch
@@ -1076,6 +1126,17 @@ def main():
             batch_feat = F.pad(batch_feat[:,f_ss_pad_left:max_flen].transpose(1,2), (0,f_es_pad_right-max_flen), "replicate").transpose(1,2)
         else: # pad left and right need additional replicate
             batch_feat = F.pad(batch_feat[:,:max_flen].transpose(1,2), (-f_ss_pad_left,f_es_pad_right-max_flen), "replicate").transpose(1,2)
+        if args.wlat_flag:
+            if f_ss_pad_left >= 0 and f_es_pad_right <= max_flen: # pad left and right available
+                batch_lat = batch_lat[:,f_ss_pad_left:f_es_pad_right]
+            elif f_es_pad_right <= max_flen: # pad right available, left need additional replicate
+                batch_lat = F.pad(batch_lat[:,:f_es_pad_right].transpose(1,2), (-f_ss_pad_left,0), "replicate").transpose(1,2)
+            elif f_ss_pad_left >= 0: # pad left available, right need additional replicate
+                batch_lat = F.pad(batch_lat[:,f_ss_pad_left:max_flen].transpose(1,2), (0,f_es_pad_right-max_flen), "replicate").transpose(1,2)
+            else: # pad left and right need additional replicate
+                batch_lat = F.pad(batch_lat[:,:max_flen].transpose(1,2), (-f_ss_pad_left,f_es_pad_right-max_flen), "replicate").transpose(1,2)
+        else:
+            batch_lat = None
 
         if f_ss > 0:
             if len(del_index_utt) > 0:
@@ -1084,17 +1145,18 @@ def main():
                 h_f = torch.FloatTensor(np.delete(h_f.cpu().data.numpy(), del_index_utt, axis=1)).to(device)
             if args.lpc > 0:
                 batch_x_c_output, batch_x_f_output, h_x, h_x_2, h_f \
-                    = model_waveform(batch_feat, batch_x_c_prev, batch_x_f_prev, batch_x_c, h=h_x, h_2=h_x_2, h_f=h_f, x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc, do=True)
+                    = model_waveform(batch_feat, batch_x_c_prev, batch_x_f_prev, batch_x_c, h=h_x, h_2=h_x_2, h_f=h_f,
+                            aux=batch_lat, x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc, do=True)
             else:
                 batch_x_c_output, batch_x_f_output, h_x, h_x_2, h_f \
-                    = model_waveform(batch_feat, batch_x_c_prev, batch_x_f_prev, batch_x_c, h=h_x, h_2=h_x_2, h_f=h_f, do=True)
+                    = model_waveform(batch_feat, batch_x_c_prev, batch_x_f_prev, batch_x_c, h=h_x, h_2=h_x_2, h_f=h_f, aux=batch_lat, do=True)
         else:
             if args.lpc > 0:
                 batch_x_c_output, batch_x_f_output, h_x, h_x_2, h_f \
-                    = model_waveform(batch_feat, batch_x_c_prev, batch_x_f_prev, batch_x_c, x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc, do=True)
+                    = model_waveform(batch_feat, batch_x_c_prev, batch_x_f_prev, batch_x_c, aux=batch_lat, x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc, do=True)
             else:
                 batch_x_c_output, batch_x_f_output, h_x, h_x_2, h_f \
-                    = model_waveform(batch_feat, batch_x_c_prev, batch_x_f_prev, batch_x_c, do=True)
+                    = model_waveform(batch_feat, batch_x_c_prev, batch_x_f_prev, batch_x_c, aux=batch_lat, do=True)
 
         # samples check
         #i = np.random.randint(0, batch_x_c_output.shape[0])

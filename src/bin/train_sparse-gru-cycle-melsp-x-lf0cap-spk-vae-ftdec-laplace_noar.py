@@ -527,8 +527,8 @@ def main():
     # save args as conf
     args.fftsize = 2 ** (len(bin(200)) - 2 + 1)
     args.string_path = "/log_1pmelmagsp"
-    #args.factor = 0.658008658 #5ms
-    args.factor = 0.846153846 #10ms
+    args.factor = 0.846153846
+    #args.factor = 0.813101358
     args.t_start = round(args.t_start * args.factor)
     args.t_end = round(args.t_end * args.factor)
     args.interval = round(args.interval * args.factor)

@@ -25,11 +25,10 @@ mel_dim: 80
 ## Pre-emphasis noise-shaping coefficient
 alpha: 0.85
 
-## GRU hidden units encoder, decoder spec, decoder excit, post-net
+## GRU hidden units encoder, decoder spec, decoder excit
 hidden_units_enc: 512
 hidden_units_dec: 640
 hidden_units_lf0: 128
-hidden_units_post: 160
 
 ## GRU hidden units wavernn
 #[for high-quality, 0.36 RT with 10-bit mu-law 10 ms shift]
@@ -44,11 +43,10 @@ hidden_units_wave_2: 32
 #[for 10-bit mu-law]
 mid_dim: 16
 
-## GRU hidden layers encoder, decoder spec, decoder excit, post-net
+## GRU hidden layers encoder, decoder spec, decoder excit
 hidden_layers_enc: 1
 hidden_layers_dec: 1
 hidden_layers_lf0: 1
-hidden_layers_post: 1
 
 ## GRU hidden layers wavernn
 hidden_layers_wave: 1
@@ -62,10 +60,6 @@ kernel_size_dec: 5
 dilation_size_dec: 1
 
 ## kernel-size input conv encoder excit
-kernel_size_lf0: 7
-dilation_size_lf0: 1
-
-## kernel-size input conv post-net
 kernel_size_lf0: 7
 dilation_size_lf0: 1
 
@@ -85,7 +79,6 @@ right_size_enc: 1
 #right_size_enc: 2
 right_size_dec: 0
 right_size_lf0: 0
-right_size_post: 0
 ## lookup frame limited to only 1/2 frame [for allowing low-latency/real-time processing]
 right_size_wave: 1
 #right_size_wave: 2
@@ -111,7 +104,6 @@ ctr_size: 128
 causal_conv_enc: false
 causal_conv_dec: true
 causal_conv_lf0: true
-causal_conv_post: true
 causal_conv_wave: false
 ## if right_size > 0 (skewed conv encoder, i.e., future frame is limited), set causal_conv dec/lf0 to true [low-latency/real-time proc.]
 
@@ -145,7 +137,7 @@ n_workers: 2
 
 mdl_name: cycmelspxlf0capspkvae-laplace_sparse
 
-mdl_name_post: cycmelspxlf0capspkvae-laplace_post-smpl
+mdl_name_post: cycmelspxlf0capspkvae-laplace_sparse_ftdec
 
 ##[8 kHz, 16 kHz, 22.05 kHz, 24 kHz]
 #mdl_name_wave: wavernn_dualgru_compact_lpc_mband_9bit

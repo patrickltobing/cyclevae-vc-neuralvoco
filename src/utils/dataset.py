@@ -70,7 +70,7 @@ class FeatureDatasetNeuVoco(Dataset):
     def __init__(self, wav_list, feat_list, pad_wav_transform, pad_feat_transform, upsampling_factor,
                     string_path, pad_wav_f_transform=None, wav_transform=None, wav_transform_in=None, spcidx=False, string_path_ft=None,
                         wav_transform_out=None, with_excit=False, codeap_dim=None, n_bands=1, spk_list=None, cf_dim=None,
-                            pad_left=0, pad_right=0):
+                            pad_left=0, pad_right=0, wlat_flag=False):
         self.wav_list = wav_list
         self.feat_list = feat_list
         self.pad_wav_transform = pad_wav_transform
@@ -79,10 +79,13 @@ class FeatureDatasetNeuVoco(Dataset):
         #self.string_path_org = '/feat_mceplf0cap'
         self.string_path_org = string_path
         #self.string_path_org = '/feat_org_lf0'
+        self.wlat_flag = wlat_flag
         if string_path_ft is not None:
             self.string_path = string_path_ft
         else:
             self.string_path = string_path
+        if self.wlat_flag:
+            self.string_path_lat = self.string_path+"_lat"
         self.pad_wav_f_transform = pad_wav_f_transform
         self.wav_transform = wav_transform
         self.wav_transform_in = wav_transform_in
@@ -150,9 +153,13 @@ class FeatureDatasetNeuVoco(Dataset):
                             h = read_hdf5(featfile, self.string_path)
                         else:
                             h = read_hdf5(featfile, self.string_path_org)
+                        if self.wlat_flag:
+                            h_lat = read_hdf5(featfile, self.string_path_lat)
                     else:
                         h = np.c_[read_hdf5(featfile, self.string_path_org)[:,:self.excit_dim], read_hdf5(featfile, self.string_path)]
                     x_pqmf, h = validate_length(x_pqmf, h, self.upsampling_factor_bands)
+                    if self.wlat_flag:
+                        _, h_lat = validate_length(h, h_lat)
                     x = np.expand_dims(x_pqmf,-1)
 
             if self.wav_transform_in is not None:
@@ -171,11 +178,17 @@ class FeatureDatasetNeuVoco(Dataset):
             if self.spcidx:
                 x = x[spcidx_s_e_smpl[0]:spcidx_s_e_smpl[-1]]
                 h = h[spcidx_s_e[0]:spcidx_s_e[-1]]
+                if self.wlat_flag:
+                    h_lat = h_lat[spcidx_s_e[0]:spcidx_s_e[-1]]
             assert(x.shape[0]==h.shape[0]*(self.upsampling_factor//self.n_bands))
+            if self.wlat_flag:
+                assert(x.shape[0]==h_lat.shape[0]*(self.upsampling_factor//self.n_bands))
             slen = x.shape[0]
             flen = h.shape[0]
 
             h = torch.FloatTensor(self.pad_feat_transform(h))
+            if self.wlat_flag:
+                h_lat = torch.FloatTensor(self.pad_feat_transform(h_lat))
             if self.wav_transform is not None and self.wav_transform_out is None:
                 x = torch.LongTensor(self.pad_wav_transform(x)) # disc in/trg
             else:
@@ -209,9 +222,15 @@ class FeatureDatasetNeuVoco(Dataset):
                         return {'x': x, 'feat': h, 'slen': slen, 'flen': flen, 'featfile': featfile, 'c': spk_idx}
                 else:
                     if self.cf_dim is not None and self.wav_transform is not None and self.wav_transform_out is None:
-                        return {'x_c': x // self.cf_dim, 'x_f': x % self.cf_dim, 'feat': h, 'slen': slen, 'flen': flen, 'featfile': featfile}
+                        if self.wlat_flag:
+                            return {'x_c': x // self.cf_dim, 'x_f': x % self.cf_dim, 'feat': h, 'lat': h_lat, 'slen': slen, 'flen': flen, 'featfile': featfile}
+                        else:
+                            return {'x_c': x // self.cf_dim, 'x_f': x % self.cf_dim, 'feat': h, 'slen': slen, 'flen': flen, 'featfile': featfile}
                     else:
-                        return {'x': x, 'feat': h, 'slen': slen, 'flen': flen, 'featfile': featfile}
+                        if self.wlat_flag:
+                            return {'x': x, 'feat': h, 'lat': h_lat, 'slen': slen, 'flen': flen, 'featfile': featfile}
+                        else:
+                            return {'x': x, 'feat': h, 'slen': slen, 'flen': flen, 'featfile': featfile}
         else:
             x, _ = sf.read(wavfile, dtype=np.float32)
             if not self.with_excit:

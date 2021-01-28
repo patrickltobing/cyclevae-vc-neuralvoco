@@ -454,6 +454,7 @@ def main():
                         cvmelsp_src, _ = model_decoder_melsp(lat_cat, y=src_code, aux=trj_src_code, e=cvlf0_src[:,:,:config.excit_dim])
                         cvmelsp_fix, _ = model_decoder_melsp_fix(lat_cat, y=trg_code, aux=trj_trg_code, e=cvlf0[:,:,:config.excit_dim])
                         cvmelsp, _ = model_decoder_melsp(lat_cat, y=trg_code, aux=trj_trg_code, e=cvlf0[:,:,:config.excit_dim])
+                        trj_lat_cat = lat_cat
 
                         spk_logits, _, lat_rec, _ = model_encoder_melsp(cvmelsp_src_fix, sampling=False)
                         spk_logits_e, _, lat_rec_e, _ = model_encoder_excit(cvmelsp_src_fix, sampling=False)
@@ -639,9 +640,11 @@ def main():
                     if outpad_rights[2] > 0:
                         cvlf0_src = cvlf0_src[:,outpad_lefts[2]:-outpad_rights[2]]
                         cvlf0 = cvlf0[:,outpad_lefts[2]:-outpad_rights[2]]
+                        trj_lat_cat = trj_lat_cat[:,outpad_lefts[2]:-outpad_rights[2]]
                     else:
                         cvlf0_src = cvlf0_src[:,outpad_lefts[2]:]
                         cvlf0 = cvlf0[:,outpad_lefts[2]:]
+                        trj_lat_cat = trj_lat_cat[:,outpad_lefts[2]:-outpad_rights[2]]
                     if outpad_rights[3] > 0:
                         cvmelsp_src = cvmelsp_src[:,outpad_lefts[3]:-outpad_rights[3]]
                         cvmelsp = cvmelsp[:,outpad_lefts[3]:-outpad_rights[3]]
@@ -654,6 +657,7 @@ def main():
                         cvlf0_cyc = cvlf0_cyc[:,outpad_lefts[6]:]
 
                     feat_cv = cvmelsp[0].cpu().data.numpy()
+                    feat_lat = trj_lat_cat[0].cpu().data.numpy()
 
                     cvmelsp_src = np.array(cvmelsp_src[0].cpu().data.numpy(), dtype=np.float64)
                     cvlf0_src = np.array(cvlf0_src[0].cpu().data.numpy(), dtype=np.float64)
@@ -1080,6 +1084,11 @@ def main():
                 logging.info(feat_file + ' ' + write_path)
                 logging.info(feat_cv.shape)
                 write_hdf5(feat_file, write_path, feat_cv)
+
+                logging.info('write lat to h5')
+                logging.info(feat_file + ' ' + args.string_path+'_lat')
+                logging.info(feat_lat.shape)
+                write_hdf5(feat_file, args.string_path+'_lat', feat_lat)
 
                 count += 1
                 #if count >= 3:
