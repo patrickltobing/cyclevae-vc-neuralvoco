@@ -298,6 +298,8 @@ def main():
                         type=strtobool, help="flag to use excit (U/V and F0) if using mel-spec")
     parser.add_argument("--wlat_flag", default=False,
                         type=strtobool, help="flag to use excit (U/V and F0) if using mel-spec")
+    parser.add_argument("--wlat_res_flag", default=False,
+                        type=strtobool, help="flag to use excit (U/V and F0) if using mel-spec")
     # other setting
     parser.add_argument("--pad_len", default=3000,
                         type=int, help="seed number")
@@ -445,6 +447,7 @@ def main():
         mid_dim=args.mid_dim,
         scale_in_flag=scale_in_flag,
         red_dim=red_dim,
+        res_flag=args.wlat_res_flag,
         do_prob=args.do_prob)
     logging.info(model_waveform)
     criterion_ce = torch.nn.CrossEntropyLoss(reduction='none')
@@ -468,27 +471,40 @@ def main():
         model_waveform.scale_in.weight = torch.nn.Parameter(torch.unsqueeze(torch.diag(1.0/scale_stats.data),2))
         model_waveform.scale_in.bias = torch.nn.Parameter(-(mean_stats.data/scale_stats.data))
 
-    for param in model_waveform.parameters():
-        param.requires_grad = True
-    if scale_in_flag:
-        for param in model_waveform.scale_in.parameters():
-            param.requires_grad = False
-    if args.lpc > 0:
-        for param in model_waveform.logits.parameters():
-            param.requires_grad = False
-
     parameters = filter(lambda p: p.requires_grad, model_waveform.parameters())
     parameters = sum([np.prod(p.size()) for p in parameters]) / 1000000
     logging.info('Trainable Parameters (waveform): %.3f million' % parameters)
+    if args.wlat_res_flag:
+        parameters = filter(lambda p: p.requires_grad, model_waveform.in_red.parameters())
+        parameters = sum([np.prod(p.size()) for p in parameters]) / 1000000
+        logging.info('Trainable Parameters (waveform in_red): %.3f million' % parameters)
 
-    if red_dim is not None:
-        module_list = list(model_waveform.in_red.parameters()) + list(model_waveform.conv.parameters()) + list(model_waveform.conv_s_c.parameters())
+    if not args.wlat_res_flag:
+        for param in model_waveform.parameters():
+            param.requires_grad = True
+        if scale_in_flag:
+            for param in model_waveform.scale_in.parameters():
+                param.requires_grad = False
+        if args.lpc > 0:
+            for param in model_waveform.logits.parameters():
+                param.requires_grad = False
     else:
-        module_list = list(model_waveform.conv.parameters()) + list(model_waveform.conv_s_c.parameters())
-    module_list += list(model_waveform.embed_c_wav.parameters()) + list(model_waveform.embed_f_wav.parameters())
-    module_list += list(model_waveform.gru.parameters())
-    module_list += list(model_waveform.gru_2.parameters()) + list(model_waveform.out.parameters())
-    module_list += list(model_waveform.gru_f.parameters()) + list(model_waveform.out_f.parameters())
+        for param in model_waveform.parameters():
+            param.requires_grad = False
+        for param in model_waveform.in_red.parameters():
+            param.requires_grad = True
+
+    if args.wlat_res_flag:
+        module_list = list(model_waveform.in_red.parameters())
+    else:
+        if red_dim is not None:
+            module_list = list(model_waveform.in_red.parameters()) + list(model_waveform.conv.parameters()) + list(model_waveform.conv_s_c.parameters())
+        else:
+            module_list = list(model_waveform.conv.parameters()) + list(model_waveform.conv_s_c.parameters())
+        module_list += list(model_waveform.embed_c_wav.parameters()) + list(model_waveform.embed_f_wav.parameters())
+        module_list += list(model_waveform.gru.parameters())
+        module_list += list(model_waveform.gru_2.parameters()) + list(model_waveform.out.parameters())
+        module_list += list(model_waveform.gru_f.parameters()) + list(model_waveform.out_f.parameters())
 
     # model = ...
     optimizer = optim.RAdam(
@@ -501,10 +517,12 @@ def main():
     #optimizer = RAdam(module_list, lr=args.lr)
     #optimizer = torch.optim.Adam(module_list, lr=args.lr)
 
+    epoch_idx = 0
+
     # resume
     if args.pretrained is not None and args.resume is None:
         checkpoint = torch.load(args.pretrained)
-        model_waveform.load_state_dict(checkpoint["model_waveform"])
+        model_waveform.load_state_dict(checkpoint["model_waveform"], strict=False)
         epoch_idx = checkpoint["iterations"]
         logging.info("pretrained from %d-iter checkpoint." % epoch_idx)
         epoch_idx = 0
@@ -514,8 +532,6 @@ def main():
         optimizer.load_state_dict(checkpoint["optimizer"])
         epoch_idx = checkpoint["iterations"]
         logging.info("restored from %d-iter checkpoint." % epoch_idx)
-    else:
-        epoch_idx = 0
 
     def zero_wav_pad(x): return padding(x, args.pad_len*(args.upsampling_factor // args.n_bands), value=args.half_n_quantize)
     def zero_feat_pad(x): return padding(x, args.pad_len, value=None)
@@ -1053,14 +1069,20 @@ def main():
             np.random.set_state(numpy_random_state)
             torch.set_rng_state(torch_random_state)
             model_waveform.train()
-            for param in model_waveform.parameters():
-                param.requires_grad = True
-            if scale_in_flag:
-                for param in model_waveform.scale_in.parameters():
+            if not args.wlat_res_flag:
+                for param in model_waveform.parameters():
+                    param.requires_grad = True
+                if scale_in_flag:
+                    for param in model_waveform.scale_in.parameters():
+                        param.requires_grad = False
+                if args.lpc > 0:
+                    for param in model_waveform.logits.parameters():
+                        param.requires_grad = False
+            else:
+                for param in model_waveform.parameters():
                     param.requires_grad = False
-            if args.lpc > 0:
-                for param in model_waveform.logits.parameters():
-                    param.requires_grad = False
+                for param in model_waveform.in_red.parameters():
+                    param.requires_grad = True
             # start next epoch
             if iter_idx < args.step_count:
                 start = time.time()
@@ -1257,13 +1279,14 @@ def main():
                 torch.nn.utils.clip_grad_norm_(model_waveform.parameters(), 10)
                 optimizer.step()
 
-                with torch.no_grad():
-                    if idx_stage < args.n_stage-1 and iter_idx + 1 == t_starts[idx_stage+1]:
-                        idx_stage += 1
-                    if idx_stage > 0:
-                        sparsify(model_waveform, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities[idx_stage], densities_p=densities[idx_stage-1])
-                    else:
-                        sparsify(model_waveform, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities[idx_stage])
+                if not args.wlat_res_flag:
+                    with torch.no_grad():
+                        if idx_stage < args.n_stage-1 and iter_idx + 1 == t_starts[idx_stage+1]:
+                            idx_stage += 1
+                        if idx_stage > 0:
+                            sparsify(model_waveform, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities[idx_stage], densities_p=densities[idx_stage-1])
+                        else:
+                            sparsify(model_waveform, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities[idx_stage])
 
                 logging.info("batch loss select %.3f (%.3f sec)" % (batch_loss.item(), time.time() - start))
                 iter_idx += 1
@@ -1346,13 +1369,14 @@ def main():
         torch.nn.utils.clip_grad_norm_(model_waveform.parameters(), 10)
         optimizer.step()
 
-        with torch.no_grad():
-            if idx_stage < args.n_stage-1 and iter_idx + 1 == t_starts[idx_stage+1]:
-                idx_stage += 1
-            if idx_stage > 0:
-                sparsify(model_waveform, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities[idx_stage], densities_p=densities[idx_stage-1])
-            else:
-                sparsify(model_waveform, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities[idx_stage])
+        if not args.wlat_res_flag:
+            with torch.no_grad():
+                if idx_stage < args.n_stage-1 and iter_idx + 1 == t_starts[idx_stage+1]:
+                    idx_stage += 1
+                if idx_stage > 0:
+                    sparsify(model_waveform, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities[idx_stage], densities_p=densities[idx_stage-1])
+                else:
+                    sparsify(model_waveform, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities[idx_stage])
 
         text_log = "batch loss [%d] %d %d %d %d %d : %.3f %.3f %% %.3f %.3f %% %.3f %.3f %%" % (c_idx+1, max_slen, x_ss, x_bs,
             f_ss, f_bs, batch_loss_ce_avg, batch_loss_err_avg,

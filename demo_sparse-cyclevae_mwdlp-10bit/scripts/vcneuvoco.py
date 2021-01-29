@@ -1620,7 +1620,7 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
     def __init__(self, feat_dim=80, upsampling_factor=120, hidden_units=640, hidden_units_2=32, n_quantize=65536,
             kernel_size=7, dilation_size=1, do_prob=0, causal_conv=False, use_weight_norm=True, lpc=6,
                 right_size=2, n_bands=5, excit_dim=0, pad_first=False, mid_out_flag=True, red_dim=None,
-                    scale_in_aux_dim=None, n_spk=None, scale_in_flag=True, mid_dim=None):
+                    scale_in_aux_dim=None, n_spk=None, scale_in_flag=True, mid_dim=None, aux_dim=None):
         super(GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF, self).__init__()
         self.feat_dim = feat_dim
         self.in_dim = self.feat_dim
@@ -1659,6 +1659,7 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
         self.scale_in_aux_dim = scale_in_aux_dim
         self.scale_in_flag = scale_in_flag
         self.n_spk = n_spk
+        self.aux_dim = aux_dim
 
         # Norm. layer
         if self.scale_in_flag:
@@ -1666,6 +1667,9 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
                 self.scale_in = nn.Conv1d(self.scale_in_aux_dim, self.scale_in_aux_dim, 1)
             else:
                 self.scale_in = nn.Conv1d(self.in_dim, self.in_dim, 1)
+
+        if self.aux_dim is not None:
+            self.in_dim += self.aux_dim
 
         # Reduction layers
         if self.red_dim is not None:
@@ -1757,7 +1761,10 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
                 else:
                     c_aux = torch.cat((spk_aux, c), 2)
         elif aux is not None:
-            c_aux = torch.cat((c, self.scale_in(aux.transpose(1,2)).transpose(1,2)), 2)
+            if not self.scale_in_aux_dim:
+                c_aux = torch.cat((aux, self.scale_in(c.transpose(1,2)).transpose(1,2)), 2)
+            else:
+                c_aux = torch.cat((c, self.scale_in(aux.transpose(1,2)).transpose(1,2)), 2)
         else:
             c_aux = None
         if c_aux is not None:

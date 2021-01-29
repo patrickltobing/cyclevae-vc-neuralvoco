@@ -70,7 +70,7 @@ class FeatureDatasetNeuVoco(Dataset):
     def __init__(self, wav_list, feat_list, pad_wav_transform, pad_feat_transform, upsampling_factor,
                     string_path, pad_wav_f_transform=None, wav_transform=None, wav_transform_in=None, spcidx=False, string_path_ft=None,
                         wav_transform_out=None, with_excit=False, codeap_dim=None, n_bands=1, spk_list=None, cf_dim=None,
-                            pad_left=0, pad_right=0, wlat_flag=False):
+                            pad_left=0, pad_right=0, wlat_flag=False, worg_flag=False):
         self.wav_list = wav_list
         self.feat_list = feat_list
         self.pad_wav_transform = pad_wav_transform
@@ -86,6 +86,7 @@ class FeatureDatasetNeuVoco(Dataset):
             self.string_path = string_path
         if self.wlat_flag:
             self.string_path_lat = self.string_path+"_lat"
+        self.worg_flag = worg_flag
         self.pad_wav_f_transform = pad_wav_f_transform
         self.wav_transform = wav_transform
         self.wav_transform_in = wav_transform_in
@@ -111,12 +112,11 @@ class FeatureDatasetNeuVoco(Dataset):
         wavfile = self.wav_list[idx]
         featfile = self.feat_list[idx]
         
+        if (self.spcidx and not check_hdf5(featfile, '/spcidx_range')) or (self.wlat_flag and self.worg_flag):
+            file_org = os.path.join(os.path.dirname(os.path.dirname(featfile)), os.path.basename(os.path.dirname(featfile)).split("-")[0], os.path.basename(featfile))
         if self.spcidx:
             if not check_hdf5(featfile, '/spcidx_range'):
-                dirname = os.path.dirname(os.path.dirname(featfile))
-                spk = os.path.basename(os.path.dirname(featfile)).split("-")[0]
-                filename = os.path.basename(featfile)
-                spcidx = read_hdf5(os.path.join(dirname, spk, filename), '/spcidx_range')[0]
+                spcidx = read_hdf5(file_org, '/spcidx_range')[0]
             else:
                 spcidx = read_hdf5(featfile, '/spcidx_range')[0]
             if check_hdf5(featfile, self.string_path_org):
@@ -155,11 +155,17 @@ class FeatureDatasetNeuVoco(Dataset):
                             h = read_hdf5(featfile, self.string_path_org)
                         if self.wlat_flag:
                             h_lat = read_hdf5(featfile, self.string_path_lat)
+                            if self.worg_flag:
+                                h_org = read_hdf5(file_org, self.string_path_org)
+                                h_magsp_org = read_hdf5(file_org, '/magsp')
                     else:
                         h = np.c_[read_hdf5(featfile, self.string_path_org)[:,:self.excit_dim], read_hdf5(featfile, self.string_path)]
                     x_pqmf, h = validate_length(x_pqmf, h, self.upsampling_factor_bands)
                     if self.wlat_flag:
                         _, h_lat = validate_length(h, h_lat)
+                        if self.worg_flag:
+                            _, h_org = validate_length(h_lat, h_org)
+                            _, h_magsp_org = validate_length(h_org, h_magsp_org)
                     x = np.expand_dims(x_pqmf,-1)
 
             if self.wav_transform_in is not None:
@@ -183,12 +189,18 @@ class FeatureDatasetNeuVoco(Dataset):
             assert(x.shape[0]==h.shape[0]*(self.upsampling_factor//self.n_bands))
             if self.wlat_flag:
                 assert(x.shape[0]==h_lat.shape[0]*(self.upsampling_factor//self.n_bands))
+                if self.worg_flag:
+                    assert(x.shape[0]==h_org.shape[0]*(self.upsampling_factor//self.n_bands))
+                    assert(x.shape[0]==h_magsp_org.shape[0]*(self.upsampling_factor//self.n_bands))
             slen = x.shape[0]
             flen = h.shape[0]
 
             h = torch.FloatTensor(self.pad_feat_transform(h))
             if self.wlat_flag:
                 h_lat = torch.FloatTensor(self.pad_feat_transform(h_lat))
+                if self.worg_flag:
+                    h_org = torch.FloatTensor(self.pad_feat_transform(h_org))
+                    h_magsp_org = torch.FloatTensor(self.pad_feat_transform(h_magsp_org))
             if self.wav_transform is not None and self.wav_transform_out is None:
                 x = torch.LongTensor(self.pad_wav_transform(x)) # disc in/trg
             else:
@@ -223,12 +235,18 @@ class FeatureDatasetNeuVoco(Dataset):
                 else:
                     if self.cf_dim is not None and self.wav_transform is not None and self.wav_transform_out is None:
                         if self.wlat_flag:
-                            return {'x_c': x // self.cf_dim, 'x_f': x % self.cf_dim, 'feat': h, 'lat': h_lat, 'slen': slen, 'flen': flen, 'featfile': featfile}
+                            if self.worg_flag:
+                                return {'x_c': x // self.cf_dim, 'x_f': x % self.cf_dim, 'feat': h, 'feat_org': h_org, 'feat_magsp_org': h_magsp_org, 'lat': h_lat, 'slen': slen, 'flen': flen, 'featfile': featfile}
+                            else:
+                                return {'x_c': x // self.cf_dim, 'x_f': x % self.cf_dim, 'feat': h, 'lat': h_lat, 'slen': slen, 'flen': flen, 'featfile': featfile}
                         else:
                             return {'x_c': x // self.cf_dim, 'x_f': x % self.cf_dim, 'feat': h, 'slen': slen, 'flen': flen, 'featfile': featfile}
                     else:
                         if self.wlat_flag:
-                            return {'x': x, 'feat': h, 'lat': h_lat, 'slen': slen, 'flen': flen, 'featfile': featfile}
+                            if self.worg_flag:
+                                return {'x': x, 'feat': h, 'feat_org': h_org, 'feat_magsp_org': h_magsp_org, 'lat': h_lat, 'slen': slen, 'flen': flen, 'featfile': featfile}
+                            else:
+                                return {'x': x, 'feat': h, 'lat': h_lat, 'slen': slen, 'flen': flen, 'featfile': featfile}
                         else:
                             return {'x': x, 'feat': h, 'slen': slen, 'flen': flen, 'featfile': featfile}
         else:

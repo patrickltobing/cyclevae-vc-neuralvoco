@@ -524,14 +524,14 @@ def main():
                 logging.info(feat_lat.shape)
                 write_hdf5(feat_file, args.string_path+'_lat', feat_lat)
 
-                #logging.info('write rec to h5')
+                logging.info('write rec to h5')
                 outh5dir = os.path.join(os.path.dirname(os.path.dirname(feat_file)), args.spk+"-"+args.spk)
                 if not os.path.exists(outh5dir):
                     os.makedirs(outh5dir)
                 feat_file = os.path.join(outh5dir, os.path.basename(feat_file))
-                #logging.info(feat_file + ' ' + args.string_path)
-                #logging.info(feat_rec.shape)
-                #write_hdf5(feat_file, args.string_path+'_spk-exc-melsp', feat_spk_exc_melsp_cyc)
+                logging.info(feat_file + ' ' + args.string_path)
+                logging.info(feat_rec.shape)
+                write_hdf5(feat_file, args.string_path+'_spk-exc-melsp', feat_spk_exc_melsp_cyc)
 
                 #logging.info('write spk exct melsp cyc to h5')
                 #logging.info(feat_file + ' ' + args.string_path+'_spk-exc-melsp')
@@ -543,14 +543,14 @@ def main():
                 logging.info(feat_lat.shape)
                 write_hdf5(feat_file, args.string_path+'_lat', feat_lat)
 
-                #logging.info('write cyc to h5')
+                logging.info('write cyc to h5')
                 outh5dir = os.path.join(os.path.dirname(os.path.dirname(feat_file)), args.spk+"-"+args.spk+"-"+args.spk)
                 if not os.path.exists(outh5dir):
                     os.makedirs(outh5dir)
                 feat_file = os.path.join(outh5dir, os.path.basename(feat_file))
-                #logging.info(feat_file + ' ' + args.string_path)
-                #logging.info(feat_cyc.shape)
-                #write_hdf5(feat_file, args.string_path, feat_cyc)
+                logging.info(feat_file + ' ' + args.string_path)
+                logging.info(feat_cyc.shape)
+                write_hdf5(feat_file, args.string_path, feat_cyc)
 
                 logging.info('write lat to h5 cyc')
                 #logging.info('write lat rec to h5 cyc')
