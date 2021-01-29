@@ -186,6 +186,8 @@ class FeatureDatasetNeuVoco(Dataset):
                 h = h[spcidx_s_e[0]:spcidx_s_e[-1]]
                 if self.wlat_flag:
                     h_lat = h_lat[spcidx_s_e[0]:spcidx_s_e[-1]]
+                    h_org = h_org[spcidx_s_e[0]:spcidx_s_e[-1]]
+                    h_magsp_org = h_magsp_org[spcidx_s_e[0]:spcidx_s_e[-1]]
             assert(x.shape[0]==h.shape[0]*(self.upsampling_factor//self.n_bands))
             if self.wlat_flag:
                 assert(x.shape[0]==h_lat.shape[0]*(self.upsampling_factor//self.n_bands))

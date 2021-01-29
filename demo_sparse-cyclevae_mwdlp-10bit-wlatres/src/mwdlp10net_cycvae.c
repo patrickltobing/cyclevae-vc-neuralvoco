@@ -345,7 +345,7 @@ static void run_frame_network_cyclevae_lat(CycleVAEMelspExcitSpkNNetState *net, 
 
 //PLT_Jan21
 static void run_frame_network_mwdlp10_wlat(MWDLP10NNetState *net, float *gru_a_condition, float *gru_b_condition, 
-    float *gru_c_condition, const float *lat_excit_melsp, const float *features, int flag_last_frame)
+    float *gru_c_condition, float *lat_excit_melsp, const float *features, int flag_last_frame)
 {
     float conv_out[FEATURE_CONV_OUT_SIZE];
     float condition[FEATURE_DENSE_OUT_SIZE];
@@ -358,6 +358,7 @@ static void run_frame_network_mwdlp10_wlat(MWDLP10NNetState *net, float *gru_a_c
         float out_buffer[FEATURES_DIM];
         RNN_COPY(in, features, FEATURE_DIM_MELSP);
         compute_normalize(&feature_norm, in);
+        RNN_COPY(&lat_excit_melsp[FEATURE_LAT_DIM_EXCIT_MELSP], in, FEATURE_DIM_MELSP);
         compute_dense(&fc_red_in, in_buffer, lat_excit_melsp);
         compute_dense(&fc_red_out, out_buffer, in_buffer);
         for (int i=0; i<FEATURES_DIM; i++)
@@ -510,7 +511,8 @@ MWDLP10NET_CYCVAE_EXPORT void cyclevae_melsp_excit_spk_convert_mwdlp10net_synthe
     int i, j, k, l, m;
     int coarse[N_MBANDS];
     int fine[N_MBANDS];
-    float lat_excit_melsp[FEATURE_LAT_DIM_EXCIT_MELSP];
+    //float lat_excit_melsp[FEATURE_LAT_DIM_EXCIT_MELSP];
+    float lat_excit_melsp[FEATURE_DIM_MELSP_LAT_EXCIT_MELSP];
     //float melsp_cv[FEATURE_DIM_MELSP];
     float *melsp_cv = features;
     float pdf[SQRT_QUANTIZE_MBANDS];
@@ -567,6 +569,7 @@ MWDLP10NET_CYCVAE_EXPORT void cyclevae_melsp_excit_spk_convert_mwdlp10net_synthe
         //if (flag_melsp_out)
         //    RNN_COPY(features, melsp_cv, FEATURE_DIM_MELSP);
         compute_normalize(&feature_norm, melsp_cv); //feature normalization
+        RNN_COPY(&lat_excit_melsp[FEATURE_LAT_DIM_EXCIT_MELSP], melsp_cv, FEATURE_DIM_MELSP);
         float in_buffer[FC_RED_IN_OUT_SIZE];
         float out_buffer[FEATURES_DIM];
         compute_dense(&fc_red_in, in_buffer, lat_excit_melsp);
@@ -597,6 +600,7 @@ MWDLP10NET_CYCVAE_EXPORT void cyclevae_melsp_excit_spk_convert_mwdlp10net_synthe
         //if (flag_melsp_out)
         //    RNN_COPY(features, melsp_cv, FEATURE_DIM_MELSP);
         compute_normalize(&feature_norm, melsp_cv); //feature normalization
+        RNN_COPY(&lat_excit_melsp[FEATURE_LAT_DIM_EXCIT_MELSP], melsp_cv, FEATURE_DIM_MELSP);
         float in_buffer[FC_RED_IN_OUT_SIZE];
         float out_buffer[FEATURES_DIM];
         compute_dense(&fc_red_in, in_buffer, lat_excit_melsp);

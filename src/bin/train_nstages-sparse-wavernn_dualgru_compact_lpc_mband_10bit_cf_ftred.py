@@ -410,6 +410,7 @@ def main():
     args.half_n_quantize = args.n_quantize // 2
     args.c_pad = args.half_n_quantize // args.cf_dim
     args.f_pad = args.half_n_quantize % args.cf_dim
+    args.fftsize = 2 ** (len(bin(200)) - 2 + 1)
     torch.save(args, args.expdir + "/model.conf")
 
     # define network
@@ -688,8 +689,8 @@ def main():
     loss_ms_err = []
     loss_ms_norm_magsp = []
     loss_ms_err_magsp = []
-    loss_melsp = [}
-    loss_melsp_dB = [}
+    loss_melsp = []
+    loss_melsp_dB = []
     loss_magsp = []
     loss_magsp_dB = []
     for i in range(args.n_bands):
@@ -777,8 +778,8 @@ def main():
             loss_ms_err = []
             loss_ms_norm_magsp = []
             loss_ms_err_magsp = []
-            loss_melsp = [}
-            loss_melsp_dB = [}
+            loss_melsp = []
+            loss_melsp_dB = []
             loss_magsp = []
             loss_magsp_dB = []
             for i in range(args.n_bands):
@@ -909,17 +910,17 @@ def main():
                     # handle short ending
                     if len(idx_select) > 0:
                         logging.info('len_idx_select: '+str(len(idx_select)))
-                        batch_loss_melsp_select = 0
-                        batch_loss_melsp_dB_select = 0
-                        batch_loss_magsp_select = 0
-                        batch_loss_magsp_dB_select = 0
-                        batch_loss_ms_norm_select = 0
+                        batch_loss_melsp = 0
+                        batch_loss_melsp_dB = 0
+                        batch_loss_magsp = 0
+                        batch_loss_magsp_dB = 0
+                        batch_loss_ms_norm = 0
                         batch_loss_ms_norm_select_count = 0
-                        batch_loss_ms_err_select = 0
+                        batch_loss_ms_err = 0
                         batch_loss_ms_err_select_count = 0
-                        batch_loss_ms_norm_magsp_select = 0
+                        batch_loss_ms_norm_magsp = 0
                         batch_loss_ms_norm_magsp_select_count = 0
-                        batch_loss_ms_err_magsp_select = 0
+                        batch_loss_ms_err_magsp = 0
                         batch_loss_ms_err_magsp_select_count = 0
                         batch_loss_ce_select = 0
                         batch_loss_err_select = 0
@@ -942,37 +943,38 @@ def main():
                             magsp_est = batch_magsp_res[k,:flens_utt]
 
                             if flens_utt > 1:
-                                batch_loss_melsp_select += torch.mean(torch.sum(criterion_l1(melsp_est, melsp), -1)) \
+                                batch_loss_melsp += torch.mean(torch.sum(criterion_l1(melsp_est, melsp), -1)) \
                                                             + torch.mean(criterion_l1(melsp_est, melsp)) \
                                                         + torch.sqrt(torch.mean(torch.sum(criterion_l2(melsp_est, melsp), -1))) \
                                                             + torch.sqrt(torch.mean(criterion_l2(melsp_est, melsp)))
-                                batch_loss_magsp_select += torch.mean(torch.sum(criterion_l1(magsp_est, magsp), -1)) \
+                                batch_loss_magsp += torch.mean(torch.sum(criterion_l1(magsp_est, magsp), -1)) \
                                                             + torch.mean(criterion_l1(magsp_est, magsp)) \
                                                          + torch.sqrt(torch.mean(torch.sum(criterion_l2(magsp_est, magsp), -1))) \
                                                              + torch.sqrt(torch.mean(criterion_l2(magsp_est, magsp)))
                             else:
-                                batch_loss_melsp_select += torch.mean(torch.sum(criterion_l1(melsp_est, melsp), -1)) \
+                                batch_loss_melsp += torch.mean(torch.sum(criterion_l1(melsp_est, melsp), -1)) \
                                                             + torch.mean(criterion_l1(melsp_est, melsp))
-                                batch_loss_magsp_select += torch.mean(torch.sum(criterion_l1(magsp_est, magsp), -1)) \
+                                batch_loss_magsp += torch.mean(torch.sum(criterion_l1(magsp_est, magsp), -1)) \
                                                             + torch.mean(criterion_l1(magsp_est, magsp))
 
-                            batch_loss_melsp_dB_select += torch.mean(torch.sqrt(torch.mean((20*(torch.log10(torch.clamp(melsp_est_rest, min=1e-16))-melsp_rest))**2, -1)))
-                            batch_loss_magsp_dB_select += torch.mean(torch.mean(torch.sqrt(torch.mean((20*(torch.log10(torch.clamp(magsp_est, min=1e-16))
+                            batch_loss_melsp_dB += torch.mean(torch.sqrt(torch.mean((20*(torch.log10(torch.clamp(melsp_est_rest, min=1e-16))
+                                                                -torch.log10(torch.clamp(melsp_rest, min=1e-16))))**2, -1)))
+                            batch_loss_magsp_dB += torch.mean(torch.mean(torch.sqrt(torch.mean((20*(torch.log10(torch.clamp(magsp_est, min=1e-16))
                                                                 -torch.log10(torch.clamp(magsp, min=1e-16))))**2, -1)), -1))
 
-                            batch_loss_ms_norm_, batch_ms_err_ = criterion_ms(melsp_est_rest, melsp_rest)
+                            batch_loss_ms_norm_, batch_loss_ms_err_ = criterion_ms(melsp_est_rest, melsp_rest)
                             if not torch.isinf(batch_loss_ms_norm_) and not torch.isnan(batch_loss_ms_norm_):
-                                batch_loss_ms_norm_select += batch_loss_ms_norm_
+                                batch_loss_ms_norm += batch_loss_ms_norm_
                                 batch_loss_ms_norm_select_count += 1
                             if not torch.isinf(batch_loss_ms_err_) and not torch.isnan(batch_loss_ms_err_):
-                                batch_loss_ms_err_select += batch_loss_ms_err_
+                                batch_loss_ms_err += batch_loss_ms_err_
                                 batch_loss_ms_err_select_count += 1
                             batch_loss_ms_magsp_norm_, batch_loss_ms_magsp_err_ = criterion_ms(magsp_est, magsp)
                             if not torch.isinf(batch_loss_ms_magsp_norm_) and not torch.isnan(batch_loss_ms_magsp_norm_):
-                                batch_loss_ms_norm_magsp_select += batch_loss_ms_magsp_norm_
+                                batch_loss_ms_norm_magsp += batch_loss_ms_magsp_norm_
                                 batch_loss_ms_norm_magsp_select_count += 1
                             if not torch.isinf(batch_loss_ms_magsp_err_) and not torch.isnan(batch_loss_ms_magsp_err_):
-                                batch_loss_ms_err_magsp_select += batch_loss_ms_magsp_err_
+                                batch_loss_ms_err_magsp += batch_loss_ms_magsp_err_
                                 batch_loss_ms_err_magsp_select_count += 1
 
                             # T x n_bands x 256 --> (T x n_bands) x 256 --> T x n_bands
@@ -980,18 +982,18 @@ def main():
                             batch_loss_ce_f_select += torch.mean(criterion_ce(batch_x_f_output_.reshape(-1, args.cf_dim), batch_x_f_.reshape(-1)).reshape(batch_x_f_output_.shape[0], -1), 0) # n_bands
                             batch_loss_err_select += torch.mean(torch.sum(100*criterion_l1(F.softmax(batch_x_c_output_, dim=-1), F.one_hot(batch_x_c_, num_classes=args.cf_dim).float()), -1), 0) # n_bands
                             batch_loss_err_f_select += torch.mean(torch.sum(100*criterion_l1(F.softmax(batch_x_f_output_, dim=-1), F.one_hot(batch_x_f_, num_classes=args.cf_dim).float()), -1), 0) # n_bands
-                        batch_loss_melsp = batch_loss_melsp_select.item() / len(idx_select)
-                        batch_loss_melsp_dB = batch_loss_melsp_dB_select.item() / len(idx_select)
-                        batch_loss_magsp = batch_loss_magsp_select.item() / len(idx_select)
-                        batch_loss_magsp_dB = batch_loss_magsp_dB_select / len(idx_select)
-                        if batch_loss_ms_norm_select > 0:
-                            batch_loss_ms_norm = batch_loss_ms_norm_select.item() / batch_loss_ms_norm_select_count
-                        if batch_loss_ms_err_select > 0:
-                            batch_loss_ms_err = batch_loss_ms_err_select.item() / batch_loss_ms_err_select_count
-                        if batch_loss_ms_norm_magsp_select > 0:
-                            batch_loss_ms_norm_magsp = batch_loss_ms_norm_magsp_select.item() / batch_loss_ms_norm_magsp_select_count
-                        if batch_loss_ms_err_magsp_select > 0:
-                            batch_loss_ms_err_magsp = batch_loss_ms_err_magsp_select.item() / batch_loss_ms_err_magsp_select_count
+                        batch_loss_melsp = batch_loss_melsp.item() / len(idx_select)
+                        batch_loss_melsp_dB = batch_loss_melsp_dB.item() / len(idx_select)
+                        batch_loss_magsp = batch_loss_magsp.item() / len(idx_select)
+                        batch_loss_magsp_dB = batch_loss_magsp_dB.item() / len(idx_select)
+                        if batch_loss_ms_norm_select_count > 0:
+                            batch_loss_ms_norm = batch_loss_ms_norm.item() / batch_loss_ms_norm_select_count
+                        if batch_loss_ms_err_select_count > 0:
+                            batch_loss_ms_err = batch_loss_ms_err.item() / batch_loss_ms_err_select_count
+                        if batch_loss_ms_norm_magsp_select_count > 0:
+                            batch_loss_ms_norm_magsp = batch_loss_ms_norm_magsp.item() / batch_loss_ms_norm_magsp_select_count
+                        if batch_loss_ms_err_magsp_select_count > 0:
+                            batch_loss_ms_err_magsp = batch_loss_ms_err_magsp.item() / batch_loss_ms_err_magsp_select_count
                         batch_loss_ce_select /= len(idx_select)
                         batch_loss_err_select /= len(idx_select)
                         batch_loss_ce_f_select /= len(idx_select)
@@ -1023,14 +1025,14 @@ def main():
                             loss_err[i].append(batch_loss_err_select[i].item())
                             loss_ce_f[i].append(batch_loss_ce_f_select[i].item())
                             loss_err_f[i].append(batch_loss_err_f_select[i].item())
-                        total_train_loss["train/loss_ms_norm"].append(batch_loss_ms_norm)
-                        total_train_loss["train/loss_ms_err")].append(batch_loss_ms_err)
-                        total_train_loss["train/loss_ms_norm_magsp"].append(batch_loss_ms_norm_magsp)
-                        total_train_loss["train/loss_ms_err_magsp"].append(batch_loss_ms_err_magsp)
-                        total_train_loss["train/loss_melsp"].append(batch_loss_melsp)
-                        total_train_loss["train/loss_melsp"].append(batch_loss_melsp_dB)
-                        total_train_loss["train/loss_magsp"].append(batch_loss_magsp)
-                        total_train_loss["train/loss_magsp"].append(batch_loss_magsp_dB)
+                        total_eval_loss["eval/loss_ms_norm"].append(batch_loss_ms_norm)
+                        total_eval_loss["eval/loss_ms_err"].append(batch_loss_ms_err)
+                        total_eval_loss["eval/loss_ms_norm_magsp"].append(batch_loss_ms_norm_magsp)
+                        total_eval_loss["eval/loss_ms_err_magsp"].append(batch_loss_ms_err_magsp)
+                        total_eval_loss["eval/loss_melsp"].append(batch_loss_melsp)
+                        total_eval_loss["eval/loss_melsp_dB"].append(batch_loss_melsp_dB)
+                        total_eval_loss["eval/loss_magsp"].append(batch_loss_magsp)
+                        total_eval_loss["eval/loss_magsp_dB"].append(batch_loss_magsp_dB)
                         loss_ms_norm.append(batch_loss_ms_norm)
                         loss_ms_err.append(batch_loss_ms_err)
                         loss_ms_norm_magsp.append(batch_loss_ms_norm_magsp)
@@ -1046,6 +1048,7 @@ def main():
                             batch_x_c_output = torch.index_select(batch_x_c_output,0,idx_select_full)
                             batch_x_f_output = torch.index_select(batch_x_f_output,0,idx_select_full)
                             batch_feat_org = torch.index_select(batch_feat_org,0,idx_select_full)
+                            batch_feat_org_rest = torch.index_select(batch_feat_org_rest,0,idx_select_full)
                             batch_feat_magsp_org = torch.index_select(batch_feat_magsp_org,0,idx_select_full)
                             batch_res = torch.index_select(batch_res,0,idx_select_full)
                             batch_res_rest = torch.index_select(batch_res_rest,0,idx_select_full)
@@ -1062,7 +1065,7 @@ def main():
                                         + torch.mean(torch.mean(criterion_l1(batch_res, batch_feat_org), -1), -1) \
                                             + torch.sqrt(torch.mean(torch.mean(criterion_l2(batch_res, batch_feat_org), -1), -1))
                     batch_loss_melsp = batch_loss_melsp_.mean()
-                    batch_loss_melsp_dB = torch.mean(torch.sqrt(torch.mean((20*(torch.log10(torch.clamp(batch_res_rest, min=1e-16))-batch_feat_org_rest))**2, -1)))
+                    batch_loss_melsp_dB = torch.mean(torch.sqrt(torch.mean((20*(torch.log10(torch.clamp(batch_res_rest, min=1e-16))-torch.log10(torch.clamp(batch_feat_org_rest, min=1e-16))))**2, -1)))
 
                     batch_loss_magsp_ = torch.mean(torch.sum(criterion_l1(batch_magsp_res, batch_feat_magsp_org), -1), -1) \
                                             + torch.mean(torch.mean(criterion_l1(batch_magsp_res, batch_feat_magsp_org), -1), -1) \
@@ -1117,14 +1120,14 @@ def main():
                         loss_ce_f[i].append(batch_loss_ce_f[i])
                         loss_err_f[i].append(batch_loss_err_f[i])
 
-                    total_train_loss["train/loss_ms_norm"].append(batch_loss_ms_norm.item())
-                    total_train_loss["train/loss_ms_err")].append(batch_loss_ms_err.item())
-                    total_train_loss["train/loss_ms_norm_magsp"].append(batch_loss_ms_norm_magsp.item())
-                    total_train_loss["train/loss_ms_err_magsp"].append(batch_loss_ms_err_magsp.item())
-                    total_train_loss["train/loss_melsp"].append(batch_loss_melsp.item())
-                    total_train_loss["train/loss_melsp"].append(batch_loss_melsp_dB.item())
-                    total_train_loss["train/loss_magsp"].append(batch_loss_magsp.item())
-                    total_train_loss["train/loss_magsp"].append(batch_loss_magsp_dB.item())
+                    total_eval_loss["eval/loss_ms_norm"].append(batch_loss_ms_norm.item())
+                    total_eval_loss["eval/loss_ms_err"].append(batch_loss_ms_err.item())
+                    total_eval_loss["eval/loss_ms_norm_magsp"].append(batch_loss_ms_norm_magsp.item())
+                    total_eval_loss["eval/loss_ms_err_magsp"].append(batch_loss_ms_err_magsp.item())
+                    total_eval_loss["eval/loss_melsp"].append(batch_loss_melsp.item())
+                    total_eval_loss["eval/loss_melsp_dB"].append(batch_loss_melsp_dB.item())
+                    total_eval_loss["eval/loss_magsp"].append(batch_loss_magsp.item())
+                    total_eval_loss["eval/loss_magsp_dB"].append(batch_loss_magsp_dB.item())
                     loss_ms_norm.append(batch_loss_ms_norm.item())
                     loss_ms_err.append(batch_loss_ms_err.item())
                     loss_ms_norm_magsp.append(batch_loss_ms_norm_magsp.item())
@@ -1137,7 +1140,7 @@ def main():
                     text_log = "batch eval loss [%d] %d %d %d %d %d : %.3f %.3f , %.3f %.3f ; %.3f %.3f dB , %.3f %.3f dB ; "\
                                 "%.3f %.3f %% %.3f %.3f %% %.3f %.3f %%" % (c_idx+1, max_slen, x_ss, x_bs, f_ss, f_bs,
                             batch_loss_ms_norm.item(), batch_loss_ms_err.item(), batch_loss_ms_norm_magsp.item(), batch_loss_ms_err_magsp.item(),
-                                    batch_loss_melsp].item(), batch_loss_melsp_dB.item(), batch_loss_magsp.item(), batch_loss_magsp_dB.item(),
+                                    batch_loss_melsp.item(), batch_loss_melsp_dB.item(), batch_loss_magsp.item(), batch_loss_magsp_dB.item(),
                             batch_loss_ce_avg, batch_loss_err_avg, batch_loss_ce_c_avg, batch_loss_err_c_avg, batch_loss_ce_f_avg, batch_loss_err_f_avg)
                     for i in range(args.n_bands):
                         text_log += " [%d] %.3f %.3f %% %.3f %.3f %%" % (i+1,
@@ -1280,8 +1283,8 @@ def main():
             loss_ms_err = []
             loss_ms_norm_magsp = []
             loss_ms_err_magsp = []
-            loss_melsp = [}
-            loss_melsp_dB = [}
+            loss_melsp = []
+            loss_melsp_dB = []
             loss_magsp = []
             loss_magsp_dB = []
             for i in range(args.n_bands):
@@ -1430,18 +1433,18 @@ def main():
         batch_loss = 0
         if len(idx_select) > 0:
             logging.info('len_idx_select: '+str(len(idx_select)))
-            batch_loss_melsp_select = 0
+            batch_loss_melsp = 0
             batch_loss_melsp_dB_select = 0
-            batch_loss_magsp_select = 0
+            batch_loss_magsp = 0
             batch_loss_magsp_select_count = 0
-            batch_loss_magsp_dB_select = 0
-            batch_loss_ms_norm_select = 0
+            batch_loss_magsp_dB = 0
+            batch_loss_ms_norm = 0
             batch_loss_ms_norm_select_count = 0
-            batch_loss_ms_err_select = 0
+            batch_loss_ms_err = 0
             batch_loss_ms_err_select_count = 0
-            batch_loss_ms_norm_magsp_select = 0
+            batch_loss_ms_norm_magsp = 0
             batch_loss_ms_norm_magsp_select_count = 0
-            batch_loss_ms_err_magsp_select = 0
+            batch_loss_ms_err_magsp = 0
             batch_loss_ms_err_magsp_select_count = 0
             batch_loss_ce_select = 0
             batch_loss_err_select = 0
@@ -1463,42 +1466,43 @@ def main():
                 magsp_est = batch_magsp_res[k,:flens_utt]
 
                 if flens_utt > 1:
-                    batch_loss_melsp_select += torch.mean(torch.sum(criterion_l1(melsp_est, melsp), -1)) \
+                    batch_loss_melsp += torch.mean(torch.sum(criterion_l1(melsp_est, melsp), -1)) \
                                                 + torch.mean(criterion_l1(melsp_est, melsp)) \
                                             + torch.sqrt(torch.mean(torch.sum(criterion_l2(melsp_est, melsp), -1))) \
                                                 + torch.sqrt(torch.mean(criterion_l2(melsp_est, melsp)))
                     if iter_idx >= 50:
-                        batch_loss_magsp_select += torch.mean(torch.sum(criterion_l1(magsp_est, magsp), -1)) \
+                        batch_loss_magsp += torch.mean(torch.sum(criterion_l1(magsp_est, magsp), -1)) \
                                                     + torch.mean(criterion_l1(magsp_est, magsp)) \
                                                  + torch.sqrt(torch.mean(torch.sum(criterion_l2(magsp_est, magsp), -1))) \
                                                      + torch.sqrt(torch.mean(criterion_l2(magsp_est, magsp)))
                         batch_loss_magsp_select_count += 1
                 else:
-                    batch_loss_melsp_select += torch.mean(torch.sum(criterion_l1(melsp_est, melsp), -1)) \
+                    batch_loss_melsp += torch.mean(torch.sum(criterion_l1(melsp_est, melsp), -1)) \
                                                 + torch.mean(criterion_l1(melsp_est, melsp))
                     if iter_idx >= 50:
-                        batch_loss_magsp_select += torch.mean(torch.sum(criterion_l1(magsp_est, magsp), -1)) \
+                        batch_loss_magsp += torch.mean(torch.sum(criterion_l1(magsp_est, magsp), -1)) \
                                                     + torch.mean(criterion_l1(magsp_est, magsp))
                         batch_loss_magsp_select_count += 1
 
-                batch_loss_melsp_dB_select += torch.mean(torch.sqrt(torch.mean((20*(torch.log10(torch.clamp(melsp_est_rest, min=1e-16))-melsp_rest))**2, -1)))
-                batch_loss_magsp_dB_select += torch.mean(torch.mean(torch.sqrt(torch.mean((20*(torch.log10(torch.clamp(magsp_est, min=1e-16))
+                batch_loss_melsp_dB += torch.mean(torch.sqrt(torch.mean((20*(torch.log10(torch.clamp(melsp_est_rest, min=1e-16))
+                                                    -torch.log10(torch.clamp(melsp_rest, min=1e-16))))**2, -1)))
+                batch_loss_magsp_dB += torch.mean(torch.mean(torch.sqrt(torch.mean((20*(torch.log10(torch.clamp(magsp_est, min=1e-16))
                                                     -torch.log10(torch.clamp(magsp, min=1e-16))))**2, -1)), -1))
 
-                batch_loss_ms_norm_, batch_ms_err_ = criterion_ms(melsp_est_rest, melsp_rest)
+                batch_loss_ms_norm_, batch_loss_ms_err_ = criterion_ms(melsp_est_rest, melsp_rest)
                 if not torch.isinf(batch_loss_ms_norm_) and not torch.isnan(batch_loss_ms_norm_):
-                    batch_loss_ms_norm_select += batch_loss_ms_norm_
+                    batch_loss_ms_norm += batch_loss_ms_norm_
                     batch_loss_ms_norm_select_count += 1
                 if not torch.isinf(batch_loss_ms_err_) and not torch.isnan(batch_loss_ms_err_):
-                    batch_loss_ms_err_select += batch_loss_ms_err_
+                    batch_loss_ms_err += batch_loss_ms_err_
                     batch_loss_ms_err_select_count += 1
                 if iter_idx >= 50:
                     batch_loss_ms_magsp_norm_, batch_loss_ms_magsp_err_ = criterion_ms(magsp_est, magsp)
                     if not torch.isinf(batch_loss_ms_magsp_norm_) and not torch.isnan(batch_loss_ms_magsp_norm_):
-                        batch_loss_ms_norm_magsp_select += batch_loss_ms_magsp_norm_
+                        batch_loss_ms_norm_magsp += batch_loss_ms_magsp_norm_
                         batch_loss_ms_norm_magsp_select_count += 1
                     if not torch.isinf(batch_loss_ms_magsp_err_) and not torch.isnan(batch_loss_ms_magsp_err_):
-                        batch_loss_ms_err_magsp_select += batch_loss_ms_magsp_err_
+                        batch_loss_ms_err_magsp += batch_loss_ms_magsp_err_
                         batch_loss_ms_err_magsp_select_count += 1
 
                 # T x n_bands x 256 --> (T x n_bands) x 256 --> T x n_bands
@@ -1517,22 +1521,22 @@ def main():
                 logging.info('%s %d %d' % (featfile[k], slens_utt, flens_utt))
                 batch_loss_err_select += torch.mean(torch.sum(100*criterion_l1(F.softmax(batch_x_c_output_, dim=-1), F.one_hot(batch_x_c_, num_classes=args.cf_dim).float()), -1), 0) # n_bands
                 batch_loss_err_f_select += torch.mean(torch.sum(100*criterion_l1(F.softmax(batch_x_f_output_, dim=-1), F.one_hot(batch_x_f_, num_classes=args.cf_dim).float()), -1), 0) # n_bands
-            batch_loss += batch_loss_melsp_select + batch_loss_magsp_select \
-                            + batch_loss_ms_norm_select + batch_loss_ms_err_select \
-                                + batch_loss_ms_magsp_norm_select + batch_loss_ms_magsp_err_select
-            batch_loss_melsp = batch_loss_melsp_select.item() / len(idx_select)
-            batch_loss_melsp_dB = batch_loss_melsp_dB_select.item() / len(idx_select)
+            batch_loss += batch_loss_melsp + batch_loss_magsp \
+                            + batch_loss_ms_norm + batch_loss_ms_err \
+                                + batch_loss_ms_norm_magsp + batch_loss_ms_err_magsp
+            batch_loss_melsp = batch_loss_melsp.item() / len(idx_select)
+            batch_loss_melsp_dB = batch_loss_melsp_dB.item() / len(idx_select)
             if batch_loss_magsp_select_count > 0:
-                batch_loss_magsp = batch_loss_magsp_select.item() / batch_loss_magsp_select_count
-            batch_loss_magsp_dB = batch_loss_magsp_dB_select / len(idx_select)
-            if batch_loss_ms_norm_select > 0:
-                batch_loss_ms_norm = batch_loss_ms_norm_select.item() / batch_loss_ms_norm_select_count
-            if batch_loss_ms_err_select > 0:
-                batch_loss_ms_err = batch_loss_ms_err_select.item() / batch_loss_ms_err_select_count
-            if batch_loss_ms_norm_magsp_select > 0:
-                batch_loss_ms_norm_magsp = batch_loss_ms_norm_magsp_select.item() / batch_loss_ms_norm_magsp_select_count
-            if batch_loss_ms_err_magsp_select > 0:
-                batch_loss_ms_err_magsp = batch_loss_ms_err_magsp_select.item() / batch_loss_ms_err_magsp_select_count
+                batch_loss_magsp = batch_loss_magsp.item() / batch_loss_magsp_select_count
+            batch_loss_magsp_dB = batch_loss_magsp_dB.item() / len(idx_select)
+            if batch_loss_ms_norm_select_count > 0:
+                batch_loss_ms_norm = batch_loss_ms_norm.item() / batch_loss_ms_norm_select_count
+            if batch_loss_ms_err_select_count > 0:
+                batch_loss_ms_err = batch_loss_ms_err.item() / batch_loss_ms_err_select_count
+            if batch_loss_ms_norm_magsp_select_count > 0:
+                batch_loss_ms_norm_magsp = batch_loss_ms_norm_magsp.item() / batch_loss_ms_norm_magsp_select_count
+            if batch_loss_ms_err_magsp_select_count > 0:
+                batch_loss_ms_err_magsp = batch_loss_ms_err_magsp.item() / batch_loss_ms_err_magsp_select_count
             batch_loss_ce_select /= len(idx_select)
             batch_loss_err_select /= len(idx_select)
             batch_loss_ce_f_select /= len(idx_select)
@@ -1566,13 +1570,13 @@ def main():
                 loss_ce_f[i].append(batch_loss_ce_f_select[i].item())
                 loss_err_f[i].append(batch_loss_err_f_select[i].item())
             total_train_loss["train/loss_ms_norm"].append(batch_loss_ms_norm)
-            total_train_loss["train/loss_ms_err")].append(batch_loss_ms_err)
+            total_train_loss["train/loss_ms_err"].append(batch_loss_ms_err)
             total_train_loss["train/loss_ms_norm_magsp"].append(batch_loss_ms_norm_magsp)
             total_train_loss["train/loss_ms_err_magsp"].append(batch_loss_ms_err_magsp)
             total_train_loss["train/loss_melsp"].append(batch_loss_melsp)
-            total_train_loss["train/loss_melsp"].append(batch_loss_melsp_dB)
+            total_train_loss["train/loss_melsp_dB"].append(batch_loss_melsp_dB)
             total_train_loss["train/loss_magsp"].append(batch_loss_magsp)
-            total_train_loss["train/loss_magsp"].append(batch_loss_magsp_dB)
+            total_train_loss["train/loss_magsp_dB"].append(batch_loss_magsp_dB)
             loss_ms_norm.append(batch_loss_ms_norm)
             loss_ms_err.append(batch_loss_ms_err)
             loss_ms_norm_magsp.append(batch_loss_ms_norm_magsp)
@@ -1588,6 +1592,7 @@ def main():
                 batch_x_c_output = torch.index_select(batch_x_c_output,0,idx_select_full)
                 batch_x_f_output = torch.index_select(batch_x_f_output,0,idx_select_full)
                 batch_feat_org = torch.index_select(batch_feat_org,0,idx_select_full)
+                batch_feat_org_rest = torch.index_select(batch_feat_org_rest,0,idx_select_full)
                 batch_feat_magsp_org = torch.index_select(batch_feat_magsp_org,0,idx_select_full)
                 batch_res = torch.index_select(batch_res,0,idx_select_full)
                 batch_res_rest = torch.index_select(batch_res_rest,0,idx_select_full)
@@ -1642,7 +1647,7 @@ def main():
                                 + torch.sqrt(torch.mean(torch.mean(criterion_l2(batch_res, batch_feat_org), -1), -1))
         batch_loss += batch_loss_melsp_.sum()
         batch_loss_melsp = batch_loss_melsp_.mean()
-        batch_loss_melsp_dB = torch.mean(torch.sqrt(torch.mean((20*(torch.log10(torch.clamp(batch_res_rest, min=1e-16))-batch_feat_org_rest))**2, -1)))
+        batch_loss_melsp_dB = torch.mean(torch.sqrt(torch.mean((20*(torch.log10(torch.clamp(batch_res_rest, min=1e-16))-torch.log10(torch.clamp(batch_feat_org_rest, min=1e-16))))**2, -1)))
 
         batch_loss_magsp_ = torch.mean(torch.sum(criterion_l1(batch_magsp_res, batch_feat_magsp_org), -1), -1) \
                                 + torch.mean(torch.mean(criterion_l1(batch_magsp_res, batch_feat_magsp_org), -1), -1) \
@@ -1709,13 +1714,13 @@ def main():
             loss_err_f[i].append(batch_loss_err_f[i])
 
         total_train_loss["train/loss_ms_norm"].append(batch_loss_ms_norm.item())
-        total_train_loss["train/loss_ms_err")].append(batch_loss_ms_err.item())
+        total_train_loss["train/loss_ms_err"].append(batch_loss_ms_err.item())
         total_train_loss["train/loss_ms_norm_magsp"].append(batch_loss_ms_norm_magsp.item())
         total_train_loss["train/loss_ms_err_magsp"].append(batch_loss_ms_err_magsp.item())
         total_train_loss["train/loss_melsp"].append(batch_loss_melsp.item())
-        total_train_loss["train/loss_melsp"].append(batch_loss_melsp_dB.item())
+        total_train_loss["train/loss_melsp_dB"].append(batch_loss_melsp_dB.item())
         total_train_loss["train/loss_magsp"].append(batch_loss_magsp.item())
-        total_train_loss["train/loss_magsp"].append(batch_loss_magsp_dB.item())
+        total_train_loss["train/loss_magsp_dB"].append(batch_loss_magsp_dB.item())
         loss_ms_norm.append(batch_loss_ms_norm.item())
         loss_ms_err.append(batch_loss_ms_err.item())
         loss_ms_norm_magsp.append(batch_loss_ms_norm_magsp.item())
@@ -1762,7 +1767,7 @@ def main():
         text_log = "batch loss [%d] %d %d %d %d %d : %.3f %.3f , %.3f %.3f ; %.3f %.3f dB , %.3f %.3f dB ; "\
                     "%.3f %.3f %% %.3f %.3f %% %.3f %.3f %%" % (c_idx+1, max_slen, x_ss, x_bs, f_ss, f_bs,
                 batch_loss_ms_norm.item(), batch_loss_ms_err.item(), batch_loss_ms_norm_magsp.item(), batch_loss_ms_err_magsp.item(),
-                        batch_loss_melsp].item(), batch_loss_melsp_dB.item(), batch_loss_magsp.item(), batch_loss_magsp_dB.item(),
+                        batch_loss_melsp.item(), batch_loss_melsp_dB.item(), batch_loss_magsp.item(), batch_loss_magsp_dB.item(),
                 batch_loss_ce_avg, batch_loss_err_avg, batch_loss_ce_c_avg, batch_loss_err_c_avg, batch_loss_ce_f_avg, batch_loss_err_f_avg)
         for i in range(args.n_bands):
             text_log += " [%d] %.3f %.3f %% %.3f %.3f %%" % (i+1,
