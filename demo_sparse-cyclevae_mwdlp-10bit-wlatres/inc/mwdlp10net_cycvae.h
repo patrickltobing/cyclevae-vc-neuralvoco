@@ -48,11 +48,19 @@
 //PLT_Dec20
 typedef struct MWDLP10CycleVAEMelspExcitSpkNetState MWDLP10CycleVAEMelspExcitSpkNetState;
 
+typedef struct MWDLP10NetState MWDLP10NetState;
+
 MWDLP10NET_CYCVAE_EXPORT int mwdlp10cyclevaenet_get_size();
 
 MWDLP10NET_CYCVAE_EXPORT MWDLP10CycleVAEMelspExcitSpkNetState *mwdlp10cyclevaenet_create();
 
 MWDLP10NET_CYCVAE_EXPORT void mwdlp10cyclevaenet_destroy(MWDLP10CycleVAEMelspExcitSpkNetState *mwdlp10cyclevaenet);
+
+MWDLP10NET_CYCVAE_EXPORT int mwdlp10net_get_size();
+
+MWDLP10NET_CYCVAE_EXPORT MWDLP10NetState *mwdlp10net_create();
+
+MWDLP10NET_CYCVAE_EXPORT void mwdlp10net_destroy(MWDLP10NetState *mwdlp10net);
 
 //PLT_Jan21
 MWDLP10NET_CYCVAE_EXPORT void cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(
@@ -64,7 +72,7 @@ MWDLP10NET_CYCVAE_EXPORT void cyclevae_melsp_excit_spk_convert_mwdlp10net_synthe
     //MWDLP10CycleVAEMelspExcitSpkNetState *st, const float *features, float *spk_code_aux,
     //    short *output, int *n_output, int flag_last_frame, float *melsp_cv, short *pcm_1, short *pcm_2, short *pcm_3, short *pcm_4);
 
-MWDLP10NET_CYCVAE_EXPORT void cyclevae_mwdlp10net_synthesize(MWDLP10CycleVAEMelspExcitSpkNetState *st,
-        float *features, short *output, int *n_output, int flag_last_frame);
+MWDLP10NET_CYCVAE_EXPORT void mwdlp10net_synthesize(MWDLP10NetState *st, const float *features,
+    short *output, int *n_output, int flag_last_frame);
 
 #endif

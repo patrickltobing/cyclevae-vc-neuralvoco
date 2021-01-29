@@ -111,6 +111,7 @@ class FeatureDatasetNeuVoco(Dataset):
     def __getitem__(self, idx):
         wavfile = self.wav_list[idx]
         featfile = self.feat_list[idx]
+        logging.info(featfile)
         
         if (self.spcidx and not check_hdf5(featfile, '/spcidx_range')) or (self.wlat_flag and self.worg_flag):
             file_org = os.path.join(os.path.dirname(os.path.dirname(featfile)), os.path.basename(os.path.dirname(featfile)).split("-")[0], os.path.basename(featfile))

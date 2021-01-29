@@ -26,9 +26,8 @@ CLIP_1E12 = -14.162084148244246758816564788835 #laplace var. = 2*scale^2; log(sc
 
 # From math.h in C, exp(34.65728569) = 1125815191648271.875000, which is the closest limit
 #       to the celt_exp(34.65735817) = 1125815685218304.000000 of LPCNet code
-# celt_exp() function uses vectorization and approximation which makes it more efficient
-# Input to tanh(), sigmoid(), tanhshrink(), selu(), logsigmoid(), and exp() functions of PyTorch
-# needs to be clamped with this value
+# celt_exp() function uses vectorization and approximation which makes it more efficient for softmax() function in pdf waveform sampling (expensive sample-by-sample computation)
+# These values also stabilize these functions more in general: tanh(), sigmoid(), tanhshrink(), selu(), logsigmoid(), and exp()
 MIN_CLAMP = -34.65728569
 MAX_CLAMP = 34.65728569
 
@@ -1899,20 +1898,26 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
             # B x T x x n_bands x K, B x T x n_bands x K and B x T x n_bands x 256
             # x_lpc B x T_lpc x n_bands --> B x T x n_bands x K --> B x T x n_bands x K x 256
             # unfold put new dimension on the last
-            #return torch.clamp(logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), \
-            #    torch.clamp(logits_f + torch.sum((signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), h.detach(), h_2.detach(), h_f.detach()
             if not ret_res:
+            #    return torch.clamp(logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), \
+            #        torch.clamp(logits_f + torch.sum((signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), h.detach(), h_2.detach(), h_f.detach()
                 return torch.clamp(logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), min=-32, max=32), \
                     torch.clamp(logits_f + torch.sum((signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3), min=-32, max=32), h.detach(), h_2.detach(), h_f.detach()
             else:
+            #    return torch.clamp(logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), \
+            #        torch.clamp(logits_f + torch.sum((signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), res, h.detach(), h_2.detach(), h_f.detach()
                 return torch.clamp(logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), min=-32, max=32), \
                     torch.clamp(logits_f + torch.sum((signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3), min=-32, max=32), res, h.detach(), h_2.detach(), h_f.detach()
             # B x T x n_bands x 256
         else:
             logits_c = self.out(out.transpose(1,2))
             logits_f = self.out_f(out_f.transpose(1,2))
-            #return torch.clamp(logits_c, min=MIN_CLAMP, max=MAX_CLAMP), torch.clamp(logits_f, min=MIN_CLAMP, max=MAX_CLAMP), h.detach(), h_2.detach(), h_f.detach()
-            return torch.clamp(logits_c, min=-32, max=32), torch.clamp(logits_f, min=-32, max=32), h.detach(), h_2.detach(), h_f.detach()
+            if not ret_res:
+            #    return torch.clamp(logits_c, min=MIN_CLAMP, max=MAX_CLAMP), torch.clamp(logits_f, min=MIN_CLAMP, max=MAX_CLAMP), h.detach(), h_2.detach(), h_f.detach()
+                return torch.clamp(logits_c, min=-32, max=32), torch.clamp(logits_f, min=-32, max=32), h.detach(), h_2.detach(), h_f.detach()
+            else:
+            #    return torch.clamp(logits_c, min=MIN_CLAMP, max=MAX_CLAMP), torch.clamp(logits_f, min=MIN_CLAMP, max=MAX_CLAMP), res, h.detach(), h_2.detach(), h_f.detach()
+                return torch.clamp(logits_c, min=-32, max=32), torch.clamp(logits_f, min=-32, max=32), res, h.detach(), h_2.detach(), h_f.detach()
  
     def generate(self, c, intervals=4000, spk_code=None, spk_aux=None, aux=None, outpad_left=None, outpad_right=None):
         start = time.time()

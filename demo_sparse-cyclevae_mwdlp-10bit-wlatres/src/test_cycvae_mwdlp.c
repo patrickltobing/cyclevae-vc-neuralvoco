@@ -205,7 +205,7 @@ int main(int argc, char **argv) {
     clock_t t = clock();
 
     short l, features_dim_1;
-    if (print_melsp_flag) features_dim_1 = MEL_DIM - 1;
+    if (print_melsp_flag) features_dim_1 = FEATURES_DIM - 1;
     long samples = 0;
 
     if (wav_in_flag) { //waveform input
@@ -215,7 +215,7 @@ int main(int argc, char **argv) {
         //read wave header input and initialize wave output header
         if (read_write_wav(fin, fout, &num_reflected_right_edge_samples, &num_samples, &size_of_each_sample)) {
 
-            float features[MEL_DIM];
+            float features[FEATURES_DIM];
             short pcm[MAX_N_OUTPUT]; //output is in short 2-byte (16-bit) format [-32768,32767]
             short first_buffer_flag = 0;
             short waveform_buffer_flag = 0;
@@ -232,8 +232,8 @@ int main(int argc, char **argv) {
 
             if (!cv_point_flag && !cv_interp_flag) { //analysis-synthesis
                 // initialize mwdlp struct
-                MWDLP10CycleVAEMelspExcitSpkNetState *net;
-                net = mwdlp10cyclevaenet_create();
+                MWDLP10NetState *net;
+                net = mwdlp10net_create();
 
                 for (i = 0, j = 0, k = 0; i < num_samples; i++) {
                     if ((read = fread(data_buffer, sizeof(data_buffer), 1, fin))) {
@@ -276,14 +276,14 @@ int main(int argc, char **argv) {
                             //extract melspectrogram here
                             mel_spec_extract(dsp, features);
 
-                            cyclevae_mwdlp10net_synthesize(net, features, pcm, &n_output, 0);
+                            mwdlp10net_synthesize(net, features, pcm, &n_output, 0);
 
                             if (print_melsp_flag) {
-                                for (l=0;l<MEL_DIM;l++) {
+                                for (l=0;l<FEATURES_DIM;l++) {
                                     features[l] = (exp(features[l])-1)/10000;
                                 }
                                 fwrite(features, sizeof(features), 1, fout_msp_bin);
-                                for (l=0;l<MEL_DIM;l++) {
+                                for (l=0;l<FEATURES_DIM;l++) {
                                     if (l < features_dim_1) {
                                         fprintf(fout_msp_txt, "%f ", features[l]);
                                     } else {
@@ -308,7 +308,7 @@ int main(int argc, char **argv) {
                             fclose(fout_msp_txt);
                         }
                         dspstate_destroy(dsp);
-                        mwdlp10cyclevaenet_destroy(net);
+                        mwdlp10net_destroy(net);
                         exit(1);
                     }
                 }
@@ -330,27 +330,27 @@ int main(int argc, char **argv) {
                             fclose(fout_msp_txt);
                         }
                         dspstate_destroy(dsp);
-                        mwdlp10cyclevaenet_destroy(net);
+                        mwdlp10net_destroy(net);
                         exit(1);
                     }
 
                     mel_spec_extract(dsp, features);
 
-                    cyclevae_mwdlp10net_synthesize(net, features, pcm, &n_output, 0);
+                    mwdlp10net_synthesize(net, features, pcm, &n_output, 0);
 
                     if (n_output > 0)  {
                         fwrite(pcm, sizeof(pcm[0]), n_output, fout);
                         samples += n_output;
                     }
 
-                    cyclevae_mwdlp10net_synthesize(net, features, pcm, &n_output, 1); //last_frame_flag, synth pad_right
+                    mwdlp10net_synthesize(net, features, pcm, &n_output, 1); //last_frame_flag, synth pad_right
 
                     if (print_melsp_flag) {
-                        for (l=0;l<MEL_DIM;l++) {
+                        for (l=0;l<FEATURES_DIM;l++) {
                             features[l] = (exp(features[l])-1)/10000;
                         }
                         fwrite(features, sizeof(features), 1, fout_msp_bin);
-                        for (l=0;l<MEL_DIM;l++) {
+                        for (l=0;l<FEATURES_DIM;l++) {
                             if (l < features_dim_1) {
                                 fprintf(fout_msp_txt, "%f ", features[l]);
                             } else {
@@ -380,7 +380,7 @@ int main(int argc, char **argv) {
                     fclose(fout_msp_txt);
                 }
                 dspstate_destroy(dsp);
-                mwdlp10cyclevaenet_destroy(net);
+                mwdlp10net_destroy(net);
             } else { //analysis-conversion-synthesis
                 // initialize mwdlp+cyclevae struct
                 MWDLP10CycleVAEMelspExcitSpkNetState *net;
@@ -460,11 +460,11 @@ int main(int argc, char **argv) {
                             cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0);
 
                             if (print_melsp_flag) {
-                                for (l=0;l<MEL_DIM;l++) {
+                                for (l=0;l<FEATURES_DIM;l++) {
                                     features[l] = (exp(features[l])-1)/10000;
                                 }
                                 fwrite(features, sizeof(features), 1, fout_msp_bin);
-                                for (l=0;l<MEL_DIM;l++) {
+                                for (l=0;l<FEATURES_DIM;l++) {
                                     if (l < features_dim_1) {
                                         fprintf(fout_msp_txt, "%f ", features[l]);
                                     } else {
@@ -524,11 +524,11 @@ int main(int argc, char **argv) {
                     cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 1); //last_frame_flag, synth pad_right
 
                     if (print_melsp_flag) {
-                        for (l=0;l<MEL_DIM;l++) {
+                        for (l=0;l<FEATURES_DIM;l++) {
                             features[l] = (exp(features[l])-1)/10000;
                         }
                         fwrite(features, sizeof(features), 1, fout_msp_bin);
-                        for (l=0;l<MEL_DIM;l++) {
+                        for (l=0;l<FEATURES_DIM;l++) {
                             if (l < features_dim_1) {
                                 fprintf(fout_msp_txt, "%f ", features[l]);
                             } else {
@@ -573,7 +573,7 @@ int main(int argc, char **argv) {
         //read input features and initialize wave output header
         if ((num_frame = read_feat_write_wav(fin, fout, melsp_bin_in_flag)) > 0) {
 
-            float features[MEL_DIM];
+            float features[FEATURES_DIM];
             short pcm[MAX_N_OUTPUT]; //output is in short 2-byte (16-bit) format [-32768,32767]
             int n_output = 0;
             short i, j;
@@ -581,8 +581,8 @@ int main(int argc, char **argv) {
 
             if (!cv_point_flag && !cv_interp_flag) { //analysis-synthesis
                 // initialize mwdlp struct
-                MWDLP10CycleVAEMelspExcitSpkNetState *net;
-                net = mwdlp10cyclevaenet_create();
+                MWDLP10NetState *net;
+                net = mwdlp10net_create();
 
                 if (melsp_txt_in_flag) {
                     char c;
@@ -606,14 +606,14 @@ int main(int argc, char **argv) {
                                 features[j] = log(1+10000*atof(buffer));
                                 memset(buffer,'\0',i);
                                 j++;
-                                if (j == MEL_DIM) { //add row, process frame
+                                if (j == FEATURES_DIM) { //add row, process frame
                                     k++;
                                     i = 0;
                                     j = 0;
                                     flag = 0;
                                     frame = 1;
                                 } else { //columns not appropriate
-                                    fprintf(stderr, "Error input text format %d %d\n", j, MEL_DIM);
+                                    fprintf(stderr, "Error input text format %d %d\n", j, FEATURES_DIM);
                                     //free(buffer);
                                     fclose(fin);
                                     fclose(fout);
@@ -621,7 +621,7 @@ int main(int argc, char **argv) {
                                     //    fclose(fout_msp_bin);
                                     //    fclose(fout_msp_txt);
                                     //}
-                                    mwdlp10cyclevaenet_destroy(net);
+                                    mwdlp10net_destroy(net);
                                     exit(1);
                                 }
                             } else {
@@ -634,13 +634,13 @@ int main(int argc, char **argv) {
                                 buffer[i] = c;
                                 i++;
                             } else if (c == '\n') { //found end-of-line
-                                if (j == MEL_DIM) { //add row, process frame
+                                if (j == FEATURES_DIM) { //add row, process frame
                                     k++;
                                     i = 0;
                                     j = 0;
                                     frame = 1;
                                 } else { //columns not appropriate
-                                    fprintf(stderr, "Error input text format  %d %d\n", j, MEL_DIM);
+                                    fprintf(stderr, "Error input text format  %d %d\n", j, FEATURES_DIM);
                                     //free(buffer);
                                     fclose(fin);
                                     fclose(fout);
@@ -648,7 +648,7 @@ int main(int argc, char **argv) {
                                     //    fclose(fout_msp_bin);
                                     //    fclose(fout_msp_txt);
                                     //}
-                                    mwdlp10cyclevaenet_destroy(net);
+                                    mwdlp10net_destroy(net);
                                     exit(1);
                                 }
                             }
@@ -658,13 +658,13 @@ int main(int argc, char **argv) {
                             else if (k < num_frame) printf("frame: [%ld]", k);
                             else printf(" [last frame]\n");
 
-                            cyclevae_mwdlp10net_synthesize(net, features, pcm, &n_output, 0);
+                            mwdlp10net_synthesize(net, features, pcm, &n_output, 0);
                     
                             //if (print_melsp_flag) {
-                            //    for (l=0;l<MEL_DIM;l++)
+                            //    for (l=0;l<FEATURES_DIM;l++)
                             //        features[l] = (exp(features[l])-1)/10000;
                             //    fwrite(features, sizeof(features), 1, fout_msp_bin);
-                            //    for (l=0;l<MEL_DIM;l++)
+                            //    for (l=0;l<FEATURES_DIM;l++)
                             //        if (l < features_dim_1)
                             //            fprintf(fout_msp_txt, "%f ", features[l]);
                             //        else
@@ -680,22 +680,22 @@ int main(int argc, char **argv) {
                         }
                     }
                 } else if (melsp_bin_in_flag) {
-                    //float *buffer = (float*) calloc(MEL_DIM, sizeof(float));
-                    float buffer[MEL_DIM];
+                    //float *buffer = (float*) calloc(FEATURES_DIM, sizeof(float));
+                    float buffer[FEATURES_DIM];
                     int read = 0;
 
                     for (k = 0; k < num_frame; k++) {
                         if ((read = fread(buffer, sizeof(buffer), 1, fin))) {
-                            for (j = 0; j < MEL_DIM; j++)
+                            for (j = 0; j < FEATURES_DIM; j++)
                                 features[j] = log(1+10000*buffer[j]);
 
-                            cyclevae_mwdlp10net_synthesize(net, features, pcm, &n_output, 0);
+                            mwdlp10net_synthesize(net, features, pcm, &n_output, 0);
                     
                             //if (print_melsp_flag) {
-                            //    for (l=0;l<MEL_DIM;l++)
+                            //    for (l=0;l<FEATURES_DIM;l++)
                             //        features[l] = (exp(features[l])-1)/10000;
                             //    fwrite(features, sizeof(features), 1, fout_msp_bin);
-                            //    for (l=0;l<MEL_DIM;l++)
+                            //    for (l=0;l<FEATURES_DIM;l++)
                             //        if (l < features_dim_1)
                             //            fprintf(fout_msp_txt, "%f ", features[l]);
                             //        else
@@ -715,7 +715,7 @@ int main(int argc, char **argv) {
                             //    fclose(fout_msp_bin);
                             //    fclose(fout_msp_txt);
                             //}
-                            mwdlp10cyclevaenet_destroy(net);
+                            mwdlp10net_destroy(net);
                             exit(1);
                         }
                     }
@@ -727,12 +727,12 @@ int main(int argc, char **argv) {
                     //    fclose(fout_msp_bin);
                     //    fclose(fout_msp_txt);
                     //}
-                    mwdlp10cyclevaenet_destroy(net);
+                    mwdlp10net_destroy(net);
                     exit(1);
                 }
 
                 if (k == num_frame) {
-                    cyclevae_mwdlp10net_synthesize(net, features, pcm, &n_output, 1); //last_frame_flag, synth pad_right
+                    mwdlp10net_synthesize(net, features, pcm, &n_output, 1); //last_frame_flag, synth pad_right
 
                     if (n_output > 0)  {
                         fwrite(pcm, sizeof(pcm[0]), n_output, fout);
@@ -747,7 +747,7 @@ int main(int argc, char **argv) {
                     //    fclose(fout_msp_bin);
                     //    fclose(fout_msp_txt);
                     //}
-                    mwdlp10cyclevaenet_destroy(net);
+                    mwdlp10net_destroy(net);
                     exit(1);
                 }
     
@@ -766,7 +766,7 @@ int main(int argc, char **argv) {
                 //    fclose(fout_msp_bin);
                 //    fclose(fout_msp_txt);
                 //}
-                mwdlp10cyclevaenet_destroy(net);
+                mwdlp10net_destroy(net);
             } else { //analysis-conversion-synthesis
                 // initialize mwdlp+cyclevae struct
                 MWDLP10CycleVAEMelspExcitSpkNetState *net;
@@ -825,14 +825,14 @@ int main(int argc, char **argv) {
                                 features[j] = log(1+10000*atof(buffer));
                                 memset(buffer,'\0',i);
                                 j++;
-                                if (j == MEL_DIM) { //add row, process frame
+                                if (j == FEATURES_DIM) { //add row, process frame
                                     k++;
                                     i = 0;
                                     j = 0;
                                     flag = 0;
                                     frame = 1;
                                 } else { //columns not appropriate
-                                    fprintf(stderr, "Error input text format %d %d\n", j, MEL_DIM);
+                                    fprintf(stderr, "Error input text format %d %d\n", j, FEATURES_DIM);
                                     //free(buffer);
                                     fclose(fin);
                                     fclose(fout);
@@ -853,13 +853,13 @@ int main(int argc, char **argv) {
                                 buffer[i] = c;
                                 i++;
                             } else if (c == '\n') { //found end-of-line
-                                if (j == MEL_DIM) { //add row, process frame
+                                if (j == FEATURES_DIM) { //add row, process frame
                                     k++;
                                     i = 0;
                                     j = 0;
                                     frame = 1;
                                 } else { //columns not appropriate
-                                    fprintf(stderr, "Error input text format  %d %d\n", j, MEL_DIM);
+                                    fprintf(stderr, "Error input text format  %d %d\n", j, FEATURES_DIM);
                                     //free(buffer);
                                     fclose(fin);
                                     fclose(fout);
@@ -880,10 +880,10 @@ int main(int argc, char **argv) {
                             cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0);
                     
                             if (print_melsp_flag) {
-                                for (l=0;l<MEL_DIM;l++)
+                                for (l=0;l<FEATURES_DIM;l++)
                                     features[l] = (exp(features[l])-1)/10000;
                                 fwrite(features, sizeof(features), 1, fout_msp_bin);
-                                for (l=0;l<MEL_DIM;l++)
+                                for (l=0;l<FEATURES_DIM;l++)
                                     if (l < features_dim_1)
                                         fprintf(fout_msp_txt, "%f ", features[l]);
                                     else
@@ -899,22 +899,22 @@ int main(int argc, char **argv) {
                         }
                     }
                 } else if (melsp_bin_in_flag) {
-                    //float *buffer = (float*) calloc(MEL_DIM, sizeof(float));
-                    float buffer[MEL_DIM];
+                    //float *buffer = (float*) calloc(FEATURES_DIM, sizeof(float));
+                    float buffer[FEATURES_DIM];
                     int read = 0;
 
                     for (k = 0; k < num_frame; k++) {
                         if ((read = fread(buffer, sizeof(buffer), 1, fin))) {
-                            for (j = 0; j < MEL_DIM; j++)
+                            for (j = 0; j < FEATURES_DIM; j++)
                                 features[j] = log(1+10000*buffer[j]);
 
                             cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0);
                     
                             if (print_melsp_flag) {
-                                for (l=0;l<MEL_DIM;l++)
+                                for (l=0;l<FEATURES_DIM;l++)
                                     features[l] = (exp(features[l])-1)/10000;
                                 fwrite(features, sizeof(features), 1, fout_msp_bin);
-                                for (l=0;l<MEL_DIM;l++)
+                                for (l=0;l<FEATURES_DIM;l++)
                                     if (l < features_dim_1)
                                         fprintf(fout_msp_txt, "%f ", features[l]);
                                     else

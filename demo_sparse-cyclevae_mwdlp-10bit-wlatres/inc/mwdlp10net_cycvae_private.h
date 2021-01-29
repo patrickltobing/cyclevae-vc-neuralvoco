@@ -153,4 +153,31 @@ struct MWDLP10CycleVAEMelspExcitSpkNetState {
 };
 
 
+struct MWDLP10NetState {
+    MWDLP10NNetState nnet;
+    float mu_law_10_table[N_QUANTIZE];
+    int last_coarse[LPC_ORDER_MBANDS];
+    int last_fine[LPC_ORDER_MBANDS];
+    int frame_count;
+    int sample_count;
+    int first_flag;
+    float deemph_mem;
+    //upsample-bands,zero-pad-right,NBxNB
+    float buffer_output[N_MBANDS_SQR];
+    /*
+        in_state pqmf_synth filt.,(ORD+1)*NB+(NB-1)*NB=ORD*NB+NB*NB
+        for the very first output, zeros to the left of the very first [{ORD-1}-th] as:
+        [[0,...,0]_1st,[0,...,0]_2nd,...,[[(1st,...,NB-th)*NB]_1st,[0,...0]_2nd,...,[0,...,0]_NB-th]]_{ORD+1}]
+        for NB-bands and kaiser_length=ORD+1, where at each time-index, the dimension is NB*NB
+        nonzeros for (1st*NB) and zeros for the (2nd-to-NB)*NB
+        it then shifts to the left for every new output
+    */
+    float pqmf_state[PQMF_ORDER_MBANDS+N_MBANDS_SQR];
+    //first in_state pqmf_synth filt.,(ORD+1)*NB+(FIRST_N_OUTPUT-1)*NB=ORD*NB+FIRST_N_OUTPUT*NB
+    float first_pqmf_state[PQMF_ORDER_MBANDS+FIRST_N_OUTPUT_MBANDS];
+    //last in_state pqmf_synth filt.,(ORD+1)*NB+(ORD//2-1)*NB=ORD*NB+DELAY*NB
+    float last_pqmf_state[PQMF_ORDER_MBANDS+PQMF_DELAY_MBANDS];
+};
+
+
 #endif

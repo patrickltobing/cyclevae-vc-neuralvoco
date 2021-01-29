@@ -538,7 +538,7 @@ def main():
                 feat_file = os.path.join(outh5dir, os.path.basename(feat_file))
                 logging.info(feat_file + ' ' + args.string_path)
                 logging.info(feat_rec.shape)
-                write_hdf5(feat_file, args.string_path+'_spk-exc-melsp', feat_spk_exc_melsp_cyc)
+                write_hdf5(feat_file, args.string_path, feat_rec)
 
                 logging.info('write lat to h5 rec')
                 logging.info(feat_file + ' ' + args.string_path+'_lat')
@@ -555,12 +555,9 @@ def main():
                 write_hdf5(feat_file, args.string_path, feat_cyc)
 
                 logging.info('write lat to h5 cyc')
-                #logging.info('write lat rec to h5 cyc')
                 logging.info(feat_file + ' ' + args.string_path+'_lat')
                 logging.info(feat_lat.shape)
-                #logging.info(feat_lat_cyc.shape)
                 write_hdf5(feat_file, args.string_path+'_lat', feat_lat)
-                #write_hdf5(feat_file, args.string_path+'_lat', feat_lat_cyc)
 
                 count += 1
                 #if count >= 5:

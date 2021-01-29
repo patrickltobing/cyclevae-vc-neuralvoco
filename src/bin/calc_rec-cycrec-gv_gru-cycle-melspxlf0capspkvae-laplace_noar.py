@@ -512,14 +512,9 @@ def main():
                     lsdstd_cvlist_cyc_dv.append(lsd_std_cyc)
                     cvlist_cyc_dv.append(np.var(melsp_cyc_rest, axis=0))
 
-                #logging.info('write spk exc melsp to h5')
+                logging.info('write lat to h5')
                 outh5dir = os.path.join(os.path.dirname(os.path.dirname(feat_file)), args.spk)
                 feat_file = os.path.join(outh5dir, os.path.basename(feat_file))
-                #logging.info(feat_file + ' ' + args.string_path+'_spk-exc-melsp')
-                #logging.info(feat_spk_exc_melsp.shape)
-                #write_hdf5(feat_file, args.string_path+'_spk-exc-melsp', feat_spk_exc_melsp)
-
-                logging.info('write lat to h5')
                 logging.info(feat_file + ' ' + args.string_path+'_lat')
                 logging.info(feat_lat.shape)
                 write_hdf5(feat_file, args.string_path+'_lat', feat_lat)
@@ -531,12 +526,7 @@ def main():
                 feat_file = os.path.join(outh5dir, os.path.basename(feat_file))
                 logging.info(feat_file + ' ' + args.string_path)
                 logging.info(feat_rec.shape)
-                write_hdf5(feat_file, args.string_path+'_spk-exc-melsp', feat_spk_exc_melsp_cyc)
-
-                #logging.info('write spk exct melsp cyc to h5')
-                #logging.info(feat_file + ' ' + args.string_path+'_spk-exc-melsp')
-                #logging.info(feat_spk_exc_melsp_cyc.shape)
-                #write_hdf5(feat_file, args.string_path, feat_rec)
+                write_hdf5(feat_file, args.string_path, feat_rec)
 
                 logging.info('write lat to h5 rec')
                 logging.info(feat_file + ' ' + args.string_path+'_lat')
@@ -553,12 +543,9 @@ def main():
                 write_hdf5(feat_file, args.string_path, feat_cyc)
 
                 logging.info('write lat to h5 cyc')
-                #logging.info('write lat rec to h5 cyc')
                 logging.info(feat_file + ' ' + args.string_path+'_lat')
                 logging.info(feat_lat.shape)
-                #logging.info(feat_lat_cyc.shape)
                 write_hdf5(feat_file, args.string_path+'_lat', feat_lat)
-                #write_hdf5(feat_file, args.string_path+'_lat', feat_lat_cyc)
 
                 count += 1
                 #if count >= 5:
