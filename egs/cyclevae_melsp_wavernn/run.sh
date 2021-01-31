@@ -1113,11 +1113,10 @@ fi
 if [ -d "exp/feature_extract/tr_${data_name}" ]; then
     tmp=`yq ".${data_name}" conf/spkr.yml`
     if [[ -z $tmp ]] || [[ $tmp == "null" ]]; then
-        echo $${data_name}: >> conf/spkr.yml
+        echo ${data_name}: >> conf/spkr.yml
     fi
     pad_len=`yq ".${data_name}.pad_len" conf/spkr.yml`
     if [[ $pad_len == "null" ]]; then
-        echo $${data_name}: >> conf/spkr.yml
         max_frame=0
         max_spk=""
         for spk in ${spks[*]}; do

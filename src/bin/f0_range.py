@@ -120,13 +120,20 @@ def main():
                     left_min_idx = -1
     
         # right min
+        flag_count = 0
+        tmp_right_min_idx = -1
+        tmp_right_min = 99999999
         for i in range(peak_idx+1,length):
-            if right_min_idx == -1 and arr_data[i,1] < 0.00009:
+            #if right_min_idx == -1 and arr_data[i,1] < 0.00009:
+            if flag_count < 4 and right_min_idx == -1 and arr_data[i,1] <= 0.00013:
+                flag_count += 1
+            elif flag_count >= 4 and arr_data[i,1] <= 0.00013:
                 right_min = arr_data[i-1,1]
                 right_min_idx = i-1
-            elif right_min_idx != -1 and arr_data[i,1] >= 0.00013:
-                right_min = 999999999
-                right_min_idx = -1
+                break
+            #elif right_min_idx != -1 and arr_data[i,1] >= 0.00013:
+            #    right_min = 999999999
+            #    right_min_idx = -1
     
         logging.info('%d %d %lf' % (left_min_idx, arr_data[left_min_idx][0], left_min))
         logging.info('%d %d %lf' % (peak_idx, arr_data[peak_idx][0], peak))
