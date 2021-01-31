@@ -448,6 +448,7 @@ def main():
         scale_in_flag=scale_in_flag,
         red_dim=red_dim,
         res_flag=args.wlat_res_flag,
+        conv_in_flag=True,
         do_prob=args.do_prob)
     logging.info(model_waveform)
     criterion_ce = torch.nn.CrossEntropyLoss(reduction='none')
@@ -498,9 +499,10 @@ def main():
         module_list = list(model_waveform.in_red.parameters())
     else:
         if red_dim is not None:
-            module_list = list(model_waveform.in_red.parameters()) + list(model_waveform.conv.parameters()) + list(model_waveform.conv_s_c.parameters())
+            module_list = list(model_waveform.in_red.parameters()) + list(model_waveform.conv_in.parameters()) \
+                            + list(model_waveform.conv.parameters()) + list(model_waveform.conv_s_c.parameters())
         else:
-            module_list = list(model_waveform.conv.parameters()) + list(model_waveform.conv_s_c.parameters())
+            module_list = list(model_waveform.conv_in.parameters()) + list(model_waveform.conv.parameters()) + list(model_waveform.conv_s_c.parameters())
         module_list += list(model_waveform.embed_c_wav.parameters()) + list(model_waveform.embed_f_wav.parameters())
         module_list += list(model_waveform.gru.parameters())
         module_list += list(model_waveform.gru_2.parameters()) + list(model_waveform.out.parameters())
