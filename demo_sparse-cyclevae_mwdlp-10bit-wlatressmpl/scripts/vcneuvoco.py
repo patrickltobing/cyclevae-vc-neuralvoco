@@ -1670,9 +1670,13 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
             else:
                 self.scale_in = nn.Conv1d(self.in_dim, self.in_dim, 1)
 
-        if not self.conv_in_flag:
-            conv_in = [nn.Conv1d(self.in_dim, self.in_dim, 1), nn.ReLU()]
+        if self.conv_in_flag:
+            self.conv_in_dim = 256
+            conv_in = [nn.Conv1d(self.in_dim, self.conv_in_dim, 1), nn.ReLU()]
+            #conv_in = [nn.Conv1d(self.in_dim, 160, 1), nn.ReLU(), nn.Conv1d(160, self.in_dim, 1)]
+            #conv_in = [nn.Conv1d(self.in_dim, 512, 1), nn.ReLU(), nn.Conv1d(512, self.in_dim, 1)]
             self.conv_in = nn.Sequential(*conv_in)
+            #self.in_dim = self.conv_in_dim
 
         #if self.aux_dim is not None and not self.res_flag:
         if self.aux_dim is not None:
@@ -1683,11 +1687,11 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
             if not self.res_flag:
                 in_red = [nn.Conv1d(self.in_dim, self.red_dim, 1), nn.ReLU()]
             else:
-                #in_red = [nn.Conv1d(self.aux_dim, 256, 1), nn.ReLU(), nn.Conv1d(256, 512, 1), nn.ReLU(), nn.Conv1d(512, self.red_dim, 1)]
-                #in_red = [nn.Conv1d(self.aux_dim, 512, 1), nn.ReLU(), nn.Conv1d(512, self.red_dim, 1)]
                 if self.res_smpl_flag:
+                    #in_red = [nn.Conv1d(self.in_dim, 160, 1), nn.ReLU(), nn.Conv1d(160, self.red_dim*2, 1)]
                     in_red = [nn.Conv1d(self.in_dim, 512, 1), nn.ReLU(), nn.Conv1d(512, self.red_dim*2, 1)]
                 else:
+                    #in_red = [nn.Conv1d(self.in_dim, 160, 1), nn.ReLU(), nn.Conv1d(160, self.red_dim, 1)]
                     in_red = [nn.Conv1d(self.in_dim, 512, 1), nn.ReLU(), nn.Conv1d(512, self.red_dim, 1)]
             self.in_red = nn.Sequential(*in_red)
             self.in_dim = self.red_dim
@@ -1820,6 +1824,7 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
                                     conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(c)).transpose(1,2),self.upsampling_factor,dim=1))
                                 else:
                                     conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(self.conv_in(c))).transpose(1,2),self.upsampling_factor,dim=1))
+                                    #conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(F.tanhshrink(torch.clamp(self.conv_in(c),min=MIN_CLAMP,max=MAX_CLAMP)))).transpose(1,2),self.upsampling_factor,dim=1))
                                 if self.pad_right > 0:
                                     res = (c.transpose(1,2)[:,self.pad_left:-self.pad_right] - self.scale_in.bias)*(1.0/torch.diag(self.scale_in.weight[:,:,0]))
                                     if self.res_smpl_flag:
@@ -1858,6 +1863,7 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
                                     conv = torch.repeat_interleave(self.conv_s_c(self.conv(c)).transpose(1,2),self.upsampling_factor,dim=1)
                                 else:
                                     conv = torch.repeat_interleave(self.conv_s_c(self.conv(self.conv_in(c))).transpose(1,2),self.upsampling_factor,dim=1)
+                                    #conv = torch.repeat_interleave(self.conv_s_c(self.conv(F.tanhshrink(torch.clamp(self.conv_in(c),min=MIN_CLAMP,max=MAX_CLAMP)))).transpose(1,2),self.upsampling_factor,dim=1)
                                 if self.pad_right > 0:
                                     res = (c.transpose(1,2)[:,self.pad_left:-self.pad_right] - self.scale_in.bias)*(1.0/torch.diag(self.scale_in.weight[:,:,0]))
                                     if self.res_smpl_flag:
@@ -1899,11 +1905,13 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
                             conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(self.scale_in(c.transpose(1,2)))).transpose(1,2),self.upsampling_factor,dim=1))
                         else:
                             conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(self.conv_in(self.scale_in(c.transpose(1,2))))).transpose(1,2),self.upsampling_factor,dim=1))
+                            #conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(F.tanhshrink(torch.clamp(self.conv_in(self.scale_in(c.transpose(1,2))),min=MIN_CLAMP,max=MAX_CLAMP)))).transpose(1,2),self.upsampling_factor,dim=1))
                     else:
                         if not self.conv_in_flag:
                             conv = torch.repeat_interleave(self.conv_s_c(self.conv(self.scale_in(c.transpose(1,2)))).transpose(1,2),self.upsampling_factor,dim=1)
                         else:
                             conv = torch.repeat_interleave(self.conv_s_c(self.conv(self.conv_in(self.scale_in(c.transpose(1,2))))).transpose(1,2),self.upsampling_factor,dim=1)
+                            #conv = torch.repeat_interleave(self.conv_s_c(self.conv(F.tanhshrink(torch.clamp(self.conv_in(self.scale_in(c.transpose(1,2))),min=MIN_CLAMP,max=MAX_CLAMP)))).transpose(1,2),self.upsampling_factor,dim=1)
                 else:
                     if self.do_prob > 0 and do:
                         conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(c.transpose(1,2))).transpose(1,2),self.upsampling_factor,dim=1))
@@ -1951,20 +1959,21 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
             # x_lpc B x T_lpc x n_bands --> B x T x n_bands x K --> B x T x n_bands x K x 256
             # unfold put new dimension on the last
             if not ret_res:
-            #    return torch.clamp(logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), \
-            #        torch.clamp(logits_f + torch.sum((signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), h.detach(), h_2.detach(), h_f.detach()
-                return torch.clamp(logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), min=-32, max=32), \
-                    torch.clamp(logits_f + torch.sum((signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3), min=-32, max=32), h.detach(), h_2.detach(), h_f.detach()
+                return torch.clamp(logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), \
+                    torch.clamp(logits_f + torch.sum((signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), h.detach(), h_2.detach(), h_f.detach()
+            #    return torch.clamp(logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), min=-32, max=32), \
+            #        torch.clamp(logits_f + torch.sum((signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3), min=-32, max=32), h.detach(), h_2.detach(), h_f.detach()
             else:
-            #    return torch.clamp(logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), \
-            #        torch.clamp(logits_f + torch.sum((signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), res, h.detach(), h_2.detach(), h_f.detach()
-            #        torch.clamp(logits_f + torch.sum((signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), pdf, res, h.detach(), h_2.detach(), h_f.detach()
                 if self.res_smpl_flag:
-                    return torch.clamp(logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), min=-32, max=32), \
-                        torch.clamp(logits_f + torch.sum((signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3), min=-32, max=32), pdf, res, h.detach(), h_2.detach(), h_f.detach()
+                    return torch.clamp(logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), \
+                        torch.clamp(logits_f + torch.sum((signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), pdf, res, h.detach(), h_2.detach(), h_f.detach()
+                    #return torch.clamp(logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), min=-32, max=32), \
+                    #    torch.clamp(logits_f + torch.sum((signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3), min=-32, max=32), pdf, res, h.detach(), h_2.detach(), h_f.detach()
                 else:
-                    return torch.clamp(logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), min=-32, max=32), \
-                        torch.clamp(logits_f + torch.sum((signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3), min=-32, max=32), res, h.detach(), h_2.detach(), h_f.detach()
+                    return torch.clamp(logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), \
+                        torch.clamp(logits_f + torch.sum((signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), res, h.detach(), h_2.detach(), h_f.detach()
+                    #return torch.clamp(logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), min=-32, max=32), \
+                    #    torch.clamp(logits_f + torch.sum((signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3), min=-32, max=32), res, h.detach(), h_2.detach(), h_f.detach()
             # B x T x n_bands x 256
         else:
             logits_c = self.out(out.transpose(1,2))

@@ -22,19 +22,20 @@
 # 3: apply noise shaping [pre-emphasis] and multiband processing [neural vocoder waveform train. data]
 # 4: vc training step
 # post: fine-tuning decoder melsp training step
-# 5: reconstruction decoding step [for neural vocoder fine-tuning data]
+# 5: reconstruction decoding step [for developing bridge layers between vc and neural vocoder models]
 # 6: conversion decoding step [converted waveform with Griffin-Lim]
 # 7: wavernn training step
 # 8: copy-synthesis decoding step with wavernn [original waveform with neural vocoder]
 # 9: restore noise shaping step [de-emphasis] from copy-synthesis
 # a: vc decoding step with wavernn [converted waveform with neural vocoder]
 # b: restore noise shaping step [de-emphasis] from vc w/ wavernn
-# ft: fine-tune pretrained wavernn with reconst. features
-# c: vc decoding step with fine-tuned wavernn [converted waveform with fine-tuned neural vocoder]
-# d: restore noise shaping step [de-emphasis] from vc w/ fine-tuned wavernn
+# ft: bridge layers development between pretrained vc & wavernn using latent features to refine generated mel-spec.
+# c: vc decoding step using bridge layers and pretrained wavernn
+# d: restore noise shaping step [de-emphasis] from vc w/ bridge layers and wavernn
 # }}}
 #stage=0
 #stage=init
+#stage=0init
 #stage=01
 #stage=open
 #stage=012
@@ -183,20 +184,20 @@ dev=dv_${data_name}
 tst=ts_${data_name}
 
 GPU_device=0
-#GPU_device=1
+GPU_device=1
 GPU_device=2
 #GPU_device=3
-GPU_device=4
-GPU_device=5
-#GPU_device=6
-#GPU_device=7
+#GPU_device=4
+#GPU_device=5
+GPU_device=6
+GPU_device=7
 #GPU_device=8
 #GPU_device=9
 
 ## Please see the conf/config.yml for explanation of the rest of variables
 mdl_name=`awk '{if ($1 == "mdl_name:") print $2}' conf/config.yml`
-#mdl_name_post=none #set none to not use fine-tuned cyclevae
-mdl_name_post=`awk '{if ($1 == "mdl_name_post:") print $2}' conf/config.yml`
+mdl_name_post=none #set none to not use fine-tuned cyclevae
+#mdl_name_post=`awk '{if ($1 == "mdl_name_post:") print $2}' conf/config.yml`
 step_count=`awk '{if ($1 == "step_count:") print $2}' conf/config.yml`
 step_count_wave=`awk '{if ($1 == "step_count_wave:") print $2}' conf/config.yml`
 n_half_cyc=`awk '{if ($1 == "n_half_cyc:") print $2}' conf/config.yml`
@@ -225,6 +226,8 @@ hidden_units_lf0=`awk '{if ($1 == "hidden_units_lf0:") print $2}' conf/config.ym
 hidden_layers_lf0=`awk '{if ($1 == "hidden_layers_lf0:") print $2}' conf/config.yml`
 kernel_size_enc=`awk '{if ($1 == "kernel_size_enc:") print $2}' conf/config.yml`
 dilation_size_enc=`awk '{if ($1 == "dilation_size_enc:") print $2}' conf/config.yml`
+kernel_size_spk=`awk '{if ($1 == "kernel_size_spk:") print $2}' conf/config.yml`
+dilation_size_spk=`awk '{if ($1 == "dilation_size_spk:") print $2}' conf/config.yml`
 kernel_size_dec=`awk '{if ($1 == "kernel_size_dec:") print $2}' conf/config.yml`
 dilation_size_dec=`awk '{if ($1 == "dilation_size_dec:") print $2}' conf/config.yml`
 kernel_size_lf0=`awk '{if ($1 == "kernel_size_lf0:") print $2}' conf/config.yml`
@@ -237,6 +240,7 @@ n_workers=`awk '{if ($1 == "n_workers:") print $2}' conf/config.yml`
 pad_len=`awk '{if ($1 == "pad_len:") print $2}' conf/config.yml`
 spkidtr_dim=`awk '{if ($1 == "spkidtr_dim:") print $2}' conf/config.yml`
 right_size_enc=`awk '{if ($1 == "right_size_enc:") print $2}' conf/config.yml`
+right_size_spk=`awk '{if ($1 == "right_size_spk:") print $2}' conf/config.yml`
 right_size_dec=`awk '{if ($1 == "right_size_dec:") print $2}' conf/config.yml`
 right_size_lf0=`awk '{if ($1 == "right_size_lf0:") print $2}' conf/config.yml`
 t_start_cycvae=`awk '{if ($1 == "t_start_cycvae:") print $2}' conf/config.yml`
@@ -277,18 +281,21 @@ mid_dim=`awk '{if ($1 == "mid_dim:") print $2}' conf/config.yml`
 
 #idx_resume_cycvae=1 #for resume cyclevae
 idx_resume_cycvae=0 #set <= 0 for not resume
+#idx_resume_cycvae=19
 
 #idx_resume=1 #for resume decoder melsp fine-tuning
 idx_resume=0 #set <= 0 for not resume
 
 #idx_resume_wave=1 #for resume wavernn
 idx_resume_wave=0 #set <= 0 for not resume
+#idx_resume_wave=4
 
 #idx_resume_ft=1 #for resume fine-tuned wavernn
 idx_resume_ft=0 #set <= 0 for not resume
 
 min_idx_cycvae= #for raw cyclevae
 #min_idx_cycvae=2
+min_idx_cycvae=78
 
 if [ $mdl_name_post == none ]; then
     min_idx= #for cyclevae without fine-tuned decoder melsp
@@ -299,8 +306,7 @@ fi
 
 min_idx_wave= #for wavernn model
 #min_idx_wave=1
-#min_idx_wave=23
-#min_idx_wave=30
+min_idx_wave=35
 
 min_idx_ft= #for fine-tuned wavernn model
 
@@ -323,20 +329,21 @@ GPU_device_str="0"
 #GPU_device_str="7,8,9"
 #GPU_device_str="2,8,9"
 GPU_device_str="5,6"
+GPU_device_str="8"
 #GPU_device_str="5,6,7"
 #GPU_device_str="0,2,8,9"
 #GPU_device_str="9,2,8,0"
 #GPU_device_str="8,9"
 #GPU_device_str="0,4,7,8,9"
-GPU_device_str="5,6,7,8,9"
+#GPU_device_str="5,6,7,8,9"
 #GPU_device_str="2,0,3,4,1"
 #GPU_device_str="3,2,0,4,1"
 
 n_gpus=1
-n_gpus=2
+#n_gpus=2
 #n_gpus=3
 #n_gpus=4
-n_gpus=5
+#n_gpus=5
 ###
 
 
@@ -364,6 +371,7 @@ spks_src_dec=(SEM1 SEF2 SEM2 SEF1)
 #spks_src_dec=(SEF2)
 #spks_src_dec=(SEM2)
 spks_src_dec=(SEF1)
+spks_src_dec=(VCC2SF1)
 
 #spks_trg_dec=(VCC2TF1 VCC2TF2 VCC2TM1 VCC2TM2)
 spks_trg_dec=(TFM1 TGM1 TMM1 TEF1 TEM1 TEF2 TEM2 TFF1 TGF1 TMF1)
@@ -372,6 +380,7 @@ spks_trg_dec=(TFM1 TGM1 TMM1 TEF1 TEM1 TEF2 TEM2 TFF1 TGF1 TMF1)
 #spks_trg_dec=(TEM2 TMF1 TFF1 TEF1)
 #spks_trg_dec=(TMM1 TGM1 TFM1 TEM1)
 spks_trg_dec=(TEF1)
+spks_trg_dec=(VCC2TF1)
 ###
 
 
@@ -384,6 +393,7 @@ spks_trg_dec=(TEF1)
 spks_dec=(TEF1)
 #spks_dec=(TGM1)
 #spks_dec=(VCC2SF1 VCC2SF2 VCC2SF3 VCC2SF4 VCC2SM1 VCC2SM2 VCC2SM3 VCC2SM4 VCC2TF1 VCC2TF2 VCC2TM1 VCC2TM2)
+spks_dec=(VCC2SF1)
 ###
 
 
@@ -1128,13 +1138,15 @@ if [ -d "exp/feature_extract/tr_${data_name}" ]; then
                 max_frame=$max_frame_spk
                 max_spk=$spk
             fi 
-            echo $spk dv
-            max_frame_spk=`awk '{if ($1 == "max_frame:") print $2}' exp/feature_extract/dv_${data_name}/feature_extract_${spk}.log`
-            echo $max_frame_spk
-            if [[ $max_frame_spk -gt $max_frame ]]; then
-                max_frame=$max_frame_spk
-                max_spk=$spk
-            fi 
+            if [ -f "exp/feature_extract/dv_${data_name}/feature_extract_${spk}.log" ]; then
+                echo $spk dv
+                max_frame_spk=`awk '{if ($1 == "max_frame:") print $2}' exp/feature_extract/dv_${data_name}/feature_extract_${spk}.log`
+                echo $max_frame_spk
+                if [[ $max_frame_spk -gt $max_frame ]]; then
+                    max_frame=$max_frame_spk
+                    max_spk=$spk
+                fi 
+            fi
         else
             echo exp/feature_extract/tr_${data_name}/feature_extract_${spk}.log does not exist, please run stage 1 for feature extraction on speaker ${spk} and frame length checking
             exit
@@ -1494,29 +1506,29 @@ if [ `echo ${stage} | grep 5` ];then
     for spk in ${spks_trg_rec[@]}; do
         echo $spk
         ## org
-        find hdf5/${trn}/${spk} -name "*.h5" | sort >> ${feats_ft_scp}
-        cat ${waveforms} | grep "\/${spk}\/" >> ${waveforms_ft_scp}
+        #find hdf5/${trn}/${spk} -name "*.h5" | sort >> ${feats_ft_scp}
+        #cat ${waveforms} | grep "\/${spk}\/" >> ${waveforms_ft_scp}
         ## rec/cycrec
         find hdf5/${trn}/${spk}-${spk} -name "*.h5" | sort >> ${feats_ft_scp}
         cat ${waveforms} | grep "\/${spk}\/" >> ${waveforms_ft_scp}
-        #find hdf5/${trn}/${spk}-${spk}-${spk} -name "*.h5" | sort >> ${feats_ft_scp}
-        #cat ${waveforms} | grep "\/${spk}\/" >> ${waveforms_ft_scp}
+        find hdf5/${trn}/${spk}-${spk}-${spk} -name "*.h5" | sort >> ${feats_ft_scp}
+        cat ${waveforms} | grep "\/${spk}\/" >> ${waveforms_ft_scp}
         if [ -z "$(echo $spk | sed -n 's/\(p\)/\1/p')" ]; then
-            n_feats=`find hdf5/${dev}/${spk} -name "*.h5" | wc -l `
-            if [ $n_feats -gt 0 ]; then
-                find hdf5/${dev}/${spk} -name "*.h5" | sort >> ${feats_ft_eval_scp}
-                cat ${waveforms_eval} | grep "\/${spk}\/" >> ${waveforms_ft_eval_scp}
-            fi
+            #n_feats=`find hdf5/${dev}/${spk} -name "*.h5" | wc -l `
+            #if [ $n_feats -gt 0 ]; then
+            #    find hdf5/${dev}/${spk} -name "*.h5" | sort >> ${feats_ft_eval_scp}
+            #    cat ${waveforms_eval} | grep "\/${spk}\/" >> ${waveforms_ft_eval_scp}
+            #fi
             n_feats=`find hdf5/${dev}/${spk}-${spk} -name "*.h5" | wc -l `
             if [ $n_feats -gt 0 ]; then
                 find hdf5/${dev}/${spk}-${spk} -name "*.h5" | sort >> ${feats_ft_eval_scp}
                 cat ${waveforms_eval} | grep "\/${spk}\/" >> ${waveforms_ft_eval_scp}
             fi
-            #n_feats=`find hdf5/${dev}/${spk}-${spk}-${spk} -name "*.h5" | wc -l `
-            #if [ $n_feats -gt 0 ]; then
-            #    find hdf5/${dev}/${spk}-${spk}-${spk} -name "*.h5" | sort >> ${feats_ft_eval_scp}
-            #    cat ${waveforms_eval} | grep "\/${spk}\/" >> ${waveforms_ft_eval_scp}
-            #fi
+            n_feats=`find hdf5/${dev}/${spk}-${spk}-${spk} -name "*.h5" | wc -l `
+            if [ $n_feats -gt 0 ]; then
+                find hdf5/${dev}/${spk}-${spk}-${spk} -name "*.h5" | sort >> ${feats_ft_eval_scp}
+                cat ${waveforms_eval} | grep "\/${spk}\/" >> ${waveforms_ft_eval_scp}
+            fi
         fi
     done
     fi
@@ -2265,24 +2277,22 @@ if [ `echo ${stage} | grep ft` ];then
     echo "#               WAVEFORM MODELING STEP                    #"
     echo "###########################################################"
     echo $expdir_wave
-
-    if [ $mdl_name_post == "cycmelspxlf0capspkvae-laplace_sparse_ftdec" ]; then
+    
+    if [ $mdl_name_post == "cycmelspxlf0capspkvae-laplace_sparse_ftdec" ] \
+        || [ $mdl_name == "cycmelspxlf0capspkvae-laplace_sparse" ];then
         if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf" ];then
             feats=${expdir_wave}/feats_tr.scp
             feats_eval=${expdir_wave}/feats_ev.scp
             waveforms=${expdir_wave}/wavs_tr.scp
             waveforms_eval=${expdir_wave}/wavs_ev.scp
-            #cat data/${trn}/feats_ft.scp | sort > ${feats}
-            #cat data/${dev}/feats_ft.scp | sort > ${feats_eval}
-            #cat data/${trn}/wav_ns_ft.scp | sort > ${waveforms}
-            #cat data/${dev}/wav_ns_ft.scp | sort > ${waveforms_eval}
             cat data/${trn}/feats_ft.scp > ${feats}
             cat data/${dev}/feats_ft.scp > ${feats_eval}
             cat data/${trn}/wav_ns_ft.scp > ${waveforms}
             cat data/${dev}/wav_ns_ft.scp > ${waveforms_eval}
             if [ $idx_resume_ft -gt 0 ]; then
+                    #train_nstages-sparse-wavernn_dualgru_compact_lpc_mband_10bit_cf_ftred.py \
                 ${cuda_cmd} ${expdir_wave}/log/train_resume-${idx_resume_ft}.log \
-                    train_nstages-sparse-wavernn_dualgru_compact_lpc_mband_10bit_cf.py \
+                    train_nstages-sparse-wavernn_dualgru_compact_lpc_mband_10bit_cf_ftred_smpl.py \
                         --waveforms ${waveforms} \
                         --waveforms_eval $waveforms_eval \
                         --feats ${feats} \
@@ -2314,11 +2324,16 @@ if [ `echo ${stage} | grep ft` ];then
                         --string_path_ft ${string_path_rec} \
                         --mid_dim ${mid_dim} \
                         --pretrained ${pretrained_wave}/checkpoint-${min_idx_wave}.pkl \
+                        --wlat_flag true \
+                        --wlat_res_flag true \
+                        --fs ${fs} \
+                        --fftl ${fftl} \
                         --resume ${expdir_wave}/checkpoint-${idx_resume_ft}.pkl \
                         --GPU_device ${GPU_device}
             else
+                    #train_nstages-sparse-wavernn_dualgru_compact_lpc_mband_10bit_cf_ftred.py \
                 ${cuda_cmd} ${expdir_wave}/log/train.log \
-                    train_nstages-sparse-wavernn_dualgru_compact_lpc_mband_10bit_cf.py \
+                    train_nstages-sparse-wavernn_dualgru_compact_lpc_mband_10bit_cf_ftred_smpl.py \
                         --waveforms ${waveforms} \
                         --waveforms_eval $waveforms_eval \
                         --feats ${feats} \
@@ -2350,91 +2365,10 @@ if [ `echo ${stage} | grep ft` ];then
                         --string_path_ft ${string_path_rec} \
                         --mid_dim ${mid_dim} \
                         --pretrained ${pretrained_wave}/checkpoint-${min_idx_wave}.pkl \
-                        --GPU_device ${GPU_device}
-            fi
-        fi
-    elif [ $mdl_name == "cycmelspxlf0capspkvae-laplace_sparse" ];then
-        if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf" ];then
-            feats=${expdir_wave}/feats_tr.scp
-            feats_eval=${expdir_wave}/feats_ev.scp
-            waveforms=${expdir_wave}/wavs_tr.scp
-            waveforms_eval=${expdir_wave}/wavs_ev.scp
-            #cat data/${trn}/feats_ft.scp | sort > ${feats}
-            #cat data/${dev}/feats_ft.scp | sort > ${feats_eval}
-            #cat data/${trn}/wav_ns_ft.scp | sort > ${waveforms}
-            #cat data/${dev}/wav_ns_ft.scp | sort > ${waveforms_eval}
-            cat data/${trn}/feats_ft.scp > ${feats}
-            cat data/${dev}/feats_ft.scp > ${feats_eval}
-            cat data/${trn}/wav_ns_ft.scp > ${waveforms}
-            cat data/${dev}/wav_ns_ft.scp > ${waveforms_eval}
-            if [ $idx_resume_ft -gt 0 ]; then
-                ${cuda_cmd} ${expdir_wave}/log/train_resume-${idx_resume_ft}.log \
-                    train_nstages-sparse-wavernn_dualgru_compact_lpc_mband_10bit_cf.py \
-                        --waveforms ${waveforms} \
-                        --waveforms_eval $waveforms_eval \
-                        --feats ${feats} \
-                        --feats_eval $feats_eval \
-                        --stats data/${trn}/stats_jnt.h5 \
-                        --expdir ${expdir_wave} \
-                        --lr ${lr} \
-                        --do_prob ${do_prob} \
-                        --step_count ${step_count_wave} \
-                        --upsampling_factor ${upsampling_factor} \
-                        --hidden_units_wave ${hidden_units_wave} \
-                        --hidden_units_wave_2 ${hidden_units_wave_2} \
-                        --batch_size ${batch_size_wave} \
-                        --mcep_dim ${powmcep_dim} \
-                        --kernel_size_wave ${kernel_size_wave} \
-                        --dilation_size_wave ${dilation_size_wave} \
-                        --n_workers ${n_workers} \
-                        --pad_len ${pad_len} \
-                        --t_start ${t_start} \
-                        --t_end ${t_end} \
-                        --interval ${interval} \
-                        --densities ${densities} \
-                        --n_stage ${n_stage} \
-                        --lpc ${lpc} \
-                        --right_size ${right_size_wave} \
-                        --n_bands ${n_bands} \
-                        --with_excit ${with_excit} \
-                        --string_path ${string_path} \
-                        --string_path_ft ${string_path_rec} \
-                        --mid_dim ${mid_dim} \
-                        --resume ${expdir_wave}/checkpoint-${idx_resume_ft}.pkl \
-                        --GPU_device ${GPU_device}
-            else
-                ${cuda_cmd} ${expdir_wave}/log/train.log \
-                    train_nstages-sparse-wavernn_dualgru_compact_lpc_mband_10bit_cf.py \
-                        --waveforms ${waveforms} \
-                        --waveforms_eval $waveforms_eval \
-                        --feats ${feats} \
-                        --feats_eval $feats_eval \
-                        --stats data/${trn}/stats_jnt.h5 \
-                        --expdir ${expdir_wave} \
-                        --lr ${lr} \
-                        --do_prob ${do_prob} \
-                        --step_count ${step_count_wave} \
-                        --upsampling_factor ${upsampling_factor} \
-                        --hidden_units_wave ${hidden_units_wave} \
-                        --hidden_units_wave_2 ${hidden_units_wave_2} \
-                        --batch_size ${batch_size_wave} \
-                        --mcep_dim ${powmcep_dim} \
-                        --kernel_size_wave ${kernel_size_wave} \
-                        --dilation_size_wave ${dilation_size_wave} \
-                        --n_workers ${n_workers} \
-                        --pad_len ${pad_len} \
-                        --t_start ${t_start} \
-                        --t_end ${t_end} \
-                        --interval ${interval} \
-                        --densities ${densities} \
-                        --n_stage ${n_stage} \
-                        --lpc ${lpc} \
-                        --right_size ${right_size_wave} \
-                        --n_bands ${n_bands} \
-                        --with_excit ${with_excit} \
-                        --string_path ${string_path} \
-                        --string_path_ft ${string_path_rec} \
-                        --mid_dim ${mid_dim} \
+                        --wlat_flag true \
+                        --wlat_res_flag true \
+                        --fs ${fs} \
+                        --fftl ${fftl} \
                         --GPU_device ${GPU_device}
             fi
         fi
@@ -2489,6 +2423,7 @@ if [ `echo ${stage} | grep c` ];then
                     --batch_size ${decode_batch_size} \
                     --n_gpus ${n_gpus} \
                     --string_path ${string_path_cv} \
+                    --wlat_res_flag true \
                     --GPU_device_str ${GPU_device_str}
         elif [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_9bit" ]; then
             #${cuda_cmd} ${expdir_wave}/log/decode_tst_${min_idx_cycvae}-${min_idx}-${min_idx_wave}-${min_idx_ft}_${spk_src}-${spk_trg}.log \

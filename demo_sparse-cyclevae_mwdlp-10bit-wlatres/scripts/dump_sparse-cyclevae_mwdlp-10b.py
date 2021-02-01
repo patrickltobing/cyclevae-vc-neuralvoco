@@ -233,6 +233,7 @@ def main():
         red_dim=config.mcep_dim,
         res_flag=True,
         lpc=config.lpc)
+        #conv_in_flag=True,
     print(model)
     device = torch.device("cpu")
     model_encoder_melsp.load_state_dict(torch.load(args.model_cycvae, map_location=device)["model_encoder_melsp"])
@@ -445,6 +446,45 @@ def main():
             .format(name, name, name, weights.shape[0], weights.shape[1]))
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
     hf.write('extern const DenseLayer {};\n\n'.format(name))
+
+    ### Dump feature_conv_in
+    #name = 'feature_conv_in'
+    #print("printing layer " + name)
+    ##defined as sequential with relu activation
+    #weights = model.conv_in[0].weight.permute(2,1,0)[0].data.numpy() #it's defined as conv1d with ks=1 on the model
+    #bias = model.conv_in[0].bias.data.numpy()
+    #printVector(f, weights, name + '_weights')
+    #printVector(f, bias, name + '_bias')
+    #f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_RELU\n}};\n\n'
+    #        .format(name, name, name, weights.shape[0], weights.shape[1]))
+    #hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
+    #hf.write('extern const DenseLayer {};\n\n'.format(name))
+
+    ### Dump feature_conv_in_in
+    #name = 'feature_conv_in_in'
+    #print("printing layer " + name)
+    ##defined as sequential with relu activation
+    #weights = model.conv_in[0].weight.permute(2,1,0)[0].data.numpy() #it's defined as conv1d with ks=1 on the model
+    #bias = model.conv_in[0].bias.data.numpy()
+    #printVector(f, weights, name + '_weights')
+    #printVector(f, bias, name + '_bias')
+    #f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_RELU\n}};\n\n'
+    #        .format(name, name, name, weights.shape[0], weights.shape[1]))
+    #hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
+    #hf.write('extern const DenseLayer {};\n\n'.format(name))
+
+    ### Dump feature_conv_in_out
+    #name = 'feature_conv_in_out'
+    #print("printing layer " + name)
+    ##defined as sequential with relu activation
+    #weights = model.conv_in[2].weight.permute(2,1,0)[0].data.numpy() #it's defined as conv1d with ks=1 on the model
+    #bias = model.conv_in[2].bias.data.numpy()
+    #printVector(f, weights, name + '_weights')
+    #printVector(f, bias, name + '_bias')
+    #f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_TANHSHRINK\n}};\n\n'
+    #        .format(name, name, name, weights.shape[0], weights.shape[1]))
+    #hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
+    #hf.write('extern const DenseLayer {};\n\n'.format(name))
 
     #dump segmental_conv
     name = "feature_conv"

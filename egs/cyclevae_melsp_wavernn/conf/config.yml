@@ -31,16 +31,13 @@ hidden_units_dec: 640
 hidden_units_lf0: 128
 
 ## GRU hidden units wavernn
-#[for high-quality, 0.36 RT with 10-bit mu-law 10 ms shift]
-#hidden_units_wave: 800
-#[for natural-quality, 0.45 RT with 10-bit mu-law 10 ms shift]
-hidden_units_wave: 896
+#hidden_units_wave: 896
+#hidden_units_wave: 960
+hidden_units_wave: 1024
 
 hidden_units_wave_2: 32
 
-#[for others]
-#mid_dim: 32
-#[for 10-bit mu-law]
+## Output dimension of DualFC before final FC layer
 mid_dim: 16
 
 ## GRU hidden layers encoder, decoder spec, decoder excit
@@ -54,6 +51,10 @@ hidden_layers_wave: 1
 ## kernel-size input conv encoder
 kernel_size_enc: 5
 dilation_size_enc: 1
+
+## kernel-size input spk-net
+kernel_size_spk: 5
+dilation_size_spk: 1
 
 ## kernel-size input conv decoder spec
 kernel_size_dec: 5
@@ -77,6 +78,7 @@ dilation_repeat: 2
 ## for using skewed input convolution (> 0), or balanced (0) [only for encoder]
 right_size_enc: 1
 #right_size_enc: 2
+right_size_spk: 0
 right_size_dec: 0
 right_size_lf0: 0
 ## lookup frame limited to only 1/2 frame [for allowing low-latency/real-time processing]
@@ -139,12 +141,7 @@ mdl_name: cycmelspxlf0capspkvae-laplace_sparse
 
 mdl_name_post: cycmelspxlf0capspkvae-laplace_sparse_ftdec
 
-##[8 kHz, 16 kHz, 22.05 kHz, 24 kHz]
-#mdl_name_wave: wavernn_dualgru_compact_lpc_mband_9bit
-##[8 kHz, 16 kHz, 22.05 kHz, 24 kHz, 44.1 kHz, 48 kHz]
 mdl_name_wave: wavernn_dualgru_compact_lpc_mband_10bit_cf
-##[8 kHz, 16 kHz, 22.05 kHz, 24 kHz]
-#mdl_name_wave: wavernn_dualgru_compact_lpc_mband_16bit
 
 ## sparsification scheduling settings for cyclevae
 t_start_cycvae: 5000
@@ -162,7 +159,6 @@ n_stage: 4
 
 ## number of data-driven linear predictive coefficients (LPC) in wavernn
 #lpc: 0
-#lpc: 4
 lpc: 6
 
 #use_mcep: true

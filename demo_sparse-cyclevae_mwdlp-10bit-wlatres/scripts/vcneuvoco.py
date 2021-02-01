@@ -26,9 +26,8 @@ CLIP_1E12 = -14.162084148244246758816564788835 #laplace var. = 2*scale^2; log(sc
 
 # From math.h in C, exp(34.65728569) = 1125815191648271.875000, which is the closest limit
 #       to the celt_exp(34.65735817) = 1125815685218304.000000 of LPCNet code
-# celt_exp() function uses vectorization and approximation which makes it more efficient
-# Input to tanh(), sigmoid(), tanhshrink(), selu(), logsigmoid(), and exp() functions of PyTorch
-# needs to be clamped with this value
+# celt_exp() function uses vectorization and approximation which makes it more efficient for softmax() function in pdf waveform sampling (expensive sample-by-sample computation)
+# These values also stabilize these functions more in general: tanh(), sigmoid(), tanhshrink(), selu(), logsigmoid(), and exp()
 MIN_CLAMP = -34.65728569
 MAX_CLAMP = 34.65728569
 
@@ -1620,7 +1619,7 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
     def __init__(self, feat_dim=80, upsampling_factor=120, hidden_units=640, hidden_units_2=32, n_quantize=65536,
             kernel_size=7, dilation_size=1, do_prob=0, causal_conv=False, use_weight_norm=True, lpc=6,
                 right_size=2, n_bands=5, excit_dim=0, pad_first=False, mid_out_flag=True, red_dim=None,
-                    scale_in_aux_dim=None, n_spk=None, scale_in_flag=True, mid_dim=None, aux_dim=None, res_flag=False):
+                    scale_in_aux_dim=None, n_spk=None, scale_in_flag=True, mid_dim=None, aux_dim=None, res_flag=False, res_smpl_flag=False, conv_in_flag=False):
         super(GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF, self).__init__()
         self.feat_dim = feat_dim
         self.in_dim = self.feat_dim
@@ -1661,6 +1660,8 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
         self.n_spk = n_spk
         self.aux_dim = aux_dim
         self.res_flag = res_flag
+        self.res_smpl_flag = res_smpl_flag
+        self.conv_in_flag = conv_in_flag
 
         # Norm. layer
         if self.scale_in_flag:
@@ -1668,6 +1669,14 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
                 self.scale_in = nn.Conv1d(self.scale_in_aux_dim, self.scale_in_aux_dim, 1)
             else:
                 self.scale_in = nn.Conv1d(self.in_dim, self.in_dim, 1)
+
+        if self.conv_in_flag:
+            self.conv_in_dim = 256
+            conv_in = [nn.Conv1d(self.in_dim, self.conv_in_dim, 1), nn.ReLU()]
+            #conv_in = [nn.Conv1d(self.in_dim, 160, 1), nn.ReLU(), nn.Conv1d(160, self.in_dim, 1)]
+            #conv_in = [nn.Conv1d(self.in_dim, 512, 1), nn.ReLU(), nn.Conv1d(512, self.in_dim, 1)]
+            self.conv_in = nn.Sequential(*conv_in)
+            #self.in_dim = self.conv_in_dim
 
         #if self.aux_dim is not None and not self.res_flag:
         if self.aux_dim is not None:
@@ -1678,9 +1687,12 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
             if not self.res_flag:
                 in_red = [nn.Conv1d(self.in_dim, self.red_dim, 1), nn.ReLU()]
             else:
-                #in_red = [nn.Conv1d(self.aux_dim, 256, 1), nn.ReLU(), nn.Conv1d(256, 512, 1), nn.ReLU(), nn.Conv1d(512, self.red_dim, 1)]
-                #in_red = [nn.Conv1d(self.aux_dim, 512, 1), nn.ReLU(), nn.Conv1d(512, self.red_dim, 1)]
-                in_red = [nn.Conv1d(self.in_dim, 512, 1), nn.ReLU(), nn.Conv1d(512, self.red_dim, 1)]
+                if self.res_smpl_flag:
+                    #in_red = [nn.Conv1d(self.in_dim, 160, 1), nn.ReLU(), nn.Conv1d(160, self.red_dim*2, 1)]
+                    in_red = [nn.Conv1d(self.in_dim, 512, 1), nn.ReLU(), nn.Conv1d(512, self.red_dim*2, 1)]
+                else:
+                    #in_red = [nn.Conv1d(self.in_dim, 160, 1), nn.ReLU(), nn.Conv1d(160, self.red_dim, 1)]
+                    in_red = [nn.Conv1d(self.in_dim, 512, 1), nn.ReLU(), nn.Conv1d(512, self.red_dim, 1)]
             self.in_red = nn.Sequential(*in_red)
             self.in_dim = self.red_dim
 
@@ -1775,8 +1787,11 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
                     if not ret_res:
                         c_aux = self.in_red(aux.transpose(1,2))
                     else:
-                        c = self.scale_in(c.transpose(1,2))
-                        c_aux = self.in_red(torch.cat((aux.transpose(1,2), c),1))
+                        if self.res_smpl_flag:
+                            c_aux = torch.clamp(self.in_red(torch.cat((aux.transpose(1,2), self.scale_in(c.transpose(1,2))),1)), min=MIN_CLAMP, max=MAX_CLAMP).transpose(1,2)
+                        else:
+                            c = self.scale_in(c.transpose(1,2))
+                            c_aux = self.in_red(torch.cat((aux.transpose(1,2), c),1))
             else:
                 c_aux = torch.cat((c, self.scale_in(aux.transpose(1,2)).transpose(1,2)), 2)
         else:
@@ -1798,12 +1813,30 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
                             if not ret_res:
                                 conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(self.scale_in(c.transpose(1,2))+F.tanhshrink(torch.clamp(c_aux,min=MIN_CLAMP,max=MAX_CLAMP)))).transpose(1,2),self.upsampling_factor,dim=1))
                             else:
-                                c += F.tanhshrink(torch.clamp(c_aux,min=MIN_CLAMP,max=MAX_CLAMP))
-                                conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(c)).transpose(1,2),self.upsampling_factor,dim=1))
+                                if self.res_smpl_flag:
+                                    mus_e = (F.tanhshrink(c_aux[:,:,:self.red_dim]) - self.scale_in.bias)*(1.0/torch.diag(self.scale_in.weight[:,:,0]))
+                                    mus = c+mus_e
+                                    log_scales = F.logsigmoid(c_aux[:,:,self.red_dim:])
+                                    c = self.scale_in((c + sampling_laplace(mus_e, log_scales)).transpose(1,2))
+                                else:
+                                    c += F.tanhshrink(torch.clamp(c_aux,min=MIN_CLAMP,max=MAX_CLAMP))
+                                if not self.conv_in_flag:
+                                    conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(c)).transpose(1,2),self.upsampling_factor,dim=1))
+                                else:
+                                    conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(self.conv_in(c))).transpose(1,2),self.upsampling_factor,dim=1))
+                                    #conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(F.tanhshrink(torch.clamp(self.conv_in(c),min=MIN_CLAMP,max=MAX_CLAMP)))).transpose(1,2),self.upsampling_factor,dim=1))
                                 if self.pad_right > 0:
                                     res = (c.transpose(1,2)[:,self.pad_left:-self.pad_right] - self.scale_in.bias)*(1.0/torch.diag(self.scale_in.weight[:,:,0]))
+                                    if self.res_smpl_flag:
+                                        mus = mus[:,self.pad_left:-self.pad_right]
+                                        log_scales = log_scales[:,self.pad_left:-self.pad_right]
                                 else:
                                     res = (c.transpose(1,2)[:,self.pad_left:] - self.scale_in.bias)*(1.0/torch.diag(self.scale_in.weight[:,:,0]))
+                                    if self.res_smpl_flag:
+                                        mus = mus[:,self.pad_left:]
+                                        log_scales = log_scales[:,self.pad_left:]
+                                if self.res_smpl_flag:
+                                   pdf = torch.cat((mus, torch.clamp(log_scales, min=CLIP_1E12)), 2)
                 else:
                     if outpad_left is not None:
                         if outpad_right is not None and outpad_right > 0:
@@ -1819,12 +1852,30 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
                             if not ret_res:
                                 conv = torch.repeat_interleave(self.conv_s_c(self.conv(self.scale_in(c.transpose(1,2))+F.tanhshrink(torch.clamp(c_aux,min=MIN_CLAMP,max=MAX_CLAMP)))).transpose(1,2),self.upsampling_factor,dim=1)
                             else:
-                                c += F.tanhshrink(torch.clamp(c_aux,min=MIN_CLAMP,max=MAX_CLAMP))
-                                conv = torch.repeat_interleave(self.conv_s_c(self.conv(c)).transpose(1,2),self.upsampling_factor,dim=1)
+                                if self.res_smpl_flag:
+                                    mus_e = (F.tanhshrink(c_aux[:,:,:self.red_dim]) - self.scale_in.bias)*(1.0/torch.diag(self.scale_in.weight[:,:,0]))
+                                    mus = c+mus_e
+                                    log_scales = F.logsigmoid(c_aux[:,:,self.red_dim:])
+                                    c = self.scale_in((c + sampling_laplace(mus_e, log_scales)).transpose(1,2))
+                                else:
+                                    c += F.tanhshrink(torch.clamp(c_aux,min=MIN_CLAMP,max=MAX_CLAMP))
+                                if not self.conv_in_flag:
+                                    conv = torch.repeat_interleave(self.conv_s_c(self.conv(c)).transpose(1,2),self.upsampling_factor,dim=1)
+                                else:
+                                    conv = torch.repeat_interleave(self.conv_s_c(self.conv(self.conv_in(c))).transpose(1,2),self.upsampling_factor,dim=1)
+                                    #conv = torch.repeat_interleave(self.conv_s_c(self.conv(F.tanhshrink(torch.clamp(self.conv_in(c),min=MIN_CLAMP,max=MAX_CLAMP)))).transpose(1,2),self.upsampling_factor,dim=1)
                                 if self.pad_right > 0:
                                     res = (c.transpose(1,2)[:,self.pad_left:-self.pad_right] - self.scale_in.bias)*(1.0/torch.diag(self.scale_in.weight[:,:,0]))
+                                    if self.res_smpl_flag:
+                                        mus = mus[:,self.pad_left:-self.pad_right]
+                                        log_scales = log_scales[:,self.pad_left:-self.pad_right]
                                 else:
                                     res = (c.transpose(1,2)[:,self.pad_left:] - self.scale_in.bias)*(1.0/torch.diag(self.scale_in.weight[:,:,0]))
+                                    if self.res_smpl_flag:
+                                        mus = mus[:,self.pad_left:]
+                                        log_scales = log_scales[:,self.pad_left:]
+                                if self.res_smpl_flag:
+                                   pdf = torch.cat((mus, log_scales), 2)
             else:
                 if self.do_prob > 0 and do:
                     if outpad_left is not None:
@@ -1850,9 +1901,17 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
             if self.red_dim is None:
                 if self.scale_in_flag:
                     if self.do_prob > 0 and do:
-                        conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(self.scale_in(c.transpose(1,2)))).transpose(1,2),self.upsampling_factor,dim=1))
+                        if not self.conv_in_flag:
+                            conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(self.scale_in(c.transpose(1,2)))).transpose(1,2),self.upsampling_factor,dim=1))
+                        else:
+                            conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(self.conv_in(self.scale_in(c.transpose(1,2))))).transpose(1,2),self.upsampling_factor,dim=1))
+                            #conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(F.tanhshrink(torch.clamp(self.conv_in(self.scale_in(c.transpose(1,2))),min=MIN_CLAMP,max=MAX_CLAMP)))).transpose(1,2),self.upsampling_factor,dim=1))
                     else:
-                        conv = torch.repeat_interleave(self.conv_s_c(self.conv(self.scale_in(c.transpose(1,2)))).transpose(1,2),self.upsampling_factor,dim=1)
+                        if not self.conv_in_flag:
+                            conv = torch.repeat_interleave(self.conv_s_c(self.conv(self.scale_in(c.transpose(1,2)))).transpose(1,2),self.upsampling_factor,dim=1)
+                        else:
+                            conv = torch.repeat_interleave(self.conv_s_c(self.conv(self.conv_in(self.scale_in(c.transpose(1,2))))).transpose(1,2),self.upsampling_factor,dim=1)
+                            #conv = torch.repeat_interleave(self.conv_s_c(self.conv(F.tanhshrink(torch.clamp(self.conv_in(self.scale_in(c.transpose(1,2))),min=MIN_CLAMP,max=MAX_CLAMP)))).transpose(1,2),self.upsampling_factor,dim=1)
                 else:
                     if self.do_prob > 0 and do:
                         conv = self.drop(torch.repeat_interleave(self.conv_s_c(self.conv(c.transpose(1,2))).transpose(1,2),self.upsampling_factor,dim=1))
@@ -1899,20 +1958,32 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
             # B x T x x n_bands x K, B x T x n_bands x K and B x T x n_bands x 256
             # x_lpc B x T_lpc x n_bands --> B x T x n_bands x K --> B x T x n_bands x K x 256
             # unfold put new dimension on the last
-            #return torch.clamp(logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), \
-            #    torch.clamp(logits_f + torch.sum((signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), h.detach(), h_2.detach(), h_f.detach()
             if not ret_res:
-                return torch.clamp(logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), min=-32, max=32), \
-                    torch.clamp(logits_f + torch.sum((signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3), min=-32, max=32), h.detach(), h_2.detach(), h_f.detach()
+                return torch.clamp(logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), \
+                    torch.clamp(logits_f + torch.sum((signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), h.detach(), h_2.detach(), h_f.detach()
+            #    return torch.clamp(logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), min=-32, max=32), \
+            #        torch.clamp(logits_f + torch.sum((signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3), min=-32, max=32), h.detach(), h_2.detach(), h_f.detach()
             else:
-                return torch.clamp(logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), min=-32, max=32), \
-                    torch.clamp(logits_f + torch.sum((signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3), min=-32, max=32), res, h.detach(), h_2.detach(), h_f.detach()
+                if self.res_smpl_flag:
+                    return torch.clamp(logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), \
+                        torch.clamp(logits_f + torch.sum((signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), pdf, res, h.detach(), h_2.detach(), h_f.detach()
+                    #return torch.clamp(logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), min=-32, max=32), \
+                    #    torch.clamp(logits_f + torch.sum((signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3), min=-32, max=32), pdf, res, h.detach(), h_2.detach(), h_f.detach()
+                else:
+                    return torch.clamp(logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), \
+                        torch.clamp(logits_f + torch.sum((signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), res, h.detach(), h_2.detach(), h_f.detach()
+                    #return torch.clamp(logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), min=-32, max=32), \
+                    #    torch.clamp(logits_f + torch.sum((signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3), min=-32, max=32), res, h.detach(), h_2.detach(), h_f.detach()
             # B x T x n_bands x 256
         else:
             logits_c = self.out(out.transpose(1,2))
             logits_f = self.out_f(out_f.transpose(1,2))
-            #return torch.clamp(logits_c, min=MIN_CLAMP, max=MAX_CLAMP), torch.clamp(logits_f, min=MIN_CLAMP, max=MAX_CLAMP), h.detach(), h_2.detach(), h_f.detach()
-            return torch.clamp(logits_c, min=-32, max=32), torch.clamp(logits_f, min=-32, max=32), h.detach(), h_2.detach(), h_f.detach()
+            if not ret_res:
+                return torch.clamp(logits_c, min=MIN_CLAMP, max=MAX_CLAMP), torch.clamp(logits_f, min=MIN_CLAMP, max=MAX_CLAMP), h.detach(), h_2.detach(), h_f.detach()
+            #    return torch.clamp(logits_c, min=-32, max=32), torch.clamp(logits_f, min=-32, max=32), h.detach(), h_2.detach(), h_f.detach()
+            else:
+                return torch.clamp(logits_c, min=MIN_CLAMP, max=MAX_CLAMP), torch.clamp(logits_f, min=MIN_CLAMP, max=MAX_CLAMP), res, h.detach(), h_2.detach(), h_f.detach()
+            #    return torch.clamp(logits_c, min=-32, max=32), torch.clamp(logits_f, min=-32, max=32), res, h.detach(), h_2.detach(), h_f.detach()
  
     def generate(self, c, intervals=4000, spk_code=None, spk_aux=None, aux=None, outpad_left=None, outpad_right=None):
         start = time.time()

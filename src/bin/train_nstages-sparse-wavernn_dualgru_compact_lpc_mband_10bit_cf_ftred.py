@@ -459,8 +459,8 @@ def main():
         scale_in_flag=scale_in_flag,
         red_dim=red_dim,
         res_flag=args.wlat_res_flag,
-        conv_in_flag=False,
         do_prob=args.do_prob)
+        #conv_in_flag=True,
     logging.info(model_waveform)
     criterion_ms = ModulationSpectrumLoss(args.fftsize)
     criterion_ce = torch.nn.CrossEntropyLoss(reduction='none')
@@ -1103,14 +1103,14 @@ def main():
                     batch_loss_ms_magsp_norm_, batch_loss_ms_magsp_err_ = criterion_ms(batch_magsp_res, batch_feat_magsp_org)
                     batch_loss_ms_norm_magsp = batch_loss_ms_magsp_norm_.mean()
                     batch_loss_ms_err_magsp = batch_loss_ms_magsp_err_.mean()
-                    flag_ms_norm = False
+                    flag_ms_norm_magsp = False
                     if not torch.isinf(batch_loss_ms_norm_magsp) and not torch.isnan(batch_loss_ms_norm_magsp):
                         loss_ms_norm_magsp.append(batch_loss_ms_norm_magsp.item())
-                        flag_ms_norm = True
-                    flag_ms_err = False
+                        flag_ms_norm_magsp = True
+                    flag_ms_err_magsp = False
                     if not torch.isinf(batch_loss_ms_err_magsp) and not torch.isnan(batch_loss_ms_err_magsp):
                         loss_ms_err_magsp.append(batch_loss_ms_err_magsp.item())
-                        flag_ms_err = True
+                        flag_ms_err_magsp = True
 
                     batch_loss_ce_ = torch.mean(torch.mean(criterion_ce(batch_x_c_output.reshape(-1, args.cf_dim), batch_x_c.reshape(-1)).reshape(batch_x_c_output.shape[0], batch_x_c_output.shape[1], -1), 1), 0) # n_bands
                     batch_loss_err_ = torch.mean(torch.mean(torch.sum(100*criterion_l1(F.softmax(batch_x_c_output, dim=-1), F.one_hot(batch_x_c, num_classes=args.cf_dim).float()), -1), 1), 0) # n_bands

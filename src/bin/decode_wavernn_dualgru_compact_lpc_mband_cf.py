@@ -163,6 +163,8 @@ def main():
                         type=int, help="number of batch size in decoding")
     parser.add_argument("--n_gpus", default=1,
                         type=int, help="number of gpus")
+    parser.add_argument("--wlat_res_flag", default=False,
+                        type=strtobool, help="use latent features for bridge refinement layers")
     # other setting
     parser.add_argument("--string_path", default=None,
                         type=str, help="log interval")
@@ -271,6 +273,8 @@ def main():
                         n_bands=config.n_bands,
                         pad_first=True,
                         mid_dim=config.mid_dim,
+                        res_flag=args.wlat_res_flag,
+                        res_smpl_flag=True,
                         lpc=config.lpc)
                     logging.info(model_waveform)
                 model_waveform.cuda()
