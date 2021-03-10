@@ -1,66 +1,50 @@
-# Multispeaker VC with Nonparallel Cyclic VAE/VQVAE and/or Neural Vocoder with Multiband WaveRNN using Data-Driven Linear Prediction / Shallow-WaveNet
-
-* Previous version is in v1.0 branch
-* Scripts overhauled starting on v2.0 branch
-    * Added CycleVAE with mel-spectrogram
-    * Added multiband WaveRNN with data-driven linear prediction for low-latency universal neural vocoder with high-quality output (submitted for ICASSP 2021) [demo_page](https://demo-icassp2021.audioeval.net/)
-* Created experiment branch (exp) for agile update version
-    * Added Laplace fine-sampling for fine-structure recovery of mel-spectrogram
-    * Added the use of mel-filterbank to encode WORLD spectrum instead of mel-cepstrum
-    * Development of mel-cepstrum based (WORLD) is suspended to focus on mel-spectrogram systems
-    * Contents will be merged with v2.1 and master when confirmed
-* In progress
-    * Multiband WaveRNN w/ data-driven LPC real-time in C (based on [LPCNet](https://github.com/mozilla/LPCNet)) [AVX2/FMA/Neon] ~0.3--0.5 RT
-    * VC real-time in C following WaveRNN code
-    * Pretrained models
-    * CycleVQVAE
+# Real-time low-latency multispeaker voice conversion (VC) with cyclic variational autoencoder (CycleVAE) and multiband WaveRNN using data-driven linear prediction (MWDLP)
 
 
-## Requirements
-
-* Python 3.6/3.7/3.8
-* `virtualenv` and `jq`
-* CUDA 10.1
-* Linux 64-bit [for Windows 10 user, please use Windows Subsystem for Linux (WSL)]
-    * For WSL:
-        - Requires gcc, g++, and Python [please don't use WSL-based Python]
-        - Use a separate dedicated Python environment package, such as from Miniconda
-        ```
-        $ sudo apt update && sudo apt upgrade
-        $ sudo apt-get install virtualenv
-        $ sudo apt-get install jq
-        $ sudo apt-get install gcc
-        $ sudo apt-get install g++
-        $ cd <home_dir>
-        $ wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
-        $ bash Miniconda3-latest-Linux-x86_64.sh
-        ```
-        - Follow and complete the installation by pressing enter / answering yes
-        - Exit and restart the WSL terminal
+## Requirements:
+- UNIX
+- 3.6 >= python <= 3.8
+- CUDA 10.1
+- virtualenv
+- jq
+- make
+- gcc
+- g++
 
 
 ## Installation
-
 ```
 $ cd tools
 $ make
 $ cd ..
 ```
 
-## Usage
+## Steps to build the models:
+1. Data preparation and preprocessing
+2. VC and neural vocoder models training
+3. VC fine-tuning with fixed neural vocoder
+4. VC decoder fine-tuning with fixed encoder and neural vocoder
 
-```
-$ cd egs/cyclevae_melsp_wavernn
-```
 
-README file is given in the experiment directory.
+## Steps for real-time low-latency decoding with CPU:
+1. Dump and compile models
+2. Decode
+
+
+## Details
+
+Please see **egs/cycvae_mwdlp_vcc20/README.md** for more details on VC + neural vocoder
+
+or
+
+**egs/mwdlp_vcc20/README.md** for more details on neural vocoder only.
 
 
 ## Contact
 
 Patrick Lumban Tobing
 
-Nagoya University
+patrickltobing@gmail.com
 
 patrick.lumbantobing@g.sp.m.is.nagoya-u.ac.jp
 

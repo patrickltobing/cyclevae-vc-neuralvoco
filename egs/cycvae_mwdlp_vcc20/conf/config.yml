@@ -1,0 +1,145 @@
+## Sampling rate
+#fs: 8000
+#fs: 16000
+#fs: 22050
+fs: 24000
+#fs: 44100
+#fs: 48000
+
+## Frame-shift mel-cep/mel-spec extraction
+shiftms: 10
+
+## Window length mel-spectrogram extraction
+winms: 27.5
+
+## DC-component removal
+highpass_cutoff: 65
+
+## Mel-cepstrum
+mcep_dim: 49
+
+## Mel-spectrogram
+mel_dim: 80
+
+## Pre-emphasis noise-shaping coefficient
+alpha: 0.85
+
+## GRU hidden units encoder, decoder spec, decoder excit
+hidden_units_enc: 512
+hidden_units_dec: 640
+hidden_units_lf0: 128
+
+## GRU hidden units wavernn
+hidden_units_wave: 1184
+
+hidden_units_wave_2: 32
+
+## Output dimension of DualFC before final FC layer
+mid_dim: 16
+
+## GRU hidden layers encoder, decoder spec, decoder excit
+hidden_layers_enc: 1
+hidden_layers_dec: 1
+hidden_layers_lf0: 1
+
+## GRU hidden layers wavernn
+hidden_layers_wave: 1
+
+## kernel-size input conv encoder
+kernel_size_enc: 5
+dilation_size_enc: 1
+
+## kernel-size input spk-net
+kernel_size_spk: 5
+dilation_size_spk: 1
+
+## kernel-size input conv decoder spec
+kernel_size_dec: 5
+dilation_size_dec: 1
+
+## kernel-size input conv encoder excit
+kernel_size_lf0: 7
+dilation_size_lf0: 1
+
+## kernel-size input conv wavernn
+kernel_size_wave: 7
+dilation_size_wave: 1
+
+right_size_spk: 0
+right_size_dec: 0
+right_size_lf0: 0
+
+## number of cycles :  n_half_cyc // 2
+n_half_cyc: 2
+#n_half_cyc: 4
+
+## spect. latent dim.
+lat_dim: 96
+
+## excit. latent dim.
+lat_dim_e: 32
+
+## use causal input convolution
+## if using skewed input convolution for encoder (right_size > 0), set causal_conv dec/lf0 to true
+## always use non-causal input conv. for encoder/wave
+causal_conv_enc: false
+causal_conv_dec: true
+causal_conv_lf0: true
+causal_conv_wave: false
+## if right_size > 0 (skewed conv encoder, i.e., future frame is limited), set causal_conv dec/lf0 to true [low-latency/real-time proc.]
+
+## use dim-reduction for cont. spk. embed from 1-hot code (only for cyclevae spec-excit)
+#spkidtr_dim: 0
+spkidtr_dim: 2
+## to freely interpolate between 2-dim cont. spk-space
+
+## learning rate
+lr: 1e-4
+
+## dropout rate
+do_prob: 0.5
+
+## maximum step count
+#step_count: 20
+#step_count: 60
+step_count: 1035000
+#step_count_wave: 20
+#step_count_wave: 60
+step_count_wave: 4250000
+
+# number of workers (threads) for batch data handling
+n_workers: 1
+#n_workers: 2
+
+mdl_name_vc: cycmelspxlf0capspkvae-laplace-smpl_sparse
+mdl_name_ft: cycmelspspkvae-laplace-smpl_sparse_mwdlp_smpl
+mdl_name_sp: cycmelspspkvae-ftspkdec-laplace-smpl_sparse_mwdlp_smpl
+
+mdl_name_wave: wavernn_dualgru_compact_lpc_mband_10bit_cf_stft
+
+## sparsification scheduling settings for cyclevae
+#t_start_cycvae: 1
+t_start_cycvae: 5000
+#t_end_cycvae: 20
+t_end_cycvae: 245000
+#interval_cycvae: 1
+interval_cycvae: 10
+densities_cycvae: 0.725-0.725-0.91
+n_stage_cycvae: 4
+
+## sparsification scheduling settings for wavernn
+#t_start: 1
+t_start: 20000
+#t_end: 20
+t_end: 1270000
+#interval: 1
+interval: 20
+densities: 0.09-0.09-0.12
+n_stage: 4
+
+## number of data-driven linear predictive coefficients (LPC) in wavernn
+#lpc: 0
+#lpc: 6
+#lpc: 7
+lpc: 8
+#lpc: 9

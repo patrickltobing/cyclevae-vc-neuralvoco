@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# Copyright 2020 Patrick Lumban Tobing (Nagoya University)
+# Copyright 2021 Patrick Lumban Tobing (Nagoya University)
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
 from __future__ import division
@@ -84,6 +84,8 @@ def main():
     def noise_shaping(wav_list):
         pqmf = PQMF(args.n_bands)
         print(f'{pqmf.subbands} {pqmf.A} {pqmf.taps} {pqmf.cutoff_ratio} {pqmf.beta}')
+        #fs_band = args.fs // args.n_bands
+        #print(f'{pqmf.subbands} {pqmf.A} {pqmf.taps} {pqmf.cutoff_ratio} {pqmf.beta} {fs_band}')
         for wav_name in wav_list:
             x, fs = sf.read(wav_name)
 
@@ -107,6 +109,7 @@ def main():
                         wavpath = os.path.join(args.writedir, os.path.basename(wav_name).split(".")[0]+"_B-"+str(i+1)+".wav")
                 print(wavpath)
                 sf.write(wavpath, wav, fs, 'PCM_16')
+                #sf.write(wavpath, wav, fs_band, 'PCM_16')
             wav = np.clip(x_bands_syn[0,0].data.numpy(), -1, 0.999969482421875)
             wav = deemphasis(wav, alpha=args.alpha)
             wavpath = os.path.join(args.writesyndir, os.path.basename(wav_name))
