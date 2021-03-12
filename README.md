@@ -21,9 +21,9 @@ $ cd ..
 
 ## Steps to build the models:
 1. Data preparation and preprocessing
-2. VC and neural vocoder models training
-3. VC fine-tuning with fixed neural vocoder
-4. VC decoder fine-tuning with fixed encoder and neural vocoder
+2. VC and neural vocoder models training [~ 2.5 and 4 days each, respectively]
+3. VC fine-tuning with fixed neural vocoder [~ 2.5 days]
+4. VC decoder fine-tuning with fixed encoder and neural vocoder [~ 1.5 days]
 
 
 ## Steps for real-time low-latency decoding with CPU:

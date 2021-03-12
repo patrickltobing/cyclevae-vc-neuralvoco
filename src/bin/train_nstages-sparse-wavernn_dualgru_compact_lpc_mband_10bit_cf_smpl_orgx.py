@@ -419,14 +419,14 @@ def main():
         do_prob=args.do_prob)
     logging.info(model_waveform)
     pqmf = PQMF(args.n_bands)
-    fft_sizes = [256, 128, 64, 32, 16]
+    fft_sizes = [256, 128, 64, 32, 28]
     if args.fs == 22050 or args.fs == 44100:
         hop_sizes = [88, 44, 22, 11, 8]
     else:
         hop_sizes = [80, 40, 20, 10, 8]
     win_lengths = [elmt*2 for elmt in hop_sizes]
     if args.fs == 8000:
-        fft_sizes_fb = [512, 256, 128, 64, 48]
+        fft_sizes_fb = [512, 256, 128, 64, 56]
         hop_sizes_fb = [160, 80, 40, 20, 16]
     elif args.fs <= 24000:
         fft_sizes_fb = [1024, 512, 256, 128, 112]
@@ -1127,14 +1127,17 @@ def main():
                     (round(float(round(Decimal(str(eval_loss_l1_fb)),2))-0.02,2) <= float(round(Decimal(str(min_eval_loss_l1_fb)),2))) and \
                     (round(float(round(Decimal(str(eval_loss_ce_avg+eval_loss_ce_avg_std)),2))-0.01,2) <= float(round(Decimal(str(min_eval_loss_ce_avg+min_eval_loss_ce_avg_std)),2)) \
                         or round(float(round(Decimal(str(eval_loss_ce_avg)),2))-0.01,2) <= float(round(Decimal(str(min_eval_loss_ce_avg)),2)))):
-                if (eval_loss_err_avg <= min_eval_loss_err_avg) or (not err_flag and eval_loss_err_avg > min_eval_loss_err_avg) or (not sparse_min_flag and sparse_check_flag):
+                round_eval_loss_err_avg = float(round(Decimal(str(eval_loss_err_avg)),2))
+                round_min_eval_loss_err_avg = float(round(Decimal(str(min_eval_loss_err_avg)),2))
+                if (round_eval_loss_err_avg <= round_min_eval_loss_err_avg) or (not err_flag and round_eval_loss_err_avg > round_min_eval_loss_err_avg) or (not sparse_min_flag and sparse_check_flag):
                     if sparse_min_flag:
-                        if eval_loss_err_avg > min_eval_loss_err_avg and not err_flag:
+                        if round_eval_loss_err_avg > round_min_eval_loss_err_avg:
                             err_flag = True
-                        elif eval_loss_err_avg <= min_eval_loss_err_avg:
+                        elif round_eval_loss_err_avg <= round_min_eval_loss_err_avg:
                             err_flag = False
                     elif sparse_check_flag:
                         sparse_min_flag = True
+                        err_flag = False
                     min_eval_loss_ce_avg = eval_loss_ce_avg
                     min_eval_loss_ce_avg_std = eval_loss_ce_avg_std
                     min_eval_loss_err_avg = eval_loss_err_avg

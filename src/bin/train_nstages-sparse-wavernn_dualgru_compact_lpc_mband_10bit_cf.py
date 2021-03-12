@@ -1033,13 +1033,17 @@ def main():
                 or ((round(float(round(Decimal(str(eval_loss_err_avg)),2))-0.07,2) <= float(round(Decimal(str(min_eval_loss_err_avg)),2))) and \
                     (round(float(round(Decimal(str(eval_loss_ce_avg+eval_loss_ce_avg_std)),2))-0.01,2) <= float(round(Decimal(str(min_eval_loss_ce_avg+min_eval_loss_ce_avg_std)),2)) \
                         or round(float(round(Decimal(str(eval_loss_ce_avg)),2))-0.01,2) <= float(round(Decimal(str(min_eval_loss_ce_avg)),2)))):
+                round_eval_loss_err_avg = float(round(Decimal(str(eval_loss_err_avg)),2))
+                round_min_eval_loss_err_avg = float(round(Decimal(str(min_eval_loss_err_avg)),2))
+                if (round_eval_loss_err_avg <= round_min_eval_loss_err_avg) or (not err_flag and round_eval_loss_err_avg > round_min_eval_loss_err_avg) or (not sparse_min_flag and sparse_check_flag):
                     if sparse_min_flag:
-                        if eval_loss_err_avg > min_eval_loss_err_avg and not err_flag:
+                        if round_eval_loss_err_avg > round_min_eval_loss_err_avg:
                             err_flag = True
-                        elif eval_loss_err_avg <= min_eval_loss_err_avg:
+                        elif round_eval_loss_err_avg <= round_min_eval_loss_err_avg:
                             err_flag = False
                     elif sparse_check_flag:
                         sparse_min_flag = True
+                        err_flag = False
                     min_eval_loss_ce_avg = eval_loss_ce_avg
                     min_eval_loss_ce_avg_std = eval_loss_ce_avg_std
                     min_eval_loss_err_avg = eval_loss_err_avg

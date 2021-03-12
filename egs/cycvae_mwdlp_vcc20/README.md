@@ -15,28 +15,28 @@ $ bash download_vcc20.sh
 4. `$ bash run.sh`
 
 
-## VC model training
+## VC model training [~ 2.5 days]
 1. Open **run.sh**
 2. Set `stage=4`
 3. Set a value of `GPU_device=` for GPU device selection
 4. `$ bash run.sh`
 
 
-## Neural vocoder training
+## Neural vocoder training [~ 4 days]
 1. Open **run.sh**
 2. Set `stage=5`
 3. Set a value of `GPU_device=` for GPU device selection
 4. `$ bash run.sh`
 
 
-## VC fine-tuning with fixed neural vocoder
+## VC fine-tuning with fixed neural vocoder [~ 2.5 days]
 1. Open **run.sh**
 2. Set `stage=6`
 3. Set a value of `GPU_device=` for GPU device selection
 4. `$ bash run.sh`
 
 
-## VC decoder fine-tuning with fixed encoder and neural vocoder
+## VC decoder fine-tuning with fixed encoder and neural vocoder [~ 1.5 days]
 1. Open **run.sh**
 2. Set `stage=6`
 3. Set a value of `GPU_device=` for GPU device selection

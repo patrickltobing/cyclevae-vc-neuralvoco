@@ -15,7 +15,7 @@ $ bash download_vcc20.sh
 4. `$ bash run.sh`
 
 
-## Neural vocoder training
+## Neural vocoder training [~ 4 days]
 1. Open **run.sh**
 2. Set `stage=4`
 3. Set a value of `GPU_device=` for GPU device selection

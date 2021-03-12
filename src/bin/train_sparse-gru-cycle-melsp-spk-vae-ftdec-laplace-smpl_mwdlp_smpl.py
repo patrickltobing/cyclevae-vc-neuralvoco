@@ -612,12 +612,13 @@ def main():
     #args.factor = 0.686956522
     #args.factor = 0.6
     #args.factor = 0.4424
-    #args.factor = 0.3
-    args.factor = 0.2212
+    #args.factor = 0.33
+    #args.factor = 0.25
+    args.factor = 0.2
     args.t_start = max(math.ceil(args.t_start * args.factor),1)
     args.t_end = max(math.ceil(args.t_end * args.factor),1)
     args.interval = max(math.ceil(args.interval * args.factor),1)
-    args.step_count = max(math.ceil(args.step_count * args.factor),1)
+    args.step_count = max(math.ceil(args.t_end * 4),1)
     logging.info(f'{args.t_start} {args.t_end} {args.interval} {args.step_count}')
     torch.save(args, args.expdir + "/model.conf")
 
@@ -725,7 +726,7 @@ def main():
     criterion_l1 = torch.nn.L1Loss(reduction='none')
     criterion_l2 = torch.nn.MSELoss(reduction='none')
     pqmf = PQMF(args.n_bands)
-    fft_sizes = [256, 128, 64, 32, 16]
+    fft_sizes = [256, 128, 64, 32, 28]
     if args.fs == 22050 or args.fs == 44100:
         hop_sizes = [88, 44, 22, 11, 8]
     else:
@@ -938,8 +939,8 @@ def main():
     n_data = len(feat_list)
     if n_data >= 225:
         batch_size_utt = round(n_data/150)
-        if batch_size_utt > 20:
-            batch_size_utt = 20
+        if batch_size_utt > 120:
+            batch_size_utt = 120
     else:
         batch_size_utt = 1
     logging.info("number of training_data -- batch_size = %d -- %d " % (n_data, batch_size_utt))
@@ -2387,8 +2388,7 @@ def main():
                                     batch_melsp_cv[i//2] = torch.index_select(batch_melsp_cv[i//2],0,idx_select_full)
                                     batch_magsp_cv[i//2] = torch.index_select(batch_magsp_cv[i//2],0,idx_select_full)
                         else:
-                            text_log = "batch loss_select %lf " % (batch_loss.item())
-                            logging.info("%s (%.3f sec)" % (text_log, time.time() - start))
+                            logging.info("batch loss select (%.3f sec)" % (time.time() - start))
                             iter_count += 1
                             total += time.time() - start
                             continue
@@ -2737,25 +2737,24 @@ def main():
             if (not sparse_min_flag) and (iter_idx + 1 >= t_ends[idx_stage]):
                 sparse_check_flag = True
             if (not sparse_min_flag and sparse_check_flag) \
-                or ((round(float(round(Decimal(str(eval_loss_err_avg[0])),2))-0.43,2) <= float(round(Decimal(str(min_eval_loss_err_avg[0])),2))) and \
-                    (round(float(round(Decimal(str(eval_loss_l1_avg[0])),2))-0.02,2) <= float(round(Decimal(str(min_eval_loss_l1_avg[0])),2))) and \
-                    (round(float(round(Decimal(str(eval_loss_l1_fb[0])),2))-0.02,2) <= float(round(Decimal(str(min_eval_loss_l1_fb[0])),2))) and \
+                or ((round(float(round(Decimal(str(eval_loss_err_avg[0])),2))-0.66,2) <= float(round(Decimal(str(min_eval_loss_err_avg[0])),2))) and \
+                    (round(float(round(Decimal(str(eval_loss_l1_avg[0])),2))-0.09,2) <= float(round(Decimal(str(min_eval_loss_l1_avg[0])),2))) and \
+                    (round(float(round(Decimal(str(eval_loss_l1_fb[0])),2))-0.09,2) <= float(round(Decimal(str(min_eval_loss_l1_fb[0])),2))) and \
                     (float(round(Decimal(str(eval_loss_laplace_cv[0]-eval_loss_laplace[0])),2)) >= round(float(round(Decimal(str(min_eval_loss_laplace_cv[0]-min_eval_loss_laplace[0])),2))-0.03,2)) and \
-                    (round(float(round(Decimal(str(eval_loss_laplace[0])),2))-0.08,2) <= float(round(Decimal(str(min_eval_loss_laplace[0])),2))) and \
-                    (round(float(round(Decimal(str(eval_loss_ce_avg[0]+eval_loss_ce_avg_std[0])),2))-0.01,2) <= float(round(Decimal(str(min_eval_loss_ce_avg[0]+min_eval_loss_ce_avg_std[0])),2)) \
-                        or round(float(round(Decimal(str(eval_loss_ce_avg[0])),2))-0.01,2) <= float(round(Decimal(str(min_eval_loss_ce_avg[0])),2)))):
+                    (round(float(round(Decimal(str(eval_loss_laplace[0])),2))-0.05,2) <= float(round(Decimal(str(min_eval_loss_laplace[0])),2))) and \
+                    (round(float(round(Decimal(str(eval_loss_ce_avg[0]+eval_loss_ce_avg_std[0])),2))-0.02,2) <= float(round(Decimal(str(min_eval_loss_ce_avg[0]+min_eval_loss_ce_avg_std[0])),2)) \
+                        or round(float(round(Decimal(str(eval_loss_ce_avg[0])),2))-0.02,2) <= float(round(Decimal(str(min_eval_loss_ce_avg[0])),2)))):
                 round_eval_loss_err_avg = float(round(Decimal(str(eval_loss_err_avg[0])),2))
                 round_min_eval_loss_err_avg = float(round(Decimal(str(min_eval_loss_err_avg[0])),2))
                 if (round_eval_loss_err_avg <= round_min_eval_loss_err_avg) or (not err_flag and round_eval_loss_err_avg > round_min_eval_loss_err_avg) or (not sparse_min_flag and sparse_check_flag):
-                    round_eval_loss_ce_avg = float(round(Decimal(str(eval_loss_ce_avg[0])),2))
-                    round_min_eval_loss_ce_avg = float(round(Decimal(str(min_eval_loss_ce_avg[0])),2))
                     if sparse_min_flag:
-                        if (round_eval_loss_err_avg > round_min_eval_loss_err_avg) or (round_eval_loss_ce_avg > round_min_eval_loss_ce_avg):
+                        if round_eval_loss_err_avg > round_min_eval_loss_err_avg:
                             err_flag = True
-                        elif (round_eval_loss_err_avg <= round_min_eval_loss_err_avg) and (round_eval_loss_ce_avg <= round_min_eval_loss_ce_avg):
+                        elif round_eval_loss_err_avg <= round_min_eval_loss_err_avg:
                             err_flag = False
                     elif sparse_check_flag:
                         sparse_min_flag = True
+                        err_flag = False
                     min_eval_loss_gv_src_src = eval_loss_gv_src_src
                     min_eval_loss_gv_src_trg = eval_loss_gv_src_trg
                     if pair_exist:

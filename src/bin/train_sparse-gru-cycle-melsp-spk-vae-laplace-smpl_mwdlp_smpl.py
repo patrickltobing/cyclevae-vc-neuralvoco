@@ -622,7 +622,7 @@ def main():
     args.t_start = max(math.ceil(args.t_start * args.factor),1)
     args.t_end = max(math.ceil(args.t_end * args.factor),1)
     args.interval = max(math.ceil(args.interval * args.factor),1)
-    args.step_count = max(math.ceil(args.step_count * args.factor),1)
+    args.step_count = max(math.ceil(args.t_end * 3.4),1)
     logging.info(f'{args.t_start} {args.t_end} {args.interval} {args.step_count}')
     torch.save(args, args.expdir + "/model.conf")
 
@@ -736,7 +736,7 @@ def main():
     criterion_l1 = torch.nn.L1Loss(reduction='none')
     criterion_l2 = torch.nn.MSELoss(reduction='none')
     pqmf = PQMF(args.n_bands)
-    fft_sizes = [256, 128, 64, 32, 16]
+    fft_sizes = [256, 128, 64, 32, 28]
     if args.fs == 22050 or args.fs == 44100:
         hop_sizes = [88, 44, 22, 11, 8]
     else:
@@ -983,8 +983,8 @@ def main():
     n_data = len(feat_list)
     if n_data >= 225:
         batch_size_utt = round(n_data/150)
-        if batch_size_utt > 20:
-            batch_size_utt = 20
+        if batch_size_utt > 30:
+            batch_size_utt = 30
     else:
         batch_size_utt = 1
     logging.info("number of training_data -- batch_size = %d -- %d " % (n_data, batch_size_utt))
@@ -2374,10 +2374,6 @@ def main():
                     if len(idx_select) > 0:
                         len_idx_select = len(idx_select)
                         logging.info('len_idx_select: '+str(len_idx_select))
-                        batch_loss_sc_feat_kl_select = 0
-                        batch_loss_sc_z_kl_select = 0
-                        batch_loss_qz_pz_kl_select = 0
-                        batch_loss_qy_py_ce_select = 0
                         for i in range(n_half_cyc_eval):
                             batch_loss_laplace[i] = 0
                             batch_loss_melsp[i] = 0
@@ -2431,10 +2427,6 @@ def main():
                             melsp_rest_log = torch.log10(torch.clamp(melsp_rest, min=1e-16))
                             magsp_rest_log = torch.log10(torch.clamp(magsp_rest, min=1e-16))
 
-                            batch_sc_ = batch_sc[k,:flens_utt]
-                            sc_onehot_ = F.one_hot(batch_sc_, num_classes=n_spk).float()
-                            batch_loss_sc_feat_kl_select += torch.mean(criterion_ce(batch_feat_in_sc[k,:flens_utt], batch_sc_)) \
-                                                            + torch.mean(criterion_ce(batch_feat_magsp_in_sc[k,:flens_utt], batch_sc_))
                             for i in range(n_half_cyc_eval):
                                 batch_x_c_output_ = batch_x_c_output[i][k,:slens_utt]
                                 batch_x_f_output_ = batch_x_f_output[i][k,:slens_utt]
@@ -2520,25 +2512,6 @@ def main():
                                 batch_loss_l1_fb[i] += batch_loss_l1_fb_select_
 
                                 if i % 2 == 0:
-                                    batch_sc_cv_ = batch_sc_cv[i//2][k,:flens_utt]
-                                    batch_loss_sc_feat_kl_select += torch.mean(criterion_ce(batch_feat_rec_sc[i][k,:flens_utt], batch_sc_)) \
-                                                                    + torch.mean(criterion_ce(batch_feat_magsp_rec_sc[i][k,:flens_utt], batch_sc_)) \
-                                                                    + torch.mean(criterion_ce(batch_feat_cv_sc[i//2][k,:flens_utt], batch_sc_cv_)) \
-                                                                    + torch.mean(criterion_ce(batch_feat_magsp_cv_sc[i//2][k,:flens_utt], batch_sc_cv_))
-                                else:
-                                    batch_loss_sc_feat_kl_select += torch.mean(criterion_ce(batch_feat_rec_sc[i][k,:flens_utt], batch_sc_)) \
-                                                                    + torch.mean(criterion_ce(batch_feat_magsp_rec_sc[i][k,:flens_utt], batch_sc_))
-
-                                batch_loss_sc_z_kl_select += torch.mean(kl_categorical_categorical_logits(p_spk, logits_p_spk, batch_z_sc[i][k,:flens_utt]))
-                                batch_sc_cv_ = batch_sc_cv[i//2][k,:flens_utt]
-                                sc_cv_onehot_ = F.one_hot(batch_sc_cv_, num_classes=n_spk).float()
-                                if i % 2 == 0:
-                                    batch_loss_qy_py_ce_select += torch.mean(criterion_ce(qy_logits_select_, batch_sc_)) \
-                                                                        + torch.mean(criterion_ce(qy_logits_e_select_, batch_sc_)) \
-                                                                + torch.mean(100*torch.sum(criterion_l1(F.softmax(qy_logits_select_, dim=-1), sc_onehot_), -1)) \
-                                                                    + torch.mean(100*torch.sum(criterion_l1(F.softmax(qy_logits_e_select_, dim=-1), sc_onehot_), -1))
-                                    batch_loss_sc_feat_kl_select += torch.mean(criterion_ce(batch_feat_rec_sc[i][k,:flens_utt], batch_sc_)) \
-                                                                        + torch.mean(criterion_ce(batch_feat_cv_sc[i//2][k,:flens_utt], batch_sc_cv_))
                                     pdf_cv = batch_pdf_cv[i//2][k,:flens_utt]
                                     batch_loss_laplace_cv[i//2] += criterion_laplace(pdf_cv[:,:args.mel_dim], pdf_cv[:,args.mel_dim:], melsp)
                                     if flens_utt > 1:
@@ -2551,23 +2524,6 @@ def main():
                                     else:
                                         batch_loss_melsp_cv[i//2] += torch.mean(criterion_l1(batch_melsp_cv[i//2][k,:flens_utt], melsp))
                                         batch_loss_magsp_cv[i//2] += torch.mean(criterion_l1(batch_magsp_cv[i//2][k,:flens_utt], magsp))
-                                else:
-                                    batch_loss_qy_py_ce_select += torch.mean(criterion_ce(qy_logits_select_, batch_sc_cv_)) \
-                                                                        + torch.mean(criterion_ce(qy_logits_e_select_, batch_sc_cv_)) \
-                                                                + torch.mean(100*torch.sum(criterion_l1(F.softmax(qy_logits_select_, dim=-1), sc_cv_onehot_), -1)) \
-                                                                    + torch.mean(100*torch.sum(criterion_l1(F.softmax(qy_logits_e_select_, dim=-1), sc_cv_onehot_), -1))
-                                    batch_loss_sc_feat_kl_select += torch.mean(criterion_ce(batch_feat_rec_sc[i][k,:flens_utt], batch_sc_))
-
-                                batch_loss_qz_pz_kl_select += kl_laplace_laplace(qz_alpha[i][k,:flens_utt], qz_alpha_fix_) \
-                                                                + kl_laplace_laplace(qz_alpha_e[i][k,:flens_utt], qz_alpha_e_fix_)
-
-                                if i > 0:
-                                    z_obs = torch.cat((z_e[i][k,:flens_utt], z[i][k,:flens_utt]), 1)
-                                    batch_loss_qz_pz_kl_select += torch.mean(torch.log(torch.clamp(torch.sum(z_obs*z_ref, -1), min=1e-13) / torch.clamp(torch.sqrt(torch.sum(z_obs**2, -1))*z_ref_denom, min=1e-13))) \
-                                                                + torch.sqrt(torch.mean(torch.sum((z_obs-z_ref)**2, -1)))
-                                else:
-                                    z_ref = torch.cat((z_e[0][k,:flens_utt], z[0][k,:flens_utt]), 1)
-                                    z_ref_denom = torch.sqrt(torch.sum(z_ref**2, -1))
                         for i in range(n_half_cyc_eval):
                             batch_loss_laplace[i] /= len_idx_select
                             batch_loss_melsp[i] /= len_idx_select
@@ -2970,7 +2926,6 @@ def main():
                         total_eval_loss["eval/loss_qy_py_err_e-%d"%(i+1)].append(batch_loss_qy_py_err_e[i].item())
                         total_eval_loss["eval/loss_qz_pz_e-%d"%(i+1)].append(batch_loss_qz_pz_e[i].item())
                         total_eval_loss["eval/loss_sc_z-%d"%(i+1)].append(batch_loss_sc_z[i].item())
-                        total_eval_loss["eval/loss_sc_feat-%d"%(i+1)].append(batch_loss_sc_feat[i].item())
                         if i > 0:
                             total_eval_loss["eval/loss_cossim-%d"%(i+1)].append(batch_loss_lat_cossim[i].item())
                             total_eval_loss["eval/loss_rmse-%d"%(i+1)].append(batch_loss_lat_rmse[i].item())
@@ -3223,25 +3178,24 @@ def main():
             if (not sparse_min_flag) and (iter_idx + 1 >= t_ends[idx_stage]):
                 sparse_check_flag = True
             if (not sparse_min_flag and sparse_check_flag) \
-                or ((round(float(round(Decimal(str(eval_loss_err_avg[0])),2))-0.43,2) <= float(round(Decimal(str(min_eval_loss_err_avg[0])),2))) and \
-                    (round(float(round(Decimal(str(eval_loss_l1_avg[0])),2))-0.02,2) <= float(round(Decimal(str(min_eval_loss_l1_avg[0])),2))) and \
-                    (round(float(round(Decimal(str(eval_loss_l1_fb[0])),2))-0.02,2) <= float(round(Decimal(str(min_eval_loss_l1_fb[0])),2))) and \
+                or ((round(float(round(Decimal(str(eval_loss_err_avg[0])),2))-0.66,2) <= float(round(Decimal(str(min_eval_loss_err_avg[0])),2))) and \
+                    (round(float(round(Decimal(str(eval_loss_l1_avg[0])),2))-0.09,2) <= float(round(Decimal(str(min_eval_loss_l1_avg[0])),2))) and \
+                    (round(float(round(Decimal(str(eval_loss_l1_fb[0])),2))-0.09,2) <= float(round(Decimal(str(min_eval_loss_l1_fb[0])),2))) and \
                     (float(round(Decimal(str(eval_loss_laplace_cv[0]-eval_loss_laplace[0])),2)) >= round(float(round(Decimal(str(min_eval_loss_laplace_cv[0]-min_eval_loss_laplace[0])),2))-0.03,2)) and \
-                    (round(float(round(Decimal(str(eval_loss_laplace[0])),2))-0.08,2) <= float(round(Decimal(str(min_eval_loss_laplace[0])),2))) and \
-                    (round(float(round(Decimal(str(eval_loss_ce_avg[0]+eval_loss_ce_avg_std[0])),2))-0.01,2) <= float(round(Decimal(str(min_eval_loss_ce_avg[0]+min_eval_loss_ce_avg_std[0])),2)) \
-                        or round(float(round(Decimal(str(eval_loss_ce_avg[0])),2))-0.01,2) <= float(round(Decimal(str(min_eval_loss_ce_avg[0])),2)))):
+                    (round(float(round(Decimal(str(eval_loss_laplace[0])),2))-0.05,2) <= float(round(Decimal(str(min_eval_loss_laplace[0])),2))) and \
+                    (round(float(round(Decimal(str(eval_loss_ce_avg[0]+eval_loss_ce_avg_std[0])),2))-0.02,2) <= float(round(Decimal(str(min_eval_loss_ce_avg[0]+min_eval_loss_ce_avg_std[0])),2)) \
+                        or round(float(round(Decimal(str(eval_loss_ce_avg[0])),2))-0.02,2) <= float(round(Decimal(str(min_eval_loss_ce_avg[0])),2)))):
                 round_eval_loss_err_avg = float(round(Decimal(str(eval_loss_err_avg[0])),2))
                 round_min_eval_loss_err_avg = float(round(Decimal(str(min_eval_loss_err_avg[0])),2))
                 if (round_eval_loss_err_avg <= round_min_eval_loss_err_avg) or (not err_flag and round_eval_loss_err_avg > round_min_eval_loss_err_avg) or (not sparse_min_flag and sparse_check_flag):
-                    round_eval_loss_ce_avg = float(round(Decimal(str(eval_loss_ce_avg[0])),2))
-                    round_min_eval_loss_ce_avg = float(round(Decimal(str(min_eval_loss_ce_avg[0])),2))
                     if sparse_min_flag:
-                        if (round_eval_loss_err_avg > round_min_eval_loss_err_avg) or (round_eval_loss_ce_avg > round_min_eval_loss_ce_avg):
+                        if round_eval_loss_err_avg > round_min_eval_loss_err_avg:
                             err_flag = True
-                        elif (round_eval_loss_err_avg <= round_min_eval_loss_err_avg) and (round_eval_loss_ce_avg <= round_min_eval_loss_ce_avg):
+                        elif round_eval_loss_err_avg <= round_min_eval_loss_err_avg:
                             err_flag = False
                     elif sparse_check_flag:
                         sparse_min_flag = True
+                        err_flag = False
                     min_eval_loss_gv_src_src = eval_loss_gv_src_src
                     min_eval_loss_gv_src_trg = eval_loss_gv_src_trg
                     min_eval_loss_sc_feat_in = eval_loss_sc_feat_in
@@ -3279,8 +3233,6 @@ def main():
                             min_eval_loss_lat_rmse_std[i] = eval_loss_lat_rmse_std[i]
                         min_eval_loss_sc_z[i] = eval_loss_sc_z[i]
                         min_eval_loss_sc_z_std[i] = eval_loss_sc_z_std[i]
-                        min_eval_loss_sc_feat[i] = eval_loss_sc_feat[i]
-                        min_eval_loss_sc_feat_std[i] = eval_loss_sc_feat_std[i]
                         min_eval_loss_sc_feat[i] = eval_loss_sc_feat[i]
                         min_eval_loss_sc_feat_std[i] = eval_loss_sc_feat_std[i]
                         min_eval_loss_sc_feat_magsp[i] = eval_loss_sc_feat_magsp[i]
@@ -4170,8 +4122,8 @@ def main():
                                       + batch_loss_fro_select_.sum() + batch_loss_l1_select_.sum() \
                                       + batch_loss_fro_fb_select_ + batch_loss_l1_fb_select_
 
+                    batch_sc_cv_ = batch_sc_cv[i//2][k,:flens_utt]
                     if i % 2 == 0:
-                        batch_sc_cv_ = batch_sc_cv[i//2][k,:flens_utt]
                         batch_loss_sc_feat_kl_select += torch.mean(criterion_ce(batch_feat_rec_sc[i][k,:flens_utt], batch_sc_)) \
                                                         + torch.mean(criterion_ce(batch_feat_magsp_rec_sc[i][k,:flens_utt], batch_sc_)) \
                                                         + torch.mean(criterion_ce(batch_feat_cv_sc[i//2][k,:flens_utt], batch_sc_cv_)) \
@@ -4179,17 +4131,13 @@ def main():
                     else:
                         batch_loss_sc_feat_kl_select += torch.mean(criterion_ce(batch_feat_rec_sc[i][k,:flens_utt], batch_sc_)) \
                                                         + torch.mean(criterion_ce(batch_feat_magsp_rec_sc[i][k,:flens_utt], batch_sc_))
-
                     batch_loss_sc_z_kl_select += torch.mean(kl_categorical_categorical_logits(p_spk, logits_p_spk, batch_z_sc[i][k,:flens_utt]))
-                    batch_sc_cv_ = batch_sc_cv[i//2][k,:flens_utt]
-                    sc_cv_onehot_ = F.one_hot(batch_sc_cv_, num_classes=n_spk).float()
+
                     if i % 2 == 0:
                         batch_loss_qy_py_ce_select += torch.mean(criterion_ce(qy_logits_select_, batch_sc_)) \
                                                             + torch.mean(criterion_ce(qy_logits_e_select_, batch_sc_)) \
                                                     + torch.mean(100*torch.sum(criterion_l1(F.softmax(qy_logits_select_, dim=-1), sc_onehot_), -1)) \
                                                         + torch.mean(100*torch.sum(criterion_l1(F.softmax(qy_logits_e_select_, dim=-1), sc_onehot_), -1))
-                        batch_loss_sc_feat_kl_select += torch.mean(criterion_ce(batch_feat_rec_sc[i][k,:flens_utt], batch_sc_)) \
-                                                            + torch.mean(criterion_ce(batch_feat_cv_sc[i//2][k,:flens_utt], batch_sc_cv_))
                         pdf_cv = batch_pdf_cv[i//2][k,:flens_utt]
                         batch_loss_laplace_cv[i//2] += criterion_laplace(pdf_cv[:,:args.mel_dim], pdf_cv[:,args.mel_dim:], melsp)
                         if flens_utt > 1:
@@ -4203,11 +4151,11 @@ def main():
                             batch_loss_melsp_cv[i//2] += torch.mean(criterion_l1(batch_melsp_cv[i//2][k,:flens_utt], melsp))
                             batch_loss_magsp_cv[i//2] += torch.mean(criterion_l1(batch_magsp_cv[i//2][k,:flens_utt], magsp))
                     else:
+                        sc_cv_onehot_ = F.one_hot(batch_sc_cv_, num_classes=n_spk).float()
                         batch_loss_qy_py_ce_select += torch.mean(criterion_ce(qy_logits_select_, batch_sc_cv_)) \
                                                             + torch.mean(criterion_ce(qy_logits_e_select_, batch_sc_cv_)) \
                                                     + torch.mean(100*torch.sum(criterion_l1(F.softmax(qy_logits_select_, dim=-1), sc_cv_onehot_), -1)) \
                                                         + torch.mean(100*torch.sum(criterion_l1(F.softmax(qy_logits_e_select_, dim=-1), sc_cv_onehot_), -1))
-                        batch_loss_sc_feat_kl_select += torch.mean(criterion_ce(batch_feat_rec_sc[i][k,:flens_utt], batch_sc_))
 
                     batch_loss_qz_pz_kl_select += kl_laplace_laplace(qz_alpha[i][k,:flens_utt], qz_alpha_fix_) \
                                                     + kl_laplace_laplace(qz_alpha_e[i][k,:flens_utt], qz_alpha_e_fix_)
@@ -4712,7 +4660,6 @@ def main():
             total_train_loss["train/loss_qy_py_err_e-%d"%(i+1)].append(batch_loss_qy_py_err_e[i].item())
             total_train_loss["train/loss_qz_pz_e-%d"%(i+1)].append(batch_loss_qz_pz_e[i].item())
             total_train_loss["train/loss_sc_z-%d"%(i+1)].append(batch_loss_sc_z[i].item())
-            total_train_loss["train/loss_sc_feat-%d"%(i+1)].append(batch_loss_sc_feat[i].item())
             if i > 0:
                 total_train_loss["train/loss_cossim-%d"%(i+1)].append(batch_loss_lat_cossim[i].item())
                 total_train_loss["train/loss_rmse-%d"%(i+1)].append(batch_loss_lat_rmse[i].item())

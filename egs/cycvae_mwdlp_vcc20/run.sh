@@ -1400,9 +1400,7 @@ if [ `echo ${stage} | grep 6` ];then
     if [ $mdl_name_ft == "cycmelspspkvae-laplace-smpl_sparse_mwdlp_smpl" ];then
         n_spk=${#spks[@]}
         #n_spk=${#spks_trg_rec[@]}
-        #n_tr=`expr 4500 / ${n_spk}`
-        n_tr=`expr 3000 / ${n_spk}`
-        #n_tr=`expr 1500 / ${n_spk}`
+        n_tr=`expr 4500 / ${n_spk}`
         if [ $n_spk -le 300 ]; then
             n_dv=`expr 300 / ${n_spk}`
         else
@@ -1645,9 +1643,7 @@ if [ `echo ${stage} | grep 7` ];then
     if [ $mdl_name_sp == "cycmelspspkvae-ftspkdec-laplace-smpl_sparse_mwdlp_smpl" ];then
         n_spk=${#spks[@]}
         #n_spk=${#spks_trg_rec[@]}
-        #n_tr=`expr 4500 / ${n_spk}`
-        n_tr=`expr 3000 / ${n_spk}`
-        #n_tr=`expr 1500 / ${n_spk}`
+        n_tr=`expr 9000 / ${n_spk}`
         if [ $n_spk -le 300 ]; then
             n_dv=`expr 300 / ${n_spk}`
         else
