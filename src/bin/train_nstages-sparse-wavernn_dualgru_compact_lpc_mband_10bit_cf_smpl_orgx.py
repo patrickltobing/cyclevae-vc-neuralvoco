@@ -1123,8 +1123,8 @@ def main():
                 sparse_check_flag = True
             if (not sparse_min_flag and sparse_check_flag) \
                 or ((round(float(round(Decimal(str(eval_loss_err_avg)),2))-0.07,2) <= float(round(Decimal(str(min_eval_loss_err_avg)),2))) and \
-                    (round(float(round(Decimal(str(eval_loss_l1_avg)),2))-0.02,2) <= float(round(Decimal(str(min_eval_loss_l1_avg)),2))) and \
-                    (round(float(round(Decimal(str(eval_loss_l1_fb)),2))-0.02,2) <= float(round(Decimal(str(min_eval_loss_l1_fb)),2))) and \
+                    (round(float(round(Decimal(str(eval_loss_l1_avg)),2))-0.03,2) <= float(round(Decimal(str(min_eval_loss_l1_avg)),2))) and \
+                    (round(float(round(Decimal(str(eval_loss_l1_fb)),2))-0.03,2) <= float(round(Decimal(str(min_eval_loss_l1_fb)),2))) and \
                     (round(float(round(Decimal(str(eval_loss_ce_avg+eval_loss_ce_avg_std)),2))-0.01,2) <= float(round(Decimal(str(min_eval_loss_ce_avg+min_eval_loss_ce_avg_std)),2)) \
                         or round(float(round(Decimal(str(eval_loss_ce_avg)),2))-0.01,2) <= float(round(Decimal(str(min_eval_loss_ce_avg)),2)))):
                 round_eval_loss_err_avg = float(round(Decimal(str(eval_loss_err_avg)),2))
