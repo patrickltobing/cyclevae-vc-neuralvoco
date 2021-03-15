@@ -901,18 +901,18 @@ class FeatureDatasetEvalCycMceplf0WavVAE(Dataset):
                                 if flag:
                                     break
                         if not flag:
-                            #spk_trg = self.spk_list[spk_trg_idx_start]
+                            spk_trg = self.spk_list[spk_trg_idx_iter_start]
                             for i in range(spk_src_n_utt):
                                 file_src = self.file_list[spk_src_idx_iter][i]
                                 if self.wav_list is not None:
                                     wav_src = self.wav_list[spk_src_idx_iter][i]
-                                #file_trg = os.path.dirname(os.path.dirname(file_src))+"/"+spk_trg+\
-                                #                            "/"+os.path.basename(file_src)
+                                file_trg = os.path.dirname(os.path.dirname(file_src))+"/"+spk_trg+\
+                                                            "/"+os.path.basename(file_src)
                                 self.file_list_src.append(file_src)
                                 if self.wav_list is not None:
                                     self.wav_list_src.append(wav_src)
-                                #self.file_list_src_trg.append(file_trg)
-                                self.file_list_src_trg.append(file_src)
+                                self.file_list_src_trg.append(file_trg)
+                                #self.file_list_src_trg.append(file_src)
                                 self.list_src_trg_flag.append(False)
 
     def __len__(self):
