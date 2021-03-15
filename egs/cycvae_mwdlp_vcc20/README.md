@@ -1,7 +1,10 @@
 # Real-time low-latency multispeaker VC with cyclic variational autoencoder (CycleVAE) and multiband WaveRNN using data-driven linear prediction (MWDLP)
 
 
-This package uses Voice Conversion Challenge 2020 dataset [VCC20](http://vc-challenge.org/)
+This package uses Voice Conversion Challenge 2020 dataset [VCC20](http://vc-challenge.org/).
+
+Real-time implementation is based on [LPCNet](https://github.com/mozilla/LPCNet/).
+
 
 ## Data preparation
 ```

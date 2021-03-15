@@ -9,7 +9,6 @@
 - jq
 - make
 - gcc
-- g++
 
 
 ## Installation
@@ -29,6 +28,8 @@ $ cd ..
 ## Steps for real-time low-latency decoding with CPU:
 1. Dump and compile models
 2. Decode
+
+Real-time implementation is based on [LPCNet](https://github.com/mozilla/LPCNet/).
 
 
 ## Details

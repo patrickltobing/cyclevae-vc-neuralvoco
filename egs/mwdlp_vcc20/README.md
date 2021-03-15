@@ -3,6 +3,9 @@
 
 This package uses Voice Conversion Challenge 2020 dataset [VCC20](http://vc-challenge.org/)
 
+Real-time implementation is based on [LPCNet](https://github.com/mozilla/LPCNet/).
+
+
 ## Data preparation
 ```
 $ bash download_vcc20.sh

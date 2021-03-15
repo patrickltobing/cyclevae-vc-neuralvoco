@@ -838,6 +838,7 @@ if [ `echo ${stage} | grep 3` ];then
             done
             wait
             # check the number of feature files
+            set +e
             n_wavs=`cat data/${set}/wav_filtered.scp | wc -l`
             n_ns=`find wav_ns/${set} -name "*.wav" | wc -l`
             echo "${n_ns}/${n_wavs} files are successfully processed [emph]."
@@ -850,6 +851,7 @@ if [ `echo ${stage} | grep 3` ];then
                 echo $set $spk
             done
             rm -f tmp
+            set -e
         done
     fi
     if true; then
@@ -893,6 +895,7 @@ if [ `echo ${stage} | grep 3` ];then
             done
             wait
             # check the number of feature files
+            set +e
             n_wavs=`cat data/${set}/wav_ns.scp | wc -l`
             n_ns=`find wav_ns_pqmf_${n_bands}/${set} -name "*.wav" | wc -l`
             echo "${n_ns}/${n_wavs} files are successfully processed [emph pqmf ${n_bands}-bands]."
@@ -905,6 +908,7 @@ if [ `echo ${stage} | grep 3` ];then
                 echo $set $spk
             done
             rm -f tmp
+            set -e
         done
     fi
 fi
