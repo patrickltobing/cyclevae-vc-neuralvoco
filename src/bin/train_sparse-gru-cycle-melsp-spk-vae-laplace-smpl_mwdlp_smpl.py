@@ -736,25 +736,27 @@ def main():
     criterion_l1 = torch.nn.L1Loss(reduction='none')
     criterion_l2 = torch.nn.MSELoss(reduction='none')
     pqmf = PQMF(args.n_bands)
-    fft_sizes = [256, 128, 64, 32, 28]
+    fft_sizes = [256, 128, 64, 32, 16]
     if args.fs == 22050 or args.fs == 44100:
         hop_sizes = [88, 44, 22, 11, 8]
     else:
         hop_sizes = [80, 40, 20, 10, 8]
     win_lengths = [elmt*2 for elmt in hop_sizes]
     if args.fs == 8000:
-        fft_sizes_fb = [512, 256, 128, 64, 56]
+        fft_sizes_fb = [512, 256, 128, 64, 32]
         hop_sizes_fb = [160, 80, 40, 20, 16]
     elif args.fs <= 24000:
-        fft_sizes_fb = [1024, 512, 256, 128, 112]
         if args.fs == 16000:
+            fft_sizes_fb = [1024, 512, 256, 128, 64]
             hop_sizes_fb = [320, 160, 80, 40, 32]
         elif args.fs == 22050:
+            fft_sizes_fb = [1024, 512, 256, 128, 128]
             hop_sizes_fb = [440, 220, 110, 55, 44]
         else:
+            fft_sizes_fb = [1024, 512, 256, 128, 128]
             hop_sizes_fb = [480, 240, 120, 60, 48]
     else:
-        fft_sizes_fb = [2048, 1024, 512, 256, 224]
+        fft_sizes_fb = [2048, 1024, 512, 256, 256]
         if args.fs == 44100:
             hop_sizes_fb = [880, 440, 220, 110, 88]
         else:
