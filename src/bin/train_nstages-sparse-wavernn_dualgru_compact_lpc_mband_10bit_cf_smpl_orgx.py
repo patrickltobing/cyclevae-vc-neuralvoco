@@ -419,32 +419,32 @@ def main():
         do_prob=args.do_prob)
     logging.info(model_waveform)
     pqmf = PQMF(args.n_bands)
-    fft_sizes = [256, 128, 64, 32, 16]
+    fft_sizes = [256, 128, 64, 32, 32]
     if args.fs == 22050 or args.fs == 44100:
         hop_sizes = [88, 44, 22, 11, 8]
     else:
         hop_sizes = [80, 40, 20, 10, 8]
-    win_lengths = [elmt*2 for elmt in hop_sizes]
+    win_lengths = [round(elmt*2.5) for elmt in hop_sizes]
     if args.fs == 8000:
-        fft_sizes_fb = [512, 256, 128, 64, 32]
+        fft_sizes_fb = [512, 256, 128, 64, 64]
         hop_sizes_fb = [160, 80, 40, 20, 16]
     elif args.fs <= 24000:
         if args.fs == 16000:
-            fft_sizes_fb = [1024, 512, 256, 128, 64]
+            fft_sizes_fb = [1024, 512, 256, 128, 128]
             hop_sizes_fb = [320, 160, 80, 40, 32]
         elif args.fs == 22050:
-            fft_sizes_fb = [1024, 512, 256, 128, 128]
+            fft_sizes_fb = [2048, 1024, 512, 256, 128]
             hop_sizes_fb = [440, 220, 110, 55, 44]
         else:
-            fft_sizes_fb = [1024, 512, 256, 128, 128]
+            fft_sizes_fb = [2048, 1024, 512, 256, 128]
             hop_sizes_fb = [480, 240, 120, 60, 48]
     else:
-        fft_sizes_fb = [2048, 1024, 512, 256, 256]
+        fft_sizes_fb = [4096, 2048, 1024, 512, 256]
         if args.fs == 44100:
             hop_sizes_fb = [880, 440, 220, 110, 88]
         else:
             hop_sizes_fb = [960, 480, 240, 120, 96]
-    win_lengths_fb = [elmt*2 for elmt in hop_sizes_fb]
+    win_lengths_fb = [round(elmt*2.5) for elmt in hop_sizes_fb]
     criterion_stft = MultiResolutionSTFTLoss(
         fft_sizes = fft_sizes,
         hop_sizes = hop_sizes,

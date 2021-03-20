@@ -100,12 +100,12 @@ if [ $shiftms -eq 10 ]; then
     ## lookup frame limited to only 1/2 frame [for allowing low-latency/real-time processing]
     right_size_enc=1
     right_size_wave=1
-    batch_size_wave=4
+    batch_size_wave=5
     batch_size=30
 elif [ $shiftms -eq 5 ]; then
     right_size_enc=2
     right_size_wave=2
-    batch_size_wave=8
+    batch_size_wave=10
     batch_size=60
 else
     echo "shift ms not available"
