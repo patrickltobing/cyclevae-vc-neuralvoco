@@ -72,13 +72,13 @@ def main():
         right_min_idx = -1
 
         freqs = arr_data[:,0]
-        idx_80 = np.where(freqs > 80)
-        #logging.info(arr_data[idx_80,1])
-        peak = np.max(arr_data[idx_80,1])
-        peak_idx_80 = np.argmax(arr_data[idx_80,1])
-        f0_peak_idx = arr_data[idx_80][peak_idx_80,0]
+        idx_81 = np.where(freqs > 81)
+        #logging.info(arr_data[idx_81,1])
+        peak = np.max(arr_data[idx_81,1])
+        peak_idx_81 = np.argmax(arr_data[idx_81,1])
+        f0_peak_idx = arr_data[idx_81][peak_idx_81,0]
         peak_idx = np.where(arr_data[:,0] == f0_peak_idx)[0][0]
-        logging.info(peak_idx_80)
+        logging.info(peak_idx_81)
         logging.info(f0_peak_idx)
         logging.info(peak_idx)
 
