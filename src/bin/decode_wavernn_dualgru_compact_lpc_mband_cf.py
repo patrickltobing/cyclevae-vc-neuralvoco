@@ -182,7 +182,8 @@ def main():
                         type=int, help="number of encoder in case of source-sep. net")
     args = parser.parse_args()
 
-    if args.GPU_device is not None or args.GPU_device_str is not None:
+    if (args.GPU_device is not None and int(args.GPU_device) >= 0) or \
+        (args.GPU_device_str is not None and all([int(elmt) >= 0 for elmt in args.GPU_device_str.split(',')]) == True):
         os.environ["CUDA_DEVICE_ORDER"]     = "PCI_BUS_ID"
         if args.GPU_device_str is None:
             os.environ["CUDA_VISIBLE_DEVICES"]  = str(args.GPU_device)
@@ -282,6 +283,10 @@ def main():
                         lpc=config.lpc)
                     logging.info(model_waveform)
                 else:
+                    if 'stft_emb' in config.expdir or 'cf_emb' in config.expdir:
+                        emb_flag = True
+                    else:
+                        emb_flag = False
                     model_waveform = GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(
                         feat_dim=config.mcep_dim+config.excit_dim,
                         upsampling_factor=config.upsampling_factor,
@@ -297,6 +302,7 @@ def main():
                         mid_dim=config.mid_dim,
                         res_flag=args.wlat_res_flag,
                         res_smpl_flag=True,
+                        emb_flag=emb_flag,
                         lpc=config.lpc)
                     logging.info(model_waveform)
                 model_waveform.cuda()

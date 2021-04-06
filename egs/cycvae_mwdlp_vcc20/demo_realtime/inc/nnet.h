@@ -55,13 +55,14 @@ typedef struct {
   int n_dim;
 } NormStats;
 
-//PLT_Dec20
+//PLT_Mar21
 typedef struct {
   const float *bias;
   const float *input_weights;
-  const float *factor_signs;
-  const float *factor_mags;
-  const float *factor_mids;
+  //const float *factor_signs;
+  //const float *factor_mags;
+  //const float *factor_mids;
+  const float *factors;
   int activation_signs;
   int activation_mags;
   int activation_mids;
@@ -137,9 +138,9 @@ void compute_dense(const DenseLayer *layer, float *output, const float *input);
 //PLT_Dec20
 void compute_dense_linear(const DenseLayer *layer, float *output, const float *input);
 
-//PLT_Dec20
-void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *fc_layer, float *output,
-    const float *input, const int *last_output);
+//PLT_Mar21
+void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *fc_layer, const float *prev_logits,
+    float *output, const float *input, const int *last_output);
 
 //PLT_Mar20
 void compute_mdense_mwdlp10_nodlpc(const MDenseLayerMWDLP10 *layer, const DenseLayer *fc_layer, float *output,

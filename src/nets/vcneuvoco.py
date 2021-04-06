@@ -1666,7 +1666,8 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
     def __init__(self, feat_dim=80, upsampling_factor=120, hidden_units=640, hidden_units_2=32, n_quantize=65536,
             kernel_size=7, dilation_size=1, do_prob=0, causal_conv=False, use_weight_norm=True, lpc=6, remove_scale_in_weight_norm=True,
                 right_size=2, n_bands=5, excit_dim=0, pad_first=False, mid_out_flag=True, red_dim=None, spk_dim=None, res_gru=None, frm_upd_flag=False,
-                    scale_in_aux_dim=None, n_spk=None, scale_in_flag=True, mid_dim=None, aux_dim=None, res_flag=False, res_smpl_flag=False, conv_in_flag=False):
+                    scale_in_aux_dim=None, n_spk=None, scale_in_flag=True, mid_dim=None, aux_dim=None, res_flag=False, res_smpl_flag=False, conv_in_flag=False,
+                        emb_flag=False):
         super(GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF, self).__init__()
         self.feat_dim = feat_dim
         self.in_dim = self.feat_dim
@@ -1713,6 +1714,7 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
         self.res_gru = res_gru
         self.frm_upd_flag = frm_upd_flag
         self.remove_scale_in_weight_norm = remove_scale_in_weight_norm
+        self.emb_flag = emb_flag
 
         # Norm. layer
         if self.scale_in_flag:
@@ -1853,6 +1855,13 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
             for i in range(self.cf_dim):
                 logits_param[i,i] = 1
             self.logits.weight = torch.nn.Parameter(logits_param)
+            if self.emb_flag:
+                self.logits_c = EmbeddingOne(self.cf_dim, 1)
+                self.logits_f = EmbeddingOne(self.cf_dim, 1)
+                #self.logits_sgns_c = EmbeddingZero(self.cf_dim, 1)
+                #self.logits_mags_c = EmbeddingZero(self.cf_dim, 1)
+                #self.logits_sgns_f = EmbeddingZero(self.cf_dim, 1)
+                #self.logits_mags_f = EmbeddingZero(self.cf_dim, 1)
 
         # apply weight norm
         if self.use_weight_norm:
@@ -2209,8 +2218,24 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
             # unfold put new dimension on the last
             if not ret_res:
                 if not ret_mid_feat:
-                    return torch.clamp(logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), \
-                        torch.clamp(logits_f + torch.sum((signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), h.detach(), h_2.detach(), h_f.detach()
+                    if self.emb_flag:
+                        x_c_lpc = x_c_lpc.unfold(1, self.lpc, 1) # B x T x n_bands --> B x T x n_bands x K
+                        x_f_lpc = x_f_lpc.unfold(1, self.lpc, 1)
+                        #lpc_c = (signs_c*scales_c).flip(-1).unsqueeze(-1)
+                        #lpc_f = (signs_f*scales_f).flip(-1).unsqueeze(-1)
+                        #logging.info(lpc_c.mean(2).mean(1).mean(0)[:,0])
+                        #logging.info(lpc_f.mean(2).mean(1).mean(0)[:,0])
+                        #lpc_logits_c = torch.sum(self.logits(x_c_lpc)*lpc_c*torch.tanh(self.logits_sgns_c(x_c_lpc))*torch.exp(self.logits_mags_c(x_c_lpc)), 3)
+                        #lpc_logits_f = torch.sum(self.logits(x_f_lpc)*lpc_f*torch.tanh(self.logits_sgns_f(x_f_lpc))*torch.exp(self.logits_mags_f(x_f_lpc)), 3)
+                        #return torch.clamp(logits_c + lpc_logits_c, min=MIN_CLAMP, max=MAX_CLAMP), torch.clamp(logits_f + lpc_logits_f, min=MIN_CLAMP, max=MAX_CLAMP), \
+                        return torch.clamp(logits_c + torch.sum(self.logits(x_c_lpc)*(signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits_c(x_c_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), \
+                                torch.clamp(logits_f + torch.sum(self.logits(x_f_lpc)*(signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits_f(x_f_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), \
+                                        h.detach(), h_2.detach(), h_f.detach()
+                                    #*torch.tanh(self.logits_sgns_c(x_c_lpc))*torch.exp(self.logits_mags_c(x_c_lpc)), 3), min=MIN_CLAMP, max=MAX_CLAMP), \
+                                    #*torch.tanh(self.logits_sgns_f(x_f_lpc))*torch.exp(self.logits_mags_f(x_f_lpc)), 3), min=MIN_CLAMP, max=MAX_CLAMP), \
+                    else:
+                        return torch.clamp(logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), \
+                            torch.clamp(logits_f + torch.sum((signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), h.detach(), h_2.detach(), h_f.detach()
                 else:
                     if not ret_mid_smpl:
                         return torch.clamp(logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), \
@@ -2444,7 +2469,12 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
         if self.lpc > 0:
             # coarse part
             signs_c, scales_c, logits_c = self.out(out.transpose(1,2)) # B x 1 x n_bands x K or 32
-            dist = OneHotCategorical(F.softmax(torch.clamp(logits_c + torch.sum((signs_c*scales_c).unsqueeze(-1)*self.logits(x_c_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
+            if self.emb_flag:
+                dist = OneHotCategorical(F.softmax(torch.clamp(logits_c + torch.sum(self.logits(x_c_lpc)*(signs_c*scales_c).unsqueeze(-1)\
+                            *self.logits_c(x_c_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
+                            #*torch.tanh(self.logits_sgns_c(x_c_lpc))*torch.exp(self.logits_mags_c(x_c_lpc)), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
+            else:
+                dist = OneHotCategorical(F.softmax(torch.clamp(logits_c + torch.sum((signs_c*scales_c).unsqueeze(-1)*self.logits(x_c_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
             # B x 1 x n_bands x 256, B x 1 x n_bands x K x 256 --> B x 1 x n_bands x 2 x 256
             x_c_out = x_c_wav = dist.sample().argmax(dim=-1) # B x 1 x n_bands
             x_c_lpc[:,:,:,1:] = x_c_lpc[:,:,:,:-1]
@@ -2453,7 +2483,12 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
             embed_x_c_wav = self.embed_c_wav(x_c_wav).reshape(B,1,-1)
             out, h_f = self.gru_f(torch.cat((c_f, embed_x_c_wav, out), 2))
             signs_f, scales_f, logits_f = self.out_f(out.transpose(1,2)) # B x 1 x n_bands x K or 32
-            dist = OneHotCategorical(F.softmax(torch.clamp(logits_f + torch.sum((signs_f*scales_f).unsqueeze(-1)*self.logits(x_f_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
+            if self.emb_flag:
+                dist = OneHotCategorical(F.softmax(torch.clamp(logits_f + torch.sum(self.logits(x_f_lpc)*(signs_f*scales_f).unsqueeze(-1)\
+                            *self.logits_f(x_f_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
+                            #*torch.tanh(self.logits_sgns_f(x_f_lpc))*torch.exp(self.logits_mags_f(x_f_lpc)), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
+            else:
+                dist = OneHotCategorical(F.softmax(torch.clamp(logits_f + torch.sum((signs_f*scales_f).unsqueeze(-1)*self.logits(x_f_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
             x_f_out = x_f_wav = dist.sample().argmax(dim=-1) # B x 1 x n_bands
             x_f_lpc[:,:,:,1:] = x_f_lpc[:,:,:,:-1]
             x_f_lpc[:,:,:,0] = x_f_wav
@@ -2481,7 +2516,12 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
 
                 # coarse part
                 signs_c, scales_c, logits_c = self.out(out.transpose(1,2)) # B x 1 x n_bands x K or 32
-                dist = OneHotCategorical(F.softmax(torch.clamp(logits_c + torch.sum((signs_c*scales_c).unsqueeze(-1)*self.logits(x_c_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
+                if self.emb_flag:
+                    dist = OneHotCategorical(F.softmax(torch.clamp(logits_c + torch.sum(self.logits(x_c_lpc)*(signs_c*scales_c).unsqueeze(-1)\
+                                *self.logits_c(x_c_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
+                                #*torch.tanh(self.logits_sgns_c(x_c_lpc))*torch.exp(self.logits_mags_c(x_c_lpc)), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
+                else:
+                    dist = OneHotCategorical(F.softmax(torch.clamp(logits_c + torch.sum((signs_c*scales_c).unsqueeze(-1)*self.logits(x_c_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
                 x_c_wav = dist.sample().argmax(dim=-1) # B x 1 x n_bands x 2
                 x_c_out = torch.cat((x_c_out, x_c_wav), 1) # B x t+1 x n_bands
                 x_c_lpc[:,:,:,1:] = x_c_lpc[:,:,:,:-1]
@@ -2491,7 +2531,12 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
                 embed_x_c_wav = self.embed_c_wav(x_c_wav).reshape(B,1,-1)
                 out, h_f = self.gru_f(torch.cat((c_f, embed_x_c_wav, out), 2), h_f)
                 signs_f, scales_f, logits_f = self.out_f(out.transpose(1,2)) # B x 1 x n_bands x K or 32
-                dist = OneHotCategorical(F.softmax(torch.clamp(logits_f + torch.sum((signs_f*scales_f).unsqueeze(-1)*self.logits(x_f_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
+                if self.emb_flag:
+                    dist = OneHotCategorical(F.softmax(torch.clamp(logits_f + torch.sum(self.logits(x_f_lpc)*(signs_f*scales_f).unsqueeze(-1)\
+                                *self.logits_f(x_f_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
+                                #*torch.tanh(self.logits_sgns_f(x_f_lpc))*torch.exp(self.logits_mags_f(x_f_lpc)), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
+                else:
+                    dist = OneHotCategorical(F.softmax(torch.clamp(logits_f + torch.sum((signs_f*scales_f).unsqueeze(-1)*self.logits(x_f_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
                 x_f_wav = dist.sample().argmax(dim=-1) # B x 1 x n_bands
                 x_f_out = torch.cat((x_f_out, x_f_wav), 1) # B x t+1 x n_bands
                 x_f_lpc[:,:,:,1:] = x_f_lpc[:,:,:,:-1]

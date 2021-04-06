@@ -28,111 +28,226 @@
   AVX implementation of vector operations, compile with -mavx
   AVX2/FMA implementation of vector operations, compile with -mavx2 -mfma
 */
-/* Modified by Patrick Lumban Tobing (Nagoya University) on Sept. 2020,
-   marked by PLT_<Sep>20 */
+/* Modified by Patrick Lumban Tobing (Nagoya University) on Sept. 2020 - Feb, Mar. 2021,
+   marked by PLT_<Sep20/Feb21/Mar21> */
 
 #ifndef VEC_AVX_H
 #define VEC_AVX_H
 
 #include <immintrin.h>
 
-#ifdef __AVX2__
-static __m256 exp8_approx(__m256 X)
-{
-   const __m256 K0 = _mm256_set1_ps(0.99992522f);
-   const __m256 K1 = _mm256_set1_ps(0.69583354f);
-   const __m256 K2 = _mm256_set1_ps(0.22606716f);
-   const __m256 K3 = _mm256_set1_ps(0.078024523f);
-   const __m256 log2_E = _mm256_set1_ps(1.44269504);
-   const __m256 max_in = _mm256_set1_ps(50.f);
-   const __m256 min_in = _mm256_set1_ps(-50.f);
-   const __m256i mask = _mm256_set1_epi32(0x7fffffff);
-   __m256 XF, Y;
-   __m256i I;
-   X = _mm256_mul_ps(X, log2_E);
-   X = _mm256_max_ps(min_in, _mm256_min_ps(max_in, X));
-   XF = _mm256_floor_ps(X);
-   I = _mm256_cvtps_epi32(XF);
-   X = _mm256_sub_ps(X, XF);
-   Y = _mm256_fmadd_ps(_mm256_fmadd_ps(_mm256_fmadd_ps(K3, X, K2), X, K1), X, K0);
-   I = _mm256_slli_epi32(I, 23);
-   Y = _mm256_castsi256_ps(_mm256_and_si256(mask, _mm256_add_epi32(I, _mm256_castps_si256(Y))));
-   //printf("avx2 exp\n");
-   return Y;
-}
-#else
-//#ifndef __AVX2__
+//PLT_Mar21
+//#ifdef __AVX2__
+//static __m256 exp8_approx(__m256 X)
+//{
+//   const __m256 K0 = _mm256_set1_ps(0.99992522f);
+//   const __m256 K1 = _mm256_set1_ps(0.69583354f);
+//   const __m256 K2 = _mm256_set1_ps(0.22606716f);
+//   const __m256 K3 = _mm256_set1_ps(0.078024523f);
+//   const __m256 log2_E = _mm256_set1_ps(1.44269504);
+//   const __m256 max_in = _mm256_set1_ps(50.f);
+//   const __m256 min_in = _mm256_set1_ps(-50.f);
+//   const __m256i mask = _mm256_set1_epi32(0x7fffffff);
+//   __m256 XF, Y;
+//   __m256i I;
+//   X = _mm256_mul_ps(X, log2_E);
+//   X = _mm256_max_ps(min_in, _mm256_min_ps(max_in, X));
+//   XF = _mm256_floor_ps(X);
+//   I = _mm256_cvtps_epi32(XF);
+//   X = _mm256_sub_ps(X, XF);
+//   Y = _mm256_fmadd_ps(_mm256_fmadd_ps(_mm256_fmadd_ps(K3, X, K2), X, K1), X, K0);
+//   I = _mm256_slli_epi32(I, 23);
+//   Y = _mm256_castsi256_ps(_mm256_and_si256(mask, _mm256_add_epi32(I, _mm256_castps_si256(Y))));
+//   //printf("avx2 exp\n");
+//   return Y;
+//}
+//#else
+#ifndef __AVX2__
 #define _mm256_fmadd_ps(a,b,c) _mm256_add_ps(_mm256_mul_ps(a, b), c)
 #define _mm_fmadd_ps(a,b,c) _mm_add_ps(_mm_mul_ps(a, b), c)
-static __m128 exp4_approx(__m128 X)
-{
-   const __m128 K0 = _mm_set1_ps(0.99992522f);
-   const __m128 K1 = _mm_set1_ps(0.69583354f);
-   const __m128 K2 = _mm_set1_ps(0.22606716f);
-   const __m128 K3 = _mm_set1_ps(0.078024523f);
-   const __m128 log2_E = _mm_set1_ps(1.44269504);
-   const __m128 max_in = _mm_set1_ps(50.f);
-   const __m128 min_in = _mm_set1_ps(-50.f);
-   const __m128i mask = _mm_set1_epi32(0x7fffffff);
-   __m128 XF, Y;
-   __m128i I;
-   X = _mm_mul_ps(X, log2_E);
-   X = _mm_max_ps(min_in, _mm_min_ps(max_in, X));
-   XF = _mm_floor_ps(X);
-   I = _mm_cvtps_epi32(XF);
-   X = _mm_sub_ps(X, XF);
-   Y = _mm_fmadd_ps(_mm_fmadd_ps(_mm_fmadd_ps(K3, X, K2), X, K1), X, K0);
-   I = _mm_slli_epi32(I, 23);
-   Y = _mm_castsi128_ps(_mm_and_si128(mask, _mm_add_epi32(I, _mm_castps_si128(Y))));
-   return Y;
-}
-static __m256 exp8_approx(__m256 X)
-{
-   __m256 Y;
-   __m128 Xhi, Xlo, Yhi, Ylo;
-   Xhi = _mm256_extractf128_ps(X, 1);
-   Xlo = _mm256_extractf128_ps(X, 0);
-   Yhi = exp4_approx(Xhi);
-   Ylo = exp4_approx(Xlo);
-   Y = _mm256_insertf128_ps(_mm256_setzero_ps(), Yhi, 1);
-   Y = _mm256_insertf128_ps(Y, Ylo, 0);
-   return Y;
-   //printf("avx1 exp\n");
-}
+//static __m128 exp4_approx(__m128 X)
+//{
+//   const __m128 K0 = _mm_set1_ps(0.99992522f);
+//   const __m128 K1 = _mm_set1_ps(0.69583354f);
+//   const __m128 K2 = _mm_set1_ps(0.22606716f);
+//   const __m128 K3 = _mm_set1_ps(0.078024523f);
+//   const __m128 log2_E = _mm_set1_ps(1.44269504);
+//   const __m128 max_in = _mm_set1_ps(50.f);
+//   const __m128 min_in = _mm_set1_ps(-50.f);
+//   const __m128i mask = _mm_set1_epi32(0x7fffffff);
+//   __m128 XF, Y;
+//   __m128i I;
+//   X = _mm_mul_ps(X, log2_E);
+//   X = _mm_max_ps(min_in, _mm_min_ps(max_in, X));
+//   XF = _mm_floor_ps(X);
+//   I = _mm_cvtps_epi32(XF);
+//   X = _mm_sub_ps(X, XF);
+//   Y = _mm_fmadd_ps(_mm_fmadd_ps(_mm_fmadd_ps(K3, X, K2), X, K1), X, K0);
+//   I = _mm_slli_epi32(I, 23);
+//   Y = _mm_castsi128_ps(_mm_and_si128(mask, _mm_add_epi32(I, _mm_castps_si128(Y))));
+//   return Y;
+//}
+//static __m256 exp8_approx(__m256 X)
+//{
+//   __m256 Y;
+//   __m128 Xhi, Xlo, Yhi, Ylo;
+//   Xhi = _mm256_extractf128_ps(X, 1);
+//   Xlo = _mm256_extractf128_ps(X, 0);
+//   Yhi = exp4_approx(Xhi);
+//   Ylo = exp4_approx(Xlo);
+//   Y = _mm256_insertf128_ps(_mm256_setzero_ps(), Yhi, 1);
+//   Y = _mm256_insertf128_ps(Y, Ylo, 0);
+//   return Y;
+//   //printf("avx1 exp\n");
+//}
 #endif
 
+//PLT_Mar21
+// this more accurate exp function is taken from https://stackoverflow.com/questions/48863719/fastest-implementation-of-exponential-function-using-avx/48869291#48869291
+// and slightly modified to use fmadd_ps, which is defined as a macro if not use AVX2
+static __m256 exp256_ps(__m256 x)
+{
+/* Modified code from this source: https://github.com/reyoung/avx_mathfun
 
+   AVX implementation of exp
+   Based on "sse_mathfun.h", by Julien Pommier
+   http://gruntthepeon.free.fr/ssemath/
+   Copyright (C) 2012 Giovanni Garberoglio
+   Interdisciplinary Laboratory for Computational Science (LISC)
+   Fondazione Bruno Kessler and University of Trento
+   via Sommarive, 18
+   I-38123 Trento (Italy)
+  This software is provided 'as-is', without any express or implied
+  warranty.  In no event will the authors be held liable for any damages
+  arising from the use of this software.
+  Permission is granted to anyone to use this software for any purpose,
+  including commercial applications, and to alter it and redistribute it
+  freely, subject to the following restrictions:
+  1. The origin of this software must not be misrepresented; you must not
+     claim that you wrote the original software. If you use this software
+     in a product, an acknowledgment in the product documentation would be
+     appreciated but is not required.
+  2. Altered source versions must be plainly marked as such, and must not be
+     misrepresented as being the original software.
+  3. This notice may not be removed or altered from any source distribution.
+  (this is the zlib license)
+
+*/
+/* 
+  To increase the compatibility across different compilers the original code is
+  converted to plain AVX2 intrinsics code without ingenious macro's,
+  gcc style alignment attributes etc.
+  Moreover, the part "express exp(x) as exp(g + n*log(2))" has been significantly simplified.
+  This modified code is not thoroughly tested!
+*/
+
+
+__m256   exp_hi        = _mm256_set1_ps(88.3762626647949f);
+__m256   exp_lo        = _mm256_set1_ps(-88.3762626647949f);
+
+__m256   cephes_LOG2EF = _mm256_set1_ps(1.44269504088896341f);
+__m256   inv_LOG2EF    = _mm256_set1_ps(0.693147180559945f);
+
+__m256   cephes_exp_p0 = _mm256_set1_ps(1.9875691500E-4);
+__m256   cephes_exp_p1 = _mm256_set1_ps(1.3981999507E-3);
+__m256   cephes_exp_p2 = _mm256_set1_ps(8.3334519073E-3);
+__m256   cephes_exp_p3 = _mm256_set1_ps(4.1665795894E-2);
+__m256   cephes_exp_p4 = _mm256_set1_ps(1.6666665459E-1);
+__m256   cephes_exp_p5 = _mm256_set1_ps(5.0000001201E-1);
+__m256   fx;
+__m256i  imm0;
+__m256   one           = _mm256_set1_ps(1.0f);
+
+        x     = _mm256_min_ps(x, exp_hi);
+        x     = _mm256_max_ps(x, exp_lo);
+
+  /* express exp(x) as exp(g + n*log(2)) */
+        fx     = _mm256_mul_ps(x, cephes_LOG2EF);
+        fx     = _mm256_round_ps(fx, _MM_FROUND_TO_NEAREST_INT |_MM_FROUND_NO_EXC);
+__m256  z      = _mm256_mul_ps(fx, inv_LOG2EF);
+        x      = _mm256_sub_ps(x, z);
+        z      = _mm256_mul_ps(x,x);
+
+__m256  y      = cephes_exp_p0;
+        //y      = _mm256_mul_ps(y, x);
+        //y      = _mm256_add_ps(y, cephes_exp_p1);
+        //y      = _mm256_mul_ps(y, x);
+        //y      = _mm256_add_ps(y, cephes_exp_p2);
+        //y      = _mm256_mul_ps(y, x);
+        //y      = _mm256_add_ps(y, cephes_exp_p3);
+        //y      = _mm256_mul_ps(y, x);
+        //y      = _mm256_add_ps(y, cephes_exp_p4);
+        //y      = _mm256_mul_ps(y, x);
+        //y      = _mm256_add_ps(y, cephes_exp_p5);
+        //y      = _mm256_mul_ps(y, z);
+        //y      = _mm256_add_ps(y, x);
+        y      = _mm256_fmadd_ps (y, x, cephes_exp_p1);
+        y      = _mm256_fmadd_ps (y, x, cephes_exp_p2);
+        y      = _mm256_fmadd_ps (y, x, cephes_exp_p3);
+        y      = _mm256_fmadd_ps (y, x, cephes_exp_p4);
+        y      = _mm256_fmadd_ps (y, x, cephes_exp_p5);
+        y      = _mm256_fmadd_ps (y, z, x);
+        y      = _mm256_add_ps(y, one);
+
+  /* build 2^n */
+        imm0   = _mm256_cvttps_epi32(fx);
+        imm0   = _mm256_add_epi32(imm0, _mm256_set1_epi32(0x7f));
+        imm0   = _mm256_slli_epi32(imm0, 23);
+__m256  pow2n  = _mm256_castsi256_ps(imm0);
+        y      = _mm256_mul_ps(y, pow2n);
+        return y;
+}
+
+
+//static float celt_exp_approx(float x)
+//{
+//   float out[8];
+//   __m256 X, Y;
+//   X = _mm256_set1_ps(x);
+//   Y = exp8_approx(X);
+//   //Y = exp256_ps(X);
+//   _mm256_storeu_ps(out, Y);
+//   return out[0];
+//}
+
+//PLT_Mar21
 static float celt_exp(float x)
 {
    float out[8];
    __m256 X, Y;
    X = _mm256_set1_ps(x);
-   Y = exp8_approx(X);
+   //Y = exp8_approx(X);
+   Y = exp256_ps(X);
    _mm256_storeu_ps(out, Y);
    return out[0];
 }
 
+//PLT_Mar21
 static void softmax(float *y, const float *x, int N)
 {
-    int i;
-    __m256 X, Y;
-    for (i=0;i<N-7;i+=8)
-    {
-        X = _mm256_loadu_ps(&x[i]);
-        Y = exp8_approx(X);
-        _mm256_storeu_ps(&y[i], Y);
-    }
-    //for (i=0;i<N;i++)
-    for (;i<N;i++)
+    //int i;
+    //__m256 X, Y;
+    //for (i=0;i<N-7;i+=8)
+    //{
+    //    X = _mm256_loadu_ps(&x[i]);
+    //    //Y = exp8_approx(X);
+    //    Y = exp256_ps(X);
+    //    _mm256_storeu_ps(&y[i], Y);
+    //}
+    //for (;i<N;i++)
+    //    y[i] = celt_exp(x[i]);
+    for (int i=0;i<N;i++)
         //if (x[i] < -32)
         //    y[i] = exp(-32);
         //else if (x[i] > 32)
         //    y[i] = exp(32);
         //else
         //    y[i] = exp(x[i]);
-            //y[i] = celt_exp(x[i]);
-        y[i] = celt_exp(x[i]);
-        //y[i] = exp(x[i]);
+        //y[i] = celt_exp_approx(x[i]);
+        if (x[i] > -32) {
+            if (x[i] < 32) y[i] = exp(x[i]);
+            else y[i] = 78962960182680.695160978022635108;
+        } else y[i] = 1.2664165549094175723120904155965e-14;
         //if (x[i] < 32)
         //    y[i] = exp(x[i]);
         //else
@@ -160,36 +275,41 @@ static void vec_exp(float *y, const float *x, int N)
         //    y[i] = exp(x[i]);
             //y[i] = celt_exp(x[i]);
         //y[i] = celt_exp(x[i]);
-        y[i] = exp(x[i]);
+        //y[i] = exp(x[i]);
+        if (x[i] > -32) {
+            if (x[i] < 32) y[i] = exp(x[i]);
+            else y[i] = 78962960182680.695160978022635108;
+        } else y[i] = 1.2664165549094175723120904155965e-14;
         //if (x[i] < 32)
         //    y[i] = exp(x[i]);
         //else
         //    y[i] = 78962960182680.687500;
 }
 
+//PLT_Mar21
 static void vec_tanh(float *y, const float *x, int N)
 {
     int i;
     const __m256 two = _mm256_set1_ps(2.f);
     const __m256 one = _mm256_set1_ps(1.f);
-    __m256 X, Y;
+    __m256 Y;
     for (i=0;i<N-7;i+=8)
     {
-        X = _mm256_loadu_ps(&x[i]);
-        X = _mm256_mul_ps(X, two);
-        Y = exp8_approx(X);
-        Y = _mm256_mul_ps(_mm256_sub_ps(Y, one),  _mm256_rcp_ps(_mm256_add_ps(Y, one)));
-        _mm256_storeu_ps(&y[i], Y);
+        Y = exp256_ps(_mm256_mul_ps(_mm256_loadu_ps(&x[i]), two));
+        _mm256_storeu_ps(&y[i], _mm256_mul_ps(_mm256_sub_ps(Y, one),  _mm256_rcp_ps(_mm256_add_ps(Y, one))));
     }
-    //float ex2;
     for (;i<N;i++)
-    //for (int i=0;i<N;i++)
     {
         float ex2;
         ex2 = celt_exp(2*x[i]);
-        //ex2 = exp(2*x[i]);
         y[i] = (ex2-1)/(ex2+1);
     }
+    //float ex2;
+    //for (int i=0;i<N;i++)
+    //{
+    //    ex2 = exp(2*x[i]);
+    //    y[i] = (ex2-1)/(ex2+1);
+    //}
 }
 
 //PLT_Feb21
@@ -213,8 +333,15 @@ static void vec_tanh_exp(float *y, const float *x, int N)
     {
         //float ex2;
         //ex2 = celt_exp(2*x[i]);
-        ex2 = exp(2*x[i]);
-        y[i] = (ex2-1)/(ex2+1);
+        //ex2 = exp(2*x[i]);
+        //y[i] = (ex2-1)/(ex2+1);
+        if (x[i] > -32) {
+            if (x[i] < 32) {
+                ex2 = exp(2*x[i]);
+                y[i] = (ex2-1)/(ex2+1);
+            } else y[i] = 0.99999999999999999999999999967924;
+        } else y[i] = -0.99999999999999999999999999967924;
+        //if (x[i] < 32)
     }
 }
 
@@ -238,7 +365,6 @@ static void vec_tanhshrink(float *y, const float *x, int N)
     {
         //float ex2;
         //ex2 = celt_exp(2*x[i]);
-        ex2 = exp(2*x[i]);
         //if (x[i] < 32)
         //    ex2 = exp(x[i]);
         //else
@@ -249,10 +375,17 @@ static void vec_tanhshrink(float *y, const float *x, int N)
         //else
         //    ex2 = exp(2*x[i]);
         //ex2 = exp(2*x[i]);
-        y[i] = x[i]-(ex2-1)/(ex2+1);
+        //y[i] = x[i]-(ex2-1)/(ex2+1);
+        if (x[i] > -32) {
+            if (x[i] < 32) {
+                ex2 = exp(2*x[i]);
+                y[i] = x[i]-(ex2-1)/(ex2+1);
+            } else y[i] = x[i]-0.99999999999999999999999999967924;
+        } else y[i] = x[i]+0.99999999999999999999999999967924;
     }
 }
 
+//PLT_Mar21
 static void vec_sigmoid(float *y, const float *x, int N)
 {
     int i;
@@ -260,98 +393,142 @@ static void vec_sigmoid(float *y, const float *x, int N)
     //    printf("%d %f\n", i, x[i]);
     //}
     const __m256 one = _mm256_set1_ps(1.f);
-    __m256 X, Y;
     for (i=0;i<N-7;i+=8)
     {
-        X = _mm256_loadu_ps(&x[i]);
-        Y = exp8_approx(X);
-        Y = _mm256_mul_ps(Y,  _mm256_rcp_ps(_mm256_add_ps(Y, one)));
-        _mm256_storeu_ps(&y[i], Y);
+        _mm256_storeu_ps(&y[i], _mm256_sub_ps(one, _mm256_rcp_ps(_mm256_add_ps(exp256_ps(_mm256_loadu_ps(&x[i])), one))));
     }
-    //float ex;
     for (;i<N;i++)
-    //for (int i=0;i<N;i++)
     {
         float ex;
         ex = celt_exp(x[i]);
-        //ex = exp(x[i]);
         y[i] = (ex)/(ex+1);
     //    printf("[%d] %f %f ", i, x[i], y[i]);
     }
-    //printf("\n");
-    //for (i=0;i<N;i++) {
-    //    printf("%d %f %f\n", i, x[i], y[i]);
-    //}
-}
-
-//PLT_Feb21
-static void vec_sigmoid_exp(float *y, const float *x, int N)
-{
-    //int i;
-    //for (i=0;i<N;i++) {
-    //    printf("%d %f\n", i, x[i]);
-    //}
-    //const __m256 one = _mm256_set1_ps(1.f);
-    //__m256 X, Y;
-    //for (i=0;i<N-7;i+=8)
+    //float ex;
+    //for (int i=0;i<N;i++)
     //{
-    //    X = _mm256_loadu_ps(&x[i]);
-    //    Y = exp8_approx(X);
-    //    Y = _mm256_mul_ps(Y,  _mm256_rcp_ps(_mm256_add_ps(Y, one)));
-    //    _mm256_storeu_ps(&y[i], Y);
+    //    ex = exp(x[i]);
+    //    y[i] = (ex)/(ex+1);
     //}
-    float ex;
-    //for (;i<N;i++)
-    for (int i=0;i<N;i++)
-    {
-        //ex = celt_exp(x[i]);
-        ex = exp(x[i]);
-        y[i] = (ex)/(ex+1);
-    //    printf("[%d] %f %f ", i, x[i], y[i]);
-    }
     //printf("\n");
     //for (i=0;i<N;i++) {
     //    printf("%d %f %f\n", i, x[i], y[i]);
     //}
 }
 
+//PLT_Mar21
+//col_stride is the dimension of output, because weight vector is written as kernel_size x in x out
 static void sgemv_accum16(float *out, const float *weights, int rows, int cols, int col_stride, const float *x)
 {
-   int i, j;
-   for (i=0;i<rows;i+=16)
+   int i, j, k;
+   float * restrict y;
+   __m256 vy0, vy8, vxj;
+   for (i=0;i<(rows-(rows%16));i+=16)
    {
-      float * restrict y;
-      __m256 vy0, vy8;
       y = &out[i];
       vy0 = _mm256_loadu_ps(&y[0]);
       vy8 = _mm256_loadu_ps(&y[8]);
       for (j=0;j<cols;j++)
       {
-         //   printf("sg: %d %d %f %f %f\n", i, j, weights[j*col_stride+i], x[j], out[i]);
-         __m256 vxj;
-         __m256 vw;
          vxj = _mm256_broadcast_ss(&x[j]);
 
-         vw = _mm256_loadu_ps(&weights[j*col_stride + i]);
-         vy0 = _mm256_fmadd_ps(vw, vxj, vy0);
-
-         vw = _mm256_loadu_ps(&weights[j*col_stride + i + 8]);
-         vy8 = _mm256_fmadd_ps(vw, vxj, vy8);
+         k = j*col_stride + i;
+         vy0 = _mm256_fmadd_ps(_mm256_loadu_ps(&weights[k]), vxj, vy0);
+         vy8 = _mm256_fmadd_ps(_mm256_loadu_ps(&weights[k + 8]), vxj, vy8);
       }
       _mm256_storeu_ps (&y[0], vy0);
       _mm256_storeu_ps (&y[8], vy8);
-     //       printf("%f\n", out[i]);
+   }
+   for (;i<rows;i++)
+   {
+      for (j=0;j<cols;j++)
+         out[i] += weights[j*col_stride + i]*x[j];
    }
 }
 
+//PLT_Mar21
+static void sgev_dualfc8(float *out, const float *factors, int rows, const float *x)
+{
+   //int i, half_rows;
+   int i, j, half_rows;
+   half_rows = rows / 2;
+   if (half_rows % 8 == 0) {
+      for (i=0;i<half_rows;i+=8) //1st channel
+         _mm256_storeu_ps (&out[i], _mm256_mul_ps(_mm256_loadu_ps(&factors[i]), _mm256_loadu_ps(&x[i])));
+      for (j=0;i<rows;i+=8,j+=8) //2nd channel
+         _mm256_storeu_ps (&out[j], _mm256_fmadd_ps(_mm256_loadu_ps(&factors[i]), _mm256_loadu_ps(&x[i]), _mm256_loadu_ps(&out[j])));
+   } else {
+      int half_rows_8 = half_rows/8 * 8;
+      for (i=0;i<half_rows_8;i+=8) //1st channel
+         _mm256_storeu_ps (&out[i], _mm256_mul_ps(_mm256_loadu_ps(&factors[i]), _mm256_loadu_ps(&x[i])));
+      for (;i<half_rows;i++)
+         out[i] = factors[i]*x[i];
+      for (j=0;i<(rows-(half_rows%8));i+=8,j+=8) //2nd channel
+         _mm256_storeu_ps (&out[j], _mm256_fmadd_ps(_mm256_loadu_ps(&factors[i]), _mm256_loadu_ps(&x[i]), _mm256_loadu_ps(&out[j])));
+      for (;i<rows;i++,j++)
+         out[j] += factors[i]*x[i];
+   }
+   ////printf("%d %d\n",half_rows,rows);
+   //for (i=0;i<half_rows;i++) {
+   //   out[i] = factors[i]*x[i] + factors[i+half_rows]*x[i+half_rows];
+   //   //out[i] = factors[i]*x[i];
+   ////   printf("[%d] %lf %lf %lf\n",i,out[i],factors[i],x[i]);
+   //}
+   ////printf("%lf %lf %lf\n",out[i-1],factors[i-1],x[i-1]);
+   ////for (j=0;i<rows;i++,j++) {
+   ////   out[j] += factors[i]*x[i];
+   //////   printf("[%d-%d] %lf %lf %lf\n",i,j,out[j],factors[i],x[i]);
+   ////}
+   ////printf("%lf %lf %lf\n",out[j-1],factors[i-1],x[i-1]);
+}
+
+//PLT_Mar21
+//weights are shared between bands
+static void sgemv_fclogits16(float *out, const float *weights, int rows, int cols, int n_bands, const float *x)
+{
+   //int i, j, n, row_bands, col_bands;
+   int i, j, k, n, row_bands, col_bands;
+   float * restrict y;
+   __m256 vy0, vy8, vxj;
+   for (n=0,row_bands=0;n<n_bands;n++)
+   {
+      for (i=0,col_bands=n*cols;i<(rows-(rows%16));i+=16,row_bands+=16)
+      {
+         y = &out[row_bands];
+         vy0 = _mm256_loadu_ps(&y[0]);
+         vy8 = _mm256_loadu_ps(&y[8]);
+         for (j=0;j<cols;j++)
+         {
+            vxj = _mm256_broadcast_ss(&x[col_bands+j]);
+
+            k = j*rows + i;
+            vy0 = _mm256_fmadd_ps(_mm256_loadu_ps(&weights[k]), vxj, vy0);
+            vy8 = _mm256_fmadd_ps(_mm256_loadu_ps(&weights[k + 8]), vxj, vy8);
+         }
+         _mm256_storeu_ps (&y[0], vy0);
+         _mm256_storeu_ps (&y[8], vy8);
+      }
+      for (;i<rows;i++,row_bands++)
+      {
+         for (j=0;j<cols;j++)
+            out[row_bands] += weights[j*rows + i]*x[col_bands+j];
+      }
+   }
+   //for (n=0,row_bands=0;n<n_bands;n++)
+   //   for (i=0,col_bands=n*cols;i<rows;i++,row_bands++)
+   //      for (j=0;j<cols;j++)
+   //         out[row_bands] += weights[j*rows + i]*x[col_bands+j];
+}
+
+
+//PLT_Mar21
 static void sparse_sgemv_accum16(float *out, const float *weights, int rows, const int *idx, const float *x)
 {
-   int i, j;
-   for (i=0;i<rows;i+=16) //output side, 3*hidden_size, simultaneous computation in a block of 16 (2 256-bit registers)
+   int i, j, cols;
+   float * restrict y;
+   __m256 vy0, vy8, vxj;
+   for (i=0;i<(rows-(rows%16));i+=16) //output side, 3*hidden_size, simultaneous computation in a block of 16 (2 256-bit registers)
    {
-      float * restrict y;
-      int cols;
-      __m256 vy0, vy8;
       y = &out[i];
       vy0 = _mm256_loadu_ps(&y[0]);
       vy8 = _mm256_loadu_ps(&y[8]);
@@ -359,21 +536,20 @@ static void sparse_sgemv_accum16(float *out, const float *weights, int rows, con
       //input side, non-zero indices (sum(block_16) > 1e-10) recorded with dump_lpcnet.py printSparseVector
       for (j=0;j<cols;j++)
       {
-         int id;
-         __m256 vxj;
-         __m256 vw;
-         id = *idx++;
-         vxj = _mm256_broadcast_ss(&x[id]);
+         vxj = _mm256_broadcast_ss(&x[*idx++]);
 
-         vw = _mm256_loadu_ps(&weights[0]);
-         vy0 = _mm256_fmadd_ps(vw, vxj, vy0);
+         vy0 = _mm256_fmadd_ps(_mm256_loadu_ps(&weights[0]), vxj, vy0);
+         vy8 = _mm256_fmadd_ps(_mm256_loadu_ps(&weights[8]), vxj, vy8);
 
-         vw = _mm256_loadu_ps(&weights[8]);
-         vy8 = _mm256_fmadd_ps(vw, vxj, vy8);
          weights += 16;
       }
       _mm256_storeu_ps (&y[0], vy0);
       _mm256_storeu_ps (&y[8], vy8);
+   }
+   for (;i<rows;i++)
+   {
+      for (j=0;j<cols;j++)
+         out[i] += weights[j]*x[j];
    }
 }
 

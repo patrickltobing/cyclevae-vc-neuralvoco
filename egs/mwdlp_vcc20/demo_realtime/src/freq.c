@@ -148,8 +148,8 @@ void mel_spec_extract(DSPState *dsp, float *melsp)
     //printf("in_melsp_b\n");
     //cplx -> mag
     for (i=0;i<MAGSP_DIM;i++) {
-        //need to multiply by 10^3 here to match the output of librosa STFT
-        dsp->magsp[i] = sqrt(pow((dsp->out_fft[i].r*1000), 2) + pow((dsp->out_fft[i].i*1000), 2));
+        //need to multiply by 2*10^3 here to match the output of librosa STFT
+        dsp->magsp[i] = sqrt(pow((dsp->out_fft[i].r*2000), 2) + pow((dsp->out_fft[i].i*2000), 2));
     //    printf("in_melsp_c %d %f\n", i, dsp->magsp[i]);
     }
     //printf("in_melsp_d\n");

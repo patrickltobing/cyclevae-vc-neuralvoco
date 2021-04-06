@@ -416,6 +416,7 @@ def main():
         n_bands=args.n_bands,
         pad_first=True,
         mid_dim=args.mid_dim,
+        emb_flag=True,
         do_prob=args.do_prob)
     logging.info(model_waveform)
     pqmf = PQMF(args.n_bands)
@@ -506,6 +507,9 @@ def main():
     module_list += list(model_waveform.gru.parameters())
     module_list += list(model_waveform.gru_2.parameters()) + list(model_waveform.out.parameters())
     module_list += list(model_waveform.gru_f.parameters()) + list(model_waveform.out_f.parameters())
+    module_list += list(model_waveform.logits_c.parameters()) + list(model_waveform.logits_f.parameters())
+    #module_list += list(model_waveform.logits_sgns_c.parameters()) + list(model_waveform.logits_mags_c.parameters())
+    #module_list += list(model_waveform.logits_sgns_f.parameters()) + list(model_waveform.logits_mags_f.parameters())
 
     # model = ...
     optimizer = optim.RAdam(
@@ -1577,6 +1581,14 @@ def main():
             continue
         torch.nn.utils.clip_grad_norm_(model_waveform.parameters(), 10)
         optimizer.step()
+
+        #logging.info(model_waveform.logits_c.weight[:,0])
+        #logging.info(model_waveform.logits_f.weight[:,0])
+        #logging.info(model_waveform.logits_sgns_c.weight[:,0].tanh())
+        #logging.info(model_waveform.logits_mags_c.weight[:,0].exp())
+        #logging.info(model_waveform.logits_sgns_f.weight[:,0])
+        #logging.info(model_waveform.logits_sgns_f.weight[:,0].tanh())
+        #logging.info(model_waveform.logits_mags_f.weight[:,0].exp())
 
         with torch.no_grad():
             if idx_stage < args.n_stage-1 and iter_idx + 1 == t_starts[idx_stage+1]:

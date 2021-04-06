@@ -799,7 +799,7 @@ class FeatureDatasetEvalCycMceplf0WavVAE(Dataset):
         self.cap_exc_dim = cap_exc_dim
         self.string_path = string_path
         self.spcidx = spcidx
-        eval_exist = False
+        #eval_exist = False
         self.uvcap_flag = uvcap_flag
         self.magsp = magsp
         self.n_bands = n_bands
@@ -824,28 +824,56 @@ class FeatureDatasetEvalCycMceplf0WavVAE(Dataset):
             else:
                 self.uvcap = False
             self.mel = False
-        for i in range(self.n_spk_data):
-            if '.' not in spk_list[i] and spk_list[i].find('p') != 0 and len(self.file_list[i]) > 0:
-                eval_exist = True
-                break
-        if eval_exist:
-            # deterministically select a conv. pair for each validation utterance,
-            # and deal with existence of pair data
-            n_pair = self.n_spk_data // 2 
-            #n_src = n_pair + self.n_spk % 2
-            for spk_src_idx_iter in range(self.n_spk_data):
-                #if '.' not in spk_list[spk_src_idx] and spk_list[spk_src_idx].find('p') != 0: 
-                #spk_src = self.spk_list[spk_src_idx]
-                spk_src_n_utt = len(self.file_list[spk_src_idx_iter])
-                if spk_src_n_utt > 0:
-                    spk_src = os.path.basename(os.path.dirname(self.file_list[spk_src_idx_iter][0]))
-                    spk_trg_idx_iter_start = spk_src_idx_iter + n_pair
-                    if spk_trg_idx_iter_start >= self.n_spk_data:
-                        spk_trg_idx_iter_start -= self.n_spk_data
-                    #while '.' in spk_list[spk_trg_idx_start] or spk_list[spk_trg_idx_start].find('p') == 0:
-                    #    spk_trg_idx_start += 1
-                    flag = False
-                    for spk_trg_idx_iter in range(spk_trg_idx_iter_start,self.n_spk_data):
+        #for i in range(self.n_spk_data):
+        #    if '.' not in spk_list[i] and spk_list[i].find('p') != 0 and len(self.file_list[i]) > 0:
+        #        eval_exist = True
+        #        break
+        #if eval_exist:
+        # deterministically select a conv. pair for each validation utterance,
+        # and deal with existence of pair data
+        n_pair = self.n_spk_data // 2 
+        #n_src = n_pair + self.n_spk % 2
+        for spk_src_idx_iter in range(self.n_spk_data):
+            #if '.' not in spk_list[spk_src_idx] and spk_list[spk_src_idx].find('p') != 0: 
+            #spk_src = self.spk_list[spk_src_idx]
+            spk_src_n_utt = len(self.file_list[spk_src_idx_iter])
+            if spk_src_n_utt > 0:
+                spk_src = os.path.basename(os.path.dirname(self.file_list[spk_src_idx_iter][0]))
+                spk_trg_idx_iter_start = spk_src_idx_iter + n_pair
+                if spk_trg_idx_iter_start >= self.n_spk_data:
+                    spk_trg_idx_iter_start -= self.n_spk_data
+                #while '.' in spk_list[spk_trg_idx_start] or spk_list[spk_trg_idx_start].find('p') == 0:
+                #    spk_trg_idx_start += 1
+                flag = False
+                for spk_trg_idx_iter in range(spk_trg_idx_iter_start,self.n_spk_data):
+                    #if '.' not in spk_list[spk_trg_idx] and spk_list[spk_trg_idx].find('p') != 0:
+                    if spk_trg_idx_iter != spk_src_idx_iter:
+                        #spk_trg = self.spk_list[spk_trg_idx]
+                        if len(self.file_list[spk_trg_idx_iter]) > 0:
+                            spk_trg = os.path.basename(os.path.dirname(self.file_list[spk_trg_idx_iter][0]))
+                            for i in range(spk_src_n_utt):
+                                file_src = self.file_list[spk_src_idx_iter][i]
+                                if self.wav_list is not None:
+                                    wav_src = self.wav_list[spk_src_idx_iter][i]
+                                file_trg = os.path.dirname(os.path.dirname(file_src))+"/"+spk_trg+"/"+\
+                                                os.path.basename(file_src)
+                                if (file_trg in self.file_list) or os.path.exists(file_trg):
+                                    self.file_list_src.append(file_src)
+                                    if self.wav_list is not None:
+                                        self.wav_list_src.append(wav_src)
+                                    self.file_list_src_trg.append(file_trg)
+                                    flag = True
+                                    self.list_src_trg_flag.append(flag)
+                                elif flag:
+                                    self.file_list_src.append(file_src)
+                                    if self.wav_list is not None:
+                                        self.wav_list_src.append(wav_src)
+                                    self.file_list_src_trg.append(file_trg)
+                                    self.list_src_trg_flag.append(False)
+                        if flag:
+                            break
+                if not flag:
+                    for spk_trg_idx_iter in range(spk_trg_idx_iter_start):
                         #if '.' not in spk_list[spk_trg_idx] and spk_list[spk_trg_idx].find('p') != 0:
                         if spk_trg_idx_iter != spk_src_idx_iter:
                             #spk_trg = self.spk_list[spk_trg_idx]
@@ -855,8 +883,8 @@ class FeatureDatasetEvalCycMceplf0WavVAE(Dataset):
                                     file_src = self.file_list[spk_src_idx_iter][i]
                                     if self.wav_list is not None:
                                         wav_src = self.wav_list[spk_src_idx_iter][i]
-                                    file_trg = os.path.dirname(os.path.dirname(file_src))+"/"+spk_trg+"/"+\
-                                                    os.path.basename(file_src)
+                                    file_trg = os.path.dirname(os.path.dirname(file_src))+"/"+spk_trg+\
+                                                                "/"+os.path.basename(file_src)
                                     if (file_trg in self.file_list) or os.path.exists(file_trg):
                                         self.file_list_src.append(file_src)
                                         if self.wav_list is not None:
@@ -873,47 +901,19 @@ class FeatureDatasetEvalCycMceplf0WavVAE(Dataset):
                             if flag:
                                 break
                     if not flag:
-                        for spk_trg_idx_iter in range(spk_trg_idx_iter_start):
-                            #if '.' not in spk_list[spk_trg_idx] and spk_list[spk_trg_idx].find('p') != 0:
-                            if spk_trg_idx_iter != spk_src_idx_iter:
-                                #spk_trg = self.spk_list[spk_trg_idx]
-                                if len(self.file_list[spk_trg_idx_iter]) > 0:
-                                    spk_trg = os.path.basename(os.path.dirname(self.file_list[spk_trg_idx_iter][0]))
-                                    for i in range(spk_src_n_utt):
-                                        file_src = self.file_list[spk_src_idx_iter][i]
-                                        if self.wav_list is not None:
-                                            wav_src = self.wav_list[spk_src_idx_iter][i]
-                                        file_trg = os.path.dirname(os.path.dirname(file_src))+"/"+spk_trg+\
-                                                                    "/"+os.path.basename(file_src)
-                                        if (file_trg in self.file_list) or os.path.exists(file_trg):
-                                            self.file_list_src.append(file_src)
-                                            if self.wav_list is not None:
-                                                self.wav_list_src.append(wav_src)
-                                            self.file_list_src_trg.append(file_trg)
-                                            flag = True
-                                            self.list_src_trg_flag.append(flag)
-                                        elif flag:
-                                            self.file_list_src.append(file_src)
-                                            if self.wav_list is not None:
-                                                self.wav_list_src.append(wav_src)
-                                            self.file_list_src_trg.append(file_trg)
-                                            self.list_src_trg_flag.append(False)
-                                if flag:
-                                    break
-                        if not flag:
-                            spk_trg = self.spk_list[spk_trg_idx_iter_start]
-                            for i in range(spk_src_n_utt):
-                                file_src = self.file_list[spk_src_idx_iter][i]
-                                if self.wav_list is not None:
-                                    wav_src = self.wav_list[spk_src_idx_iter][i]
-                                file_trg = os.path.dirname(os.path.dirname(file_src))+"/"+spk_trg+\
-                                                            "/"+os.path.basename(file_src)
-                                self.file_list_src.append(file_src)
-                                if self.wav_list is not None:
-                                    self.wav_list_src.append(wav_src)
-                                self.file_list_src_trg.append(file_trg)
-                                #self.file_list_src_trg.append(file_src)
-                                self.list_src_trg_flag.append(False)
+                        spk_trg = self.spk_list[spk_trg_idx_iter_start]
+                        for i in range(spk_src_n_utt):
+                            file_src = self.file_list[spk_src_idx_iter][i]
+                            if self.wav_list is not None:
+                                wav_src = self.wav_list[spk_src_idx_iter][i]
+                            file_trg = os.path.dirname(os.path.dirname(file_src))+"/"+spk_trg+\
+                                                        "/"+os.path.basename(file_src)
+                            self.file_list_src.append(file_src)
+                            if self.wav_list is not None:
+                                self.wav_list_src.append(wav_src)
+                            self.file_list_src_trg.append(file_trg)
+                            #self.file_list_src_trg.append(file_src)
+                            self.list_src_trg_flag.append(False)
 
     def __len__(self):
         return len(self.file_list_src)

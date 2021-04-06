@@ -1044,7 +1044,6 @@ def main():
         gv_mean[i] = read_hdf5(stats_list[i], "/gv_melsp_mean")
 
     density_deltas_ = args.densities.split('-')
-    density_deltas_ = ['0.725', '0.725', '0.91']
     logging.info(density_deltas_)
     density_deltas = [None]*len(density_deltas_)
     for i in range(len(density_deltas_)):

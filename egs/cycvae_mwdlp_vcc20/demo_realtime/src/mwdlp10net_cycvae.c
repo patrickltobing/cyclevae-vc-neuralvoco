@@ -335,7 +335,7 @@ static void run_sample_network_mwdlp10_coarse(MWDLP10NNetState *net, const Embed
     //copy input conditioning * GRU_input_cond_weights + bias contribution (b)
     RNN_COPY(gru_b_input, gru_b_condition, RNN_SUB_NEURONS_3);
     //compute gru_a state contribution to gru_b
-    sgemv_accum(gru_b_input, (&gru_b_dense_feature_state)->input_weights, RNN_SUB_NEURONS_3, RNN_MAIN_NEURONS,
+    sgemv_accum_16_(gru_b_input, (&gru_b_dense_feature_state)->input_weights, RNN_SUB_NEURONS_3, RNN_MAIN_NEURONS,
         RNN_SUB_NEURONS_3, net->gru_a_state);
     //compute gru_b and coarse_output
     compute_gru3(&gru_b, net->gru_b_state, gru_b_input);
@@ -358,7 +358,7 @@ static void run_sample_network_mwdlp10_fine(MWDLP10NNetState *net, const Embeddi
             gru_c_input[j] += c_embed_coarse->embedding_weights[idx_coarse + j];
     }
     //compute gru_b state contribution to gru_c
-    sgemv_accum(gru_c_input, (&gru_c_dense_feature_state)->input_weights, RNN_SUB_NEURONS_3, RNN_SUB_NEURONS,
+    sgemv_accum_16_(gru_c_input, (&gru_c_dense_feature_state)->input_weights, RNN_SUB_NEURONS_3, RNN_SUB_NEURONS,
         RNN_SUB_NEURONS_3, net->gru_b_state);
     //compute gru_c and fine_output
     compute_gru3(&gru_c, net->gru_c_state, gru_c_input);
@@ -390,7 +390,7 @@ static void run_sample_network_mwdlp10_coarse_nodlpc(MWDLP10NNetState *net, cons
     //copy input conditioning * GRU_input_cond_weights + bias contribution (b)
     RNN_COPY(gru_b_input, gru_b_condition, RNN_SUB_NEURONS_3);
     //compute gru_a state contribution to gru_b
-    sgemv_accum(gru_b_input, (&gru_b_dense_feature_state)->input_weights, RNN_SUB_NEURONS_3, RNN_MAIN_NEURONS,
+    sgemv_accum_16_(gru_b_input, (&gru_b_dense_feature_state)->input_weights, RNN_SUB_NEURONS_3, RNN_MAIN_NEURONS,
         RNN_SUB_NEURONS_3, net->gru_a_state);
     //compute gru_b and coarse_output
     compute_gru3(&gru_b, net->gru_b_state, gru_b_input);
@@ -413,7 +413,7 @@ static void run_sample_network_mwdlp10_fine_nodlpc(MWDLP10NNetState *net, const 
             gru_c_input[j] += c_embed_coarse->embedding_weights[idx_coarse + j];
     }
     //compute gru_b state contribution to gru_c
-    sgemv_accum(gru_c_input, (&gru_c_dense_feature_state)->input_weights, RNN_SUB_NEURONS_3, RNN_SUB_NEURONS,
+    sgemv_accum_16_(gru_c_input, (&gru_c_dense_feature_state)->input_weights, RNN_SUB_NEURONS_3, RNN_SUB_NEURONS,
         RNN_SUB_NEURONS_3, net->gru_b_state);
     //compute gru_c and fine_output
     compute_gru3(&gru_c, net->gru_c_state, gru_c_input);

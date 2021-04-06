@@ -958,7 +958,7 @@ else
 fi
 
 
-if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf_stft" ]; then
+if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf_stft_emb" ]; then
     setting_wave=${mdl_name_wave}_${data_name}_lr${lr}_bs${batch_size_wave}_huw${hidden_units_wave}_hu2w${hidden_units_wave_2}_ksw${kernel_size_wave}_dsw${dilation_size_wave}_do${do_prob}_st${step_count_wave}_mel${mel_dim}_ts${t_start}_te${t_end}_i${interval}_d${densities}_ns${n_stage}_lpc${lpc}_rs${right_size_wave}_nb${n_bands}_m${mid_dim}
 fi
 
@@ -992,14 +992,14 @@ if [ `echo ${stage} | grep 4` ];then
     feats_eval=data/${dev}/feats.scp
     waveforms=data/${trn}/wav_ns.scp
     waveforms_eval=data/${dev}/wav_ns.scp
-    if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf_stft" ];then
+    if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf_stft_emb" ];then
         if [ $idx_resume_wave -gt 0 ]; then
             echo ""
             echo "mwdlp model is in training, please use less/vim to monitor the training log: ${expdir_wave}/log/train_resume-${idx_resume_wave}.log"
             echo ""
             echo "while opening the log file, please use phrase 'sme' or 'average' to quickly search for the summary on each epoch"
             ${cuda_cmd} ${expdir_wave}/log/train_resume-${idx_resume_wave}.log \
-                train_nstages-sparse-wavernn_dualgru_compact_lpc_mband_10bit_cf_smpl_orgx.py \
+                train_nstages-sparse-wavernn_dualgru_compact_lpc_mband_10bit_cf_smpl_orgx_emb.py \
                     --waveforms ${waveforms} \
                     --waveforms_eval $waveforms_eval \
                     --feats ${feats} \
@@ -1037,7 +1037,7 @@ if [ `echo ${stage} | grep 4` ];then
             echo ""
             echo "while opening the log file, please use phrase 'sme' or 'average' to quickly search for the summary on each epoch"
             ${cuda_cmd} ${expdir_wave}/log/train.log \
-                train_nstages-sparse-wavernn_dualgru_compact_lpc_mband_10bit_cf_smpl_orgx.py \
+                train_nstages-sparse-wavernn_dualgru_compact_lpc_mband_10bit_cf_smpl_orgx_emb.py \
                     --waveforms ${waveforms} \
                     --waveforms_eval $waveforms_eval \
                     --feats ${feats} \
@@ -1096,7 +1096,7 @@ fi
 # STAGE 5 {{{
 if [ `echo ${stage} | grep 5` ] || [ `echo ${stage} | grep 6` ];then
 for spk_src in ${spks_dec[@]};do
-    if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf_stft" ]; then
+    if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf_stft_emb" ]; then
         outdir=${expdir_wave}/${mdl_name_wave}-${data_name}_dev-${hidden_units_wave}-${step_count_wave}-${lpc}-${n_bands}-${min_idx_wave}
         #outdir=${expdir_wave}/${mdl_name_wave}-${data_name}_tst-${hidden_units_wave}-${step_count_wave}-${lpc}-${n_bands}-${min_idx_wave}
     fi
@@ -1118,7 +1118,7 @@ if [ `echo ${stage} | grep 5` ];then
     cat $feats | grep "\/${spk_src}\/" | sort | head -n ${n_wav_decode} > ${feats_scp}
 
     # decode
-    if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf_stft" ]; then
+    if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf_stft_emb" ]; then
         echo ""
         echo "now synthesizing ${spk_src}, log here:  ${expdir_wave}/log/decode_dev_${min_idx_wave}_${spk_src}.log"
         #${cuda_cmd} ${expdir_wave}/log/decode_tst_${min_idx_wave}_${spk_src}.log \

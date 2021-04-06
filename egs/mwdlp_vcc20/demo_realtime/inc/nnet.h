@@ -25,7 +25,7 @@
    SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 /* Modified by Patrick Lumban Tobing (Nagoya University) on Sept.-Dec. 2020 - Mar. 2021,
-   marked by PLT_<Sep20/Dec20/Jan-Mar21> */
+   marked by PLT_<Sep20/Dec20/Mar21> */
 
 #ifndef _NNET_H_
 #define _NNET_H_
@@ -54,13 +54,14 @@ typedef struct {
   int n_dim;
 } NormStats;
 
-//PLT_Dec20
+//PLT_Mar21
 typedef struct {
   const float *bias;
   const float *input_weights;
-  const float *factor_signs;
-  const float *factor_mags;
-  const float *factor_mids;
+  //const float *factor_signs;
+  //const float *factor_mags;
+  //const float *factor_mids;
+  const float *factors;
   int activation_signs;
   int activation_mags;
   int activation_mids;
@@ -101,7 +102,8 @@ typedef struct {
   int dim;
 } EmbeddingLayer;
 
-//PLT_Sep20
+//PLT_Mar21
+void sgemv_accum16_(float *out, const float *weights, int rows, int cols, int col_stride, const float *x);
 void sgemv_accum(float *out, const float *weights, int rows, int cols, int col_stride, const float *x);
 
 void compute_activation(float *output, float *input, int N, int activation);
@@ -111,11 +113,11 @@ void compute_dense(const DenseLayer *layer, float *output, const float *input);
 //PLT_Dec20
 void compute_dense_linear(const DenseLayer *layer, float *output, const float *input);
 
-//PLT_Dec20
-void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *fc_layer, float *output,
-    const float *input, const int *last_output);
+//PLT_Mar21
+void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *fc_layer, const float *prev_logits,
+    float *output, const float *input, const int *last_output);
 
-//PLT_Mar20
+//PLT_Mar21
 void compute_mdense_mwdlp10_nodlpc(const MDenseLayerMWDLP10 *layer, const DenseLayer *fc_layer, float *output,
     const float *input);
 

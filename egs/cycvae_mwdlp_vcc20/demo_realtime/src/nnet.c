@@ -64,22 +64,21 @@ static OPUS_INLINE float relu(float x)
 }
 
 
+//PLT_Mar21
+void sgemv_accum16_(float *out, const float *weights, int rows, int cols, int col_stride, const float *x)
+{
+ sgemv_accum16(out, weights, rows, cols, col_stride, x);
+}
+
 void sgemv_accum(float *out, const float *weights, int rows, int cols, int col_stride, const float *x)
 {
-   int i, j;
-   if (rows % 16 == 0)
-   {
-      sgemv_accum16(out, weights, rows, cols, col_stride, x);
-   } else {
-      for (i=0;i<rows;i++)
-      {
-         for (j=0;j<cols;j++) {
-         //   printf("sg: %d %d %f %f %f\n", i, j, weights[j*col_stride+i], x[j], out[i]);
-            out[i] += weights[j*col_stride + i]*x[j];
-         //   printf("%f\n", out[i]);
-        }
-      }
+ int i, j;
+ for (i=0;i<rows;i++)
+ {
+    for (j=0;j<cols;j++) {
+       out[i] += weights[j*col_stride + i]*x[j];
    }
+ }
 }
 
 void compute_activation(float *output, float *input, int N, int activation)
@@ -132,8 +131,8 @@ void compute_dense(const DenseLayer *layer, float *output, const float *input)
    //celt_assert(input != output);
    for (i=0;i<N;i++)
       output[i] = layer->bias[i];
-   // sgemv_accum(output, layer->input_weights, N, M, stride, input);
-   sgemv_accum(output, layer->input_weights, N, layer->nb_inputs, N, input);
+   // sgemv_accum16(output, layer->input_weights, N, M, stride, input);
+   sgemv_accum16(output, layer->input_weights, N, layer->nb_inputs, N, input);
    compute_activation(output, output, N, layer->activation);
 }
 
@@ -149,26 +148,39 @@ void compute_dense_linear(const DenseLayer *layer, float *output, const float *i
    //celt_assert(input != output);
    for (i=0;i<N;i++)
       output[i] = layer->bias[i];
-   // sgemv_accum(output, layer->input_weights, N, M, stride, input);
-   sgemv_accum(output, layer->input_weights, N, layer->nb_inputs, N, input);
+   // sgemv_accum16(output, layer->input_weights, N, M, stride, input);
+   sgemv_accum16(output, layer->input_weights, N, layer->nb_inputs, N, input);
 }
 
-//PLT_Dec20
-void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *fc_layer, float *output,
-    const float *input, const int *last_output)
+//PLT_Mar21
+void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *fc_layer,
+    const float *prev_logits, float *output, const float *input, const int *last_output)
 {
-    int i, c, n;
+    //int i, j, k, l, m, c, n, last_idx;
+    //int i, j, k, l, m, c, n, n_lpcbands_signs, n_lpcbands_mags, last_idx;
+    //int i, j, k, l, m, n, n_lpcbands_signs, n_lpcbands_mags, last_idx;
+    int i, j, n, n_lpcbands_signs, n_lpcbands_mags, last_idx;
+    //int i, j, n, n_lpcbands_signs, n_lpcbands_mags, last_idx;
+    //int i, c, n;
     //int j;
-    int n_lpcbands, n_c_lpcbands2;
-    int n_logitsbands, n_c_logitsbands2;
-    float tmp[MDENSE_OUT];
-    float signs[LPC_ORDER_MBANDS_2], mags[LPC_ORDER_MBANDS_2], mids[MID_OUT_MBANDS_2];
-    float lpc_signs[LPC_ORDER_MBANDS], lpc_mags[LPC_ORDER_MBANDS], res_mids[MID_OUT_MBANDS];
-    float *logits;
+    //int n_lpcbands, n_c_lpcbands2;
+    //int n_logitsbands, n_c_logitsbands2;
+    //int last_idx;
+    //float tmp[MDENSE_OUT];
+    //float tmp[MDENSE_OUT], vec_out[MDENSE_OUT], dualfc_out[MDENSE_OUT_DUALFC];
+    float vec_out[MDENSE_OUT], dualfc_out[MDENSE_OUT_DUALFC];
+    //float signs[LPC_ORDER_MBANDS_2], mags[LPC_ORDER_MBANDS_2], mids[MID_OUT_MBANDS_2];
+    //float lpc_signs[LPC_ORDER_MBANDS], lpc_mags[LPC_ORDER_MBANDS], res_mids[MID_OUT_MBANDS];
+    //float res_mids[MID_OUT_MBANDS];
+    //float *logits;
     //celt_assert(input != output);
+
+    //compute dualfc output vectors
     for (i=0;i<MDENSE_OUT;i++)
-       tmp[i] = layer->bias[i];
-    sgemv_accum(tmp, layer->input_weights, MDENSE_OUT, RNN_SUB_NEURONS, MDENSE_OUT, input);
+       vec_out[i] = layer->bias[i];
+       //tmp[i] = layer->bias[i];
+    //sgemv_accum16(tmp, layer->input_weights, MDENSE_OUT, RNN_SUB_NEURONS, MDENSE_OUT, input);
+    sgemv_accum16(vec_out, layer->input_weights, MDENSE_OUT, RNN_SUB_NEURONS, MDENSE_OUT, input);
     //for (i=0;i<MDENSE_OUT;i++) {
     //    printf("mdense_out [%d] %f\n", i, tmp[i]);
     //}
@@ -178,68 +190,139 @@ void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *f
     //for (i=0;i<LPC_ORDER_MBANDS_4;i++)
     //   if (tmp[i] < -32) tmp[i] = -32;
     //   else if (tmp[i] > 32) tmp[i] = 32;
-    RNN_COPY(signs, tmp, LPC_ORDER_MBANDS_2);
+    //RNN_COPY(signs, tmp, LPC_ORDER_MBANDS_2);
+    //RNN_COPY(vec_out, tmp, LPC_ORDER_MBANDS);
+    //RNN_COPY(&vec_out[LPC_ORDER_MBANDS_2_MID_OUT_MBANDS], &tmp[LPC_ORDER_MBANDS], LPC_ORDER_MBANDS);
     //-1,1
-    compute_activation(signs, signs, LPC_ORDER_MBANDS_2, layer->activation_signs);
+    //compute_activation(signs, signs, LPC_ORDER_MBANDS_2, layer->activation_signs);
+    compute_activation(vec_out, vec_out, LPC_ORDER_MBANDS, layer->activation_signs);
+    compute_activation(&vec_out[LPC_ORDER_MBANDS_2_MID_OUT_MBANDS], &vec_out[LPC_ORDER_MBANDS_2_MID_OUT_MBANDS],
+            LPC_ORDER_MBANDS, layer->activation_signs);
     //for (i=0;i<LPC_ORDER_MBANDS_2;i++) {
     //    printf("signs [%d] %f\n", i, signs[i]);
     //}
     //exit(0);
     //mags, 2nd 6*5*2
-    RNN_COPY(mags, &tmp[LPC_ORDER_MBANDS_2], LPC_ORDER_MBANDS_2);
+    //RNN_COPY(mags, &tmp[LPC_ORDER_MBANDS_2], LPC_ORDER_MBANDS_2);
+    //RNN_COPY(&vec_out[LPC_ORDER_MBANDS], &tmp[LPC_ORDER_MBANDS_2], LPC_ORDER_MBANDS);
+    //RNN_COPY(&vec_out[LPC_ORDER_MBANDS_3_MID_OUT_MBANDS], &tmp[LPC_ORDER_MBANDS_3], LPC_ORDER_MBANDS);
     //>= 0
-    compute_activation(mags, mags, LPC_ORDER_MBANDS_2, layer->activation_mags);
+    //compute_activation(mags, mags, LPC_ORDER_MBANDS_2, layer->activation_mags);
+    compute_activation(&vec_out[LPC_ORDER_MBANDS], &vec_out[LPC_ORDER_MBANDS], LPC_ORDER_MBANDS, layer->activation_mags);
+    compute_activation(&vec_out[LPC_ORDER_MBANDS_3_MID_OUT_MBANDS], &vec_out[LPC_ORDER_MBANDS_3_MID_OUT_MBANDS],
+            LPC_ORDER_MBANDS, layer->activation_mags);
     //for (i=0;i<LPC_ORDER_MBANDS_2;i++) {
     //    printf("mags [%d] %f\n", i, mags[i]);
     //}
     //exit(0);
     //mids, last 32*5*2
-    RNN_COPY(mids, &tmp[LPC_ORDER_MBANDS_4], MID_OUT_MBANDS_2);
-    compute_activation(mids, mids, MID_OUT_MBANDS_2, layer->activation_mids);
+    //RNN_COPY(mids, &tmp[LPC_ORDER_MBANDS_4], MID_OUT_MBANDS_2);
+    //RNN_COPY(&vec_out[LPC_ORDER_MBANDS_2], &tmp[LPC_ORDER_MBANDS_4], MID_OUT_MBANDS);
+    //RNN_COPY(&vec_out[LPC_ORDER_MBANDS_4_MID_OUT_MBANDS], &tmp[LPC_ORDER_MBANDS_4_MID_OUT_MBANDS], MID_OUT_MBANDS);
+    //compute_activation(mids, mids, MID_OUT_MBANDS_2, layer->activation_mids);
+    compute_activation(&vec_out[LPC_ORDER_MBANDS_2], &vec_out[LPC_ORDER_MBANDS_2],
+            MID_OUT_MBANDS, layer->activation_mids);
+    compute_activation(&vec_out[LPC_ORDER_MBANDS_4_MID_OUT_MBANDS], &vec_out[LPC_ORDER_MBANDS_4_MID_OUT_MBANDS],
+            MID_OUT_MBANDS, layer->activation_mids);
     //for (i=0;i<MID_OUT_MBANDS_2;i++) {
     //    printf("mids [%d] %f\n", i, mids[i]);
     //}
+
+    ////n_dim = DLPC_ORDER or MID_OUT; n_channel = 2
+    ////n_bands x n_channel x n_dim --> n_bands x n_dim x n_channel
+    ////FIXME: change structure in training script as above
+    //for (n=0;n<N_MBANDS;n++) {
+    //    i = n*DLPC_ORDER;
+    //    j = n*2*DLPC_ORDER;
+    //    k = n*MID_OUT;
+    //    l = n*2*MID_OUT;
+    //    m = j+DLPC_ORDER;
+    //    //1st channel
+    //    RNN_COPY(&vec_out[i], &signs[j], DLPC_ORDER);
+    //    RNN_COPY(&vec_out[LPC_ORDER_MBANDS+i], &mags[j], DLPC_ORDER);
+    //    RNN_COPY(&vec_out[LPC_ORDER_MBANDS_2+k], &mids[l], MID_OUT);
+    //    //2nd channel
+    //    RNN_COPY(&vec_out[LPC_ORDER_MBANDS_2_MID_OUT_MBANDS+i], &signs[m], DLPC_ORDER);
+    //    RNN_COPY(&vec_out[LPC_ORDER_MBANDS_3_MID_OUT_MBANDS+i], &mags[m], DLPC_ORDER);
+    //    RNN_COPY(&vec_out[LPC_ORDER_MBANDS_4_MID_OUT_MBANDS+k], &mids[l+MID_OUT], MID_OUT);
+    //}
+    //combine dualfc channels
+    sgev_dualfc8(dualfc_out, layer->factors, MDENSE_OUT, vec_out);
+
+    ////logits by last fc-layer
+    for (n=0;n<N_MBANDS;n++)
+        for (i=0,j=n*SQRT_QUANTIZE;i<SQRT_QUANTIZE;i++)
+            output[j+i] = fc_layer->bias[i];
+    //for (n=0;n<N_MBANDS;n++)
+    //    for (i=0,j=n*DLPC_ORDER;i<DLPC_ORDER;i++)
+    //        printf("signs [%d][%d] %f\n", n, i, dualfc_out[j+i]);
+    //for (n=0;n<N_MBANDS;n++)
+    //    for (i=0,j=n*DLPC_ORDER+LPC_ORDER_MBANDS;i<DLPC_ORDER;i++)
+    //        printf("mags [%d][%d] %f\n", n, i, dualfc_out[j+i]);
+    //for (n=0;n<N_MBANDS;n++)
+    //    for (i=0,j=n*MID_OUT+LPC_ORDER_MBANDS_2;i<MID_OUT;i++)
+    //        printf("mids [%d][%d] %f\n", n, i, dualfc_out[j+i]);
+    sgemv_fclogits16(output, fc_layer->input_weights, SQRT_QUANTIZE, MID_OUT, N_MBANDS, &dualfc_out[LPC_ORDER_MBANDS_2]);
+    //for (n=0;n<N_MBANDS;n++)
+    //    for (i=0,j=n*SQRT_QUANTIZE;i<SQRT_QUANTIZE;i++)
+    //        printf("out [%d][%d] %f\n", n, i, output[j+i]);
+    compute_activation(output, output, SQRT_QUANTIZE_MBANDS, fc_layer->activation);
+
     //exit(0);
-    for (i=0;i<LPC_ORDER_MBANDS;i++) {
-        lpc_signs[i] = 0;
-        lpc_mags[i] = 0;
-    }
-    for (i=0;i<MID_OUT_MBANDS;i++)
-        res_mids[i] = 0;
+    //for (i=0;i<LPC_ORDER_MBANDS;i++) {
+    //    lpc_signs[i] = 0;
+    //    lpc_mags[i] = 0;
+    //}
+    //for (i=0;i<MID_OUT_MBANDS;i++)
+    //    res_mids[i] = 0;
+
+    //refine logits with data-driven linear prediction procedure
     for (n=0;n<N_MBANDS;n++) { //n_bands x 2 x n_lpc or 32, loop order is n_bands --> 2 --> n_lpc/32
-        //lpc: n_b x 2 x n_lpc
-        for (c=0,n_lpcbands=n*DLPC_ORDER,n_c_lpcbands2=n_lpcbands*2;c<2;c++) {
-            for (i=0;i<DLPC_ORDER;i++,n_c_lpcbands2++) {
-                //previous code uses shared factors for signs/mags between bands [c*DLPC_ORDER + i]
-                //changed into band-dependent factors for signs/mags [n*DLPC_ORDER*2 + c*DLPC_ORDER + i]
-                lpc_signs[n_lpcbands+i] += signs[n_c_lpcbands2]*layer->factor_signs[n_c_lpcbands2];
-                lpc_mags[n_lpcbands+i] += mags[n_c_lpcbands2]*layer->factor_mags[n_c_lpcbands2];
-            }
-        }
-        //mids: n_b x 32
-        for (c=0,n_logitsbands=n*MID_OUT,n_c_logitsbands2=n_logitsbands*2;c<2;c++) {
-            //factor of mids also band-dependent, indexing similar as above signs/mags with 32-dim
-            for (i=0;i<MID_OUT;i++,n_c_logitsbands2++)
-                res_mids[n_logitsbands+i] += mids[n_c_logitsbands2]*layer->factor_mids[n_c_logitsbands2];
-        }
-        //logits: 32 x 32 [[o_1,...,o_256]_1,...,[o_1,...,o_256]_N]
-        logits = &output[n*SQRT_QUANTIZE];
-        for (i=0;i<SQRT_QUANTIZE;i++)
-            logits[i] = fc_layer->bias[i];
-        sgemv_accum(logits, fc_layer->input_weights, SQRT_QUANTIZE, MID_OUT, SQRT_QUANTIZE, &res_mids[n_logitsbands]);
+        ////lpc: n_b x 2 x n_lpc
+        //for (c=0,n_lpcbands=n*DLPC_ORDER,n_c_lpcbands2=n_lpcbands*2;c<2;c++) {
+        //    for (i=0;i<DLPC_ORDER;i++,n_c_lpcbands2++) {
+        //        //previous code uses shared factors for signs/mags between bands [c*DLPC_ORDER + i]
+        //        //changed into band-dependent factors for signs/mags [n*DLPC_ORDER*2 + c*DLPC_ORDER + i]
+        //        //lpc_signs[n_lpcbands+i] += signs[n_c_lpcbands2]*layer->factor_signs[n_c_lpcbands2];
+        //        //lpc_mags[n_lpcbands+i] += mags[n_c_lpcbands2]*layer->factor_mags[n_c_lpcbands2];
+        //        //lpc_signs[n_lpcbands+i] += signs[n_c_lpcbands2]*layer->factors[i+n_lpcbands+c*MDENSE_OUT_DUALFC];
+        //        //lpc_mags[n_lpcbands+i] += mags[n_c_lpcbands2]*layer->factors[i+n_lpcbands+LPC_ORDER_MBANDS+c*MDENSE_OUT_DUALFC];
+        //        lpc_signs[n_lpcbands+i] += vec_out[i+n_lpcbands+c*MDENSE_OUT_DUALFC]*layer->factors[i+n_lpcbands+c*MDENSE_OUT_DUALFC];
+        //        lpc_mags[n_lpcbands+i] += vec_out[i+n_lpcbands+LPC_ORDER_MBANDS+c*MDENSE_OUT_DUALFC]*layer->factors[i+n_lpcbands+LPC_ORDER_MBANDS+c*MDENSE_OUT_DUALFC];
+        //    }
+        //}
+        ////mids: n_b x 32
+        //for (c=0,n_logitsbands=n*MID_OUT,n_c_logitsbands2=n_logitsbands*2;c<2;c++) {
+        //    //factor of mids also band-dependent, indexing similar as above signs/mags with 32-dim
+        //    for (i=0;i<MID_OUT;i++,n_c_logitsbands2++)
+        //        //res_mids[n_logitsbands+i] += mids[n_c_logitsbands2]*layer->factor_mids[n_c_logitsbands2];
+        //        //res_mids[n_logitsbands+i] += mids[n_c_logitsbands2]*layer->factors[i+n_logitsbands+LPC_ORDER_MBANDS_2+c*MDENSE_OUT_DUALFC];
+        //        res_mids[n_logitsbands+i] += vec_out[i+n_logitsbands+LPC_ORDER_MBANDS_2+c*MDENSE_OUT_DUALFC]*layer->factors[i+n_logitsbands+LPC_ORDER_MBANDS_2+c*MDENSE_OUT_DUALFC];
+        //}
+        ////////logits: 32 x 32 [[o_1,...,o_256]_1,...,[o_1,...,o_256]_N]
+        //logits = &output[n*SQRT_QUANTIZE];
         //for (i=0;i<SQRT_QUANTIZE;i++)
-        //    if (logits[i] > 32) logits[i] = 32;
-        compute_activation(logits, logits, SQRT_QUANTIZE, fc_layer->activation);
-        //for (i=0;i<MID_OUT;i++) {
-        //    printf("res_mids [%d][%d] %f\n", n, i, res_mids[n_logitsbands+i]);
-        //}
-        //for (i=0;i<SQRT_QUANTIZE;i++) {
-        //    printf("logits_out [%d][%d] %f\n", n, i, logits[i]);
-        //}
-        //refine logits using linear prediction with one-hot basis of previous samples and data-driven lpc
-        //last_output: [[o_1,...,o_N]_1,...,[o_1,...,o_N]_K]; lpc: [[o_1,...,o_K]_1,...,[o_1,...,o_K]_N]
-        for (i=0;i<DLPC_ORDER;i++) {
-            logits[last_output[i*N_MBANDS+n]] += lpc_signs[n_lpcbands+i]*lpc_mags[n_lpcbands+i];
+        //    logits[i] = fc_layer->bias[i];
+        ////sgemv_accum16(logits, fc_layer->input_weights, SQRT_QUANTIZE, MID_OUT, SQRT_QUANTIZE, &dualfc_out[LPC_ORDER_MBANDS_2+n*MID_OUT]);
+        //sgemv_accum16(logits, fc_layer->input_weights, SQRT_QUANTIZE, MID_OUT, SQRT_QUANTIZE, &res_mids[n_logitsbands]);
+        //////for (i=0;i<SQRT_QUANTIZE;i++)
+        //////    if (logits[i] > 32) logits[i] = 32;
+        //compute_activation(logits, logits, SQRT_QUANTIZE, fc_layer->activation);
+        ////for (i=0;i<MID_OUT;i++) {
+        ////    printf("res_mids [%d][%d] %f\n", n, i, res_mids[n_logitsbands+i]);
+        ////}
+        ////for (i=0;i<SQRT_QUANTIZE;i++) {
+        ////    printf("logits_out [%d][%d] %f\n", n, i, logits[i]);
+        ////}
+        ////refine logits using linear prediction with one-hot basis of previous samples and data-driven lpc
+        ////last_output: [[o_1,...,o_N]_1,...,[o_1,...,o_N]_K]; lpc: [[o_1,...,o_K]_1,...,[o_1,...,o_K]_N]
+        //for (i=0;i<DLPC_ORDER;i++) {
+        for (i=0,j=n*SQRT_QUANTIZE,n_lpcbands_signs=n*DLPC_ORDER,n_lpcbands_mags=LPC_ORDER_MBANDS+n_lpcbands_signs;i<DLPC_ORDER;i++) {
+        //for (i=0,n_lpcbands_signs=n*DLPC_ORDER,n_lpcbands_mags=LPC_ORDER_MBANDS+n_lpcbands_signs;i<DLPC_ORDER;i++) {
+            last_idx = last_output[i*N_MBANDS+n];
+            //logits[last_idx] += lpc_signs[n_lpcbands+i]*lpc_mags[n_lpcbands+i]*prev_logits[last_idx];
+            //logits[last_idx] += dualfc_out[n_lpcbands_signs+i]*dualfc_out[n_lpcbands_mags+i]*prev_logits[last_idx];
+            output[j+last_idx] += dualfc_out[n_lpcbands_signs+i]*dualfc_out[n_lpcbands_mags+i]*prev_logits[last_idx];
             //j = last_output[i*N_MBANDS+n];
             //logits[j] += lpc_signs[n_lpcbands+i]*lpc_mags[n_lpcbands+i];
             //if (logits[j] < -32) logits[j] = -32;
@@ -270,41 +353,72 @@ void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *f
 void compute_mdense_mwdlp10_nodlpc(const MDenseLayerMWDLP10 *layer, const DenseLayer *fc_layer, float *output,
     const float *input)
 {
-    int i, c, n;
+    int i, j, n;
+    //int i, c, n;
     //int j;
-    int n_logitsbands, n_c_logitsbands2;
-    float mids[MID_OUT_MBANDS_2];
-    float res_mids[MID_OUT_MBANDS];
-    float *logits;
+    //int n_logitsbands, n_c_logitsbands2;
+    //float mids[MID_OUT_MBANDS_2], vec_out[MID_OUT_MBANDS_2];
+    float vec_out[MID_OUT_MBANDS_2];
+    //float res_mids[MID_OUT_MBANDS];
+    float dualfc_out[MID_OUT_MBANDS];
+    //float *logits;
     //celt_assert(input != output);
+
+    //mid-logits by dualfc
     for (i=0;i<MID_OUT_MBANDS_2;i++)
-       mids[i] = layer->bias[i];
-    sgemv_accum(mids, layer->input_weights, MID_OUT_MBANDS_2, RNN_SUB_NEURONS, MID_OUT_MBANDS_2, input);
+       vec_out[i] = layer->bias[i];
+       //mids[i] = layer->bias[i];
+    //sgemv_accum16(mids, layer->input_weights, MID_OUT_MBANDS_2, RNN_SUB_NEURONS, MID_OUT_MBANDS_2, input);
+    sgemv_accum16(vec_out, layer->input_weights, MID_OUT_MBANDS_2, RNN_SUB_NEURONS, MID_OUT_MBANDS_2, input);
     //exit(0);
     //mids, last 32*5*2
-    compute_activation(mids, mids, MID_OUT_MBANDS_2, layer->activation_mids);
+    //compute_activation(mids, mids, MID_OUT_MBANDS_2, layer->activation_mids);
+    compute_activation(vec_out, vec_out, MID_OUT_MBANDS_2, layer->activation_mids);
     //for (i=0;i<MID_OUT_MBANDS_2;i++) {
     //    printf("mids [%d] %f\n", i, mids[i]);
     //}
     //exit(0);
-    for (i=0;i<MID_OUT_MBANDS;i++)
-        res_mids[i] = 0;
-    for (n=0;n<N_MBANDS;n++) { //n_bands x 2 x n_lpc or 32, loop order is n_bands --> 2 --> n_lpc/32
-        //mids: n_b x 32
-        for (c=0,n_logitsbands=n*MID_OUT,n_c_logitsbands2=n_logitsbands*2;c<2;c++) {
-            //factor of mids also band-dependent, indexing similar as above signs/mags with 32-dim
-            for (i=0;i<MID_OUT;i++,n_c_logitsbands2++)
-                res_mids[n_logitsbands+i] += mids[n_c_logitsbands2]*layer->factor_mids[n_c_logitsbands2];
-        }
-        //logits: 32 x 32 [[o_1,...,o_256]_1,...,[o_1,...,o_256]_N]
-        logits = &output[n*SQRT_QUANTIZE];
-        for (i=0;i<SQRT_QUANTIZE;i++)
-            logits[i] = fc_layer->bias[i];
-        sgemv_accum(logits, fc_layer->input_weights, SQRT_QUANTIZE, MID_OUT, SQRT_QUANTIZE, &res_mids[n_logitsbands]);
-        compute_activation(logits, logits, SQRT_QUANTIZE, fc_layer->activation);
-   }
-   //exit(0);
+
+    ////n_dim = DLPC_ORDER or MID_OUT; n_channel = 2
+    ////n_bands x n_channel x n_dim --> n_bands x n_dim x n_channel
+    ////FIXME: change structure in training script as above
+    //for (n=0;n<N_MBANDS;n++) {
+    //    i = n*MID_OUT;
+    //    j = n*2*MID_OUT;
+    //    //1st channel
+    //    RNN_COPY(&vec_out[i], &mids[j], MID_OUT);
+    //    //2nd channel
+    //    RNN_COPY(&vec_out[MID_OUT_MBANDS+i], &mids[j+MID_OUT], MID_OUT);
+    //}
+    //combine dualfc channels
+    sgev_dualfc8(dualfc_out, layer->factors, MDENSE_OUT, vec_out);
+
+    //logits by last fc-layer
+    for (n=0;n<N_MBANDS;n++)
+        for (i=0,j=n*SQRT_QUANTIZE;i<SQRT_QUANTIZE;i++)
+            output[j+i] = fc_layer->bias[i];
+    sgemv_fclogits16(output, fc_layer->input_weights, SQRT_QUANTIZE, MID_OUT, N_MBANDS, dualfc_out);
+    compute_activation(output, output, SQRT_QUANTIZE_MBANDS, fc_layer->activation);
+
+    //for (i=0;i<MID_OUT_MBANDS;i++)
+    //    res_mids[i] = 0;
+    //for (n=0;n<N_MBANDS;n++) { //n_bands x 2 x n_lpc or 32, loop order is n_bands --> 2 --> n_lpc/32
+    //    //mids: n_b x 32
+    //    for (c=0,n_logitsbands=n*MID_OUT,n_c_logitsbands2=n_logitsbands*2;c<2;c++) {
+    //        //factor of mids also band-dependent, indexing similar as above signs/mags with 32-dim
+    //        for (i=0;i<MID_OUT;i++,n_c_logitsbands2++)
+    //            res_mids[n_logitsbands+i] += mids[n_c_logitsbands2]*layer->factor_mids[n_c_logitsbands2];
+    //    }
+    //    //logits: 32 x 32 [[o_1,...,o_256]_1,...,[o_1,...,o_256]_N]
+    //    logits = &output[n*SQRT_QUANTIZE];
+    //    for (i=0;i<SQRT_QUANTIZE;i++)
+    //        logits[i] = fc_layer->bias[i];
+    //    sgemv_accum16(logits, fc_layer->input_weights, SQRT_QUANTIZE, MID_OUT, SQRT_QUANTIZE, &res_mids[n_logitsbands]);
+    //    compute_activation(logits, logits, SQRT_QUANTIZE, fc_layer->activation);
+    //}
+    //exit(0);
 }
+
 
 //PLT_Sep20
 void compute_gru3(const GRULayer *gru, float *state, const float *input)
@@ -328,7 +442,7 @@ void compute_gru3(const GRULayer *gru, float *state, const float *input)
    RNN_COPY(zrh, input, RNN_SUB_NEURONS_3);
    for (i=0;i<RNN_SUB_NEURONS_3;i++)
       recur[i] = gru->bias[i];
-   sgemv_accum(recur, gru->recurrent_weights, RNN_SUB_NEURONS_3, RNN_SUB_NEURONS, RNN_SUB_NEURONS_3, state);
+   sgemv_accum16(recur, gru->recurrent_weights, RNN_SUB_NEURONS_3, RNN_SUB_NEURONS, RNN_SUB_NEURONS_3, state);
    for (i=0;i<RNN_SUB_NEURONS_2;i++)
       zrh[i] += recur[i];
    compute_activation(zrh, zrh, RNN_SUB_NEURONS_2, ACTIVATION_SIGMOID);
@@ -402,7 +516,7 @@ void compute_conv1d_linear(const Conv1DLayer *layer, float *output, float *mem, 
    // compute conv
    for (i=0;i<N;i++)
       output[i] = layer->bias[i];
-   sgemv_accum(output, layer->input_weights, N, M, N, tmp);
+   sgemv_accum16(output, layer->input_weights, N, M, N, tmp);
    //no activation (linear)
    RNN_COPY(mem, &tmp[layer->nb_inputs], state_size); //set state size for next frame
 }
@@ -466,7 +580,7 @@ void compute_sparse_gru_enc_melsp(const SparseFrameGRULayer *gru, float *state, 
       for (i=0,j=k*RNN_ENC_MELSP_NEURONS;i<RNN_ENC_MELSP_NEURONS;i++)
          recur[j + i] += gru->diag_weights[j + i]*state[i];
    sparse_sgemv_accum16(recur, gru->recurrent_weights, RNN_ENC_MELSP_NEURONS_3, gru->idx, state);
-   sgemv_accum(zrh, gru->input_weights, RNN_ENC_MELSP_NEURONS_3, FEATURE_CONV_ENC_MELSP_OUT_SIZE, RNN_ENC_MELSP_NEURONS_3, input);
+   sgemv_accum16(zrh, gru->input_weights, RNN_ENC_MELSP_NEURONS_3, FEATURE_CONV_ENC_MELSP_OUT_SIZE, RNN_ENC_MELSP_NEURONS_3, input);
 
    for (i=0;i<RNN_ENC_MELSP_NEURONS_2;i++)
       zrh[i] += recur[i]; //z_t and r_t computed in a similar way : sigmoid(in_t + W_z*h_{t-1})
@@ -504,7 +618,7 @@ void compute_sparse_gru_enc_excit(const SparseFrameGRULayer *gru, float *state, 
       for (i=0,j=k*RNN_ENC_EXCIT_NEURONS;i<RNN_ENC_EXCIT_NEURONS;i++)
          recur[j + i] += gru->diag_weights[j + i]*state[i];
    sparse_sgemv_accum16(recur, gru->recurrent_weights, RNN_ENC_EXCIT_NEURONS_3, gru->idx, state);
-   sgemv_accum(zrh, gru->input_weights, RNN_ENC_EXCIT_NEURONS_3, FEATURE_CONV_ENC_EXCIT_OUT_SIZE, RNN_ENC_EXCIT_NEURONS_3, input);
+   sgemv_accum16(zrh, gru->input_weights, RNN_ENC_EXCIT_NEURONS_3, FEATURE_CONV_ENC_EXCIT_OUT_SIZE, RNN_ENC_EXCIT_NEURONS_3, input);
 
    for (i=0;i<RNN_ENC_EXCIT_NEURONS_2;i++)
       zrh[i] += recur[i]; //z_t and r_t computed in a similar way : sigmoid(in_t + W_z*h_{t-1})
@@ -540,8 +654,8 @@ void compute_gru_spk(const FrameGRULayer *gru, float *state, const float *input)
       recur[i] = gru->recurrent_bias[i];
       zrh[i] = gru->input_bias[i];
    }
-   sgemv_accum(recur, gru->recurrent_weights, RNN_SPK_NEURONS_3, RNN_SPK_NEURONS, RNN_SPK_NEURONS_3, state);
-   sgemv_accum(zrh, gru->input_weights, RNN_SPK_NEURONS_3, FEATURE_N_SPK_LAT_DIM_EXCIT_MELSP, RNN_SPK_NEURONS_3, input);
+   sgemv_accum16(recur, gru->recurrent_weights, RNN_SPK_NEURONS_3, RNN_SPK_NEURONS, RNN_SPK_NEURONS_3, state);
+   sgemv_accum16(zrh, gru->input_weights, RNN_SPK_NEURONS_3, FEATURE_N_SPK_LAT_DIM_EXCIT_MELSP, RNN_SPK_NEURONS_3, input);
 
    for (i=0;i<RNN_SPK_NEURONS_2;i++)
       zrh[i] += recur[i]; //z_t and r_t computed in a similar way : sigmoid(in_t + W_z*h_{t-1})
@@ -579,7 +693,7 @@ void compute_sparse_gru_dec_melsp(const SparseFrameGRULayer *gru, float *state, 
       for (i=0,j=k*RNN_DEC_MELSP_NEURONS;i<RNN_DEC_MELSP_NEURONS;i++)
          recur[j + i] += gru->diag_weights[j + i]*state[i];
    sparse_sgemv_accum16(recur, gru->recurrent_weights, RNN_DEC_MELSP_NEURONS_3, gru->idx, state);
-   sgemv_accum(zrh, gru->input_weights, RNN_DEC_MELSP_NEURONS_3, FEATURE_CONV_DEC_MELSP_OUT_SIZE, RNN_DEC_MELSP_NEURONS_3, input);
+   sgemv_accum16(zrh, gru->input_weights, RNN_DEC_MELSP_NEURONS_3, FEATURE_CONV_DEC_MELSP_OUT_SIZE, RNN_DEC_MELSP_NEURONS_3, input);
 
    for (i=0;i<RNN_DEC_MELSP_NEURONS_2;i++)
       zrh[i] += recur[i]; //z_t and r_t computed in a similar way : sigmoid(in_t + W_z*h_{t-1})
@@ -619,7 +733,7 @@ void compute_spkidtr(const DenseLayer *in_layer, const DenseLayer *out_layer, fl
    //   printf("[%d] %f ", i, tmp[i]);
    }
    //printf("\n");
-   sgemv_accum(tmp, in_layer->input_weights, N, in_layer->nb_inputs, N, input);
+   sgemv_accum16(tmp, in_layer->input_weights, N, in_layer->nb_inputs, N, input);
    //printf("2-dim %f %f\n", tmp[0], tmp[1]);
    compute_activation(tmp, tmp, N, in_layer->activation);
    //printf("2-dim tanh %f %f\n", tmp[0], tmp[1]);
@@ -631,7 +745,7 @@ void compute_spkidtr(const DenseLayer *in_layer, const DenseLayer *out_layer, fl
    //   printf("[%d] %f ", i, output[i]);
    }
    //printf("\n");
-   sgemv_accum(output, out_layer->input_weights, N, out_layer->nb_inputs, N, tmp);
+   sgemv_accum16(output, out_layer->input_weights, N, out_layer->nb_inputs, N, tmp);
    compute_activation(output, output, N, out_layer->activation);
 }
 
@@ -643,6 +757,6 @@ void compute_spkidtr_coord(const DenseLayer *layer, float *output, const float *
    N = layer->nb_neurons;
    for (i=0;i<N;i++)
       output[i] = layer->bias[i];
-   sgemv_accum(output, layer->input_weights, N, layer->nb_inputs, N, input);
+   sgemv_accum16(output, layer->input_weights, N, layer->nb_inputs, N, input);
    compute_activation(output, output, N, layer->activation);
 }

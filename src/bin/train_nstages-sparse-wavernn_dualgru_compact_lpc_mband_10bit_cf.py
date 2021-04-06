@@ -1030,7 +1030,7 @@ def main():
             if (not sparse_min_flag) and (iter_idx + 1 >= t_ends[idx_stage]):
                 sparse_check_flag = True
             if (not sparse_min_flag and sparse_check_flag) \
-                or ((round(float(round(Decimal(str(eval_loss_err_avg)),2))-0.07,2) <= float(round(Decimal(str(min_eval_loss_err_avg)),2))) and \
+                or ((round(float(round(Decimal(str(eval_loss_err_avg)),2))-0.16,2) <= float(round(Decimal(str(min_eval_loss_err_avg)),2))) and \
                     (round(float(round(Decimal(str(eval_loss_ce_avg+eval_loss_ce_avg_std)),2))-0.01,2) <= float(round(Decimal(str(min_eval_loss_ce_avg+min_eval_loss_ce_avg_std)),2)) \
                         or round(float(round(Decimal(str(eval_loss_ce_avg)),2))-0.01,2) <= float(round(Decimal(str(min_eval_loss_ce_avg)),2)))):
                 round_eval_loss_err_avg = float(round(Decimal(str(eval_loss_err_avg)),2))
@@ -1365,8 +1365,8 @@ def main():
         batch_loss_err_f_ = torch.mean(torch.sum(criterion_l1(F.softmax(batch_x_f_output, dim=-1), F.one_hot(batch_x_f, num_classes=args.cf_dim).float()), -1), 1) # B x n_bands
         #batch_loss_err_f__ = torch.mean(torch.mean(criterion_l1(F.softmax(batch_x_f_output, dim=-1), F.one_hot(batch_x_f, num_classes=args.cf_dim).float()), -1), 1) # B x n_bands
         #batch_loss_err_f_ = torch.mean(torch.mean(criterion_l1(F.softmax(batch_x_f_output, dim=-1), F.one_hot(batch_x_f, num_classes=args.cf_dim).float()), -1), 1) # B x n_bands
-        logging.info(f'{batch_loss_err_.mean()}')
-        logging.info(f'{batch_loss_err_f_.mean()}')
+        #logging.info(f'{batch_loss_err_.mean()}')
+        #logging.info(f'{batch_loss_err_f_.mean()}')
         #logging.info(f'{batch_loss_err__.mean()}')
         #logging.info(f'{batch_loss_err_f__.mean()}')
         #batch_loss += batch_loss_err_.sum() + batch_loss_err_f_.sum() \

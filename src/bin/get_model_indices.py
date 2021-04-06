@@ -28,6 +28,8 @@ def main():
 
     args = parser.parse_args()
 
+    os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
     # set log level
     if args.verbose == 1:
         logging.basicConfig(level=logging.INFO,
@@ -49,7 +51,7 @@ def main():
         logging.getLogger().addHandler(logging.StreamHandler())
         logging.warn("logging is disabled.")
 
-    checkpoint = torch.load(os.path.join(args.expdir, "checkpoint-last.pkl"))
+    checkpoint = torch.load(os.path.join(args.expdir, "checkpoint-last.pkl"), map_location=torch.device("cpu"))
     last_epoch = checkpoint["iterations"]
     min_idx_epoch = checkpoint["min_idx"]+1
     logging.info(args.expdir)
