@@ -33,7 +33,7 @@ from utils import read_hdf5
 from utils import read_txt
 from vcneuvoco import GRU_VAE_ENCODER, GRU_SPEC_DECODER, GRU_LAT_FEAT_CLASSIFIER
 from vcneuvoco import GRU_EXCIT_DECODER, SPKID_TRANSFORM_LAYER, GRU_SPK
-from vcneuvoco import kl_laplace, kl_categorical_categorical_logits, LaplaceLoss
+from vcneuvoco import kl_laplace, kl_categorical_categorical_logits, GaussLoss
 
 import torch_optimizer as optim
 
@@ -244,7 +244,7 @@ def eval_generator(dataloader, device, batch_size, limit_count=None, spcidx=True
 
 def save_checkpoint(checkpoint_dir, model_encoder_melsp, model_decoder_melsp, model_encoder_excit, model_decoder_excit,
         model_spk, model_classifier, min_eval_loss_melsp_dB, min_eval_loss_melsp_dB_std, min_eval_loss_melsp_cv,
-        min_eval_loss_melsp, min_eval_loss_laplace_cv, min_eval_loss_laplace,
+        min_eval_loss_melsp, min_eval_loss_gauss_cv, min_eval_loss_gauss,
         min_eval_loss_melsp_dB_src_trg, min_eval_loss_melsp_dB_src_trg_std, min_eval_loss_gv_src_trg,
         iter_idx, min_idx, optimizer, numpy_random_state, torch_random_state, iterations, model_spkidtr=None):
     """FUNCTION TO SAVE CHECKPOINT
@@ -274,8 +274,8 @@ def save_checkpoint(checkpoint_dir, model_encoder_melsp, model_decoder_melsp, mo
         "min_eval_loss_melsp_dB_std": min_eval_loss_melsp_dB_std,
         "min_eval_loss_melsp_cv": min_eval_loss_melsp_cv,
         "min_eval_loss_melsp": min_eval_loss_melsp,
-        "min_eval_loss_laplace_cv": min_eval_loss_laplace_cv,
-        "min_eval_loss_laplace": min_eval_loss_laplace,
+        "min_eval_loss_gauss_cv": min_eval_loss_gauss_cv,
+        "min_eval_loss_gauss": min_eval_loss_gauss,
         "min_eval_loss_melsp_dB_src_trg": min_eval_loss_melsp_dB_src_trg,
         "min_eval_loss_melsp_dB_src_trg_std": min_eval_loss_melsp_dB_src_trg_std,
         "min_eval_loss_gv_src_trg": min_eval_loss_gv_src_trg,
@@ -556,7 +556,7 @@ def main():
         pad_first=True,
         right_size=args.right_size_dec,
         red_dim=args.mel_dim,
-        pdf=True,
+        pdf_gauss=True,
         do_prob=args.do_prob)
     logging.info(model_decoder_melsp)
     model_encoder_excit = GRU_VAE_ENCODER(
@@ -613,8 +613,7 @@ def main():
         red_dim=args.mel_dim,
         do_prob=args.do_prob)
     logging.info(model_spk)
-    #criterion_laplace = LaplaceLoss()
-    criterion_laplace = LaplaceLoss(sum=False)
+    criterion_gauss = GaussLoss(dim=args.mel_dim)
     criterion_ce = torch.nn.CrossEntropyLoss(reduction='none')
     criterion_l1 = torch.nn.L1Loss(reduction='none')
     criterion_l2 = torch.nn.MSELoss(reduction='none')
@@ -631,7 +630,7 @@ def main():
         model_classifier.cuda()
         if (args.spkidtr_dim > 0):
             model_spkidtr.cuda()
-        criterion_laplace.cuda()
+        criterion_gauss.cuda()
         criterion_ce.cuda()
         criterion_l1.cuda()
         criterion_l2.cuda()
@@ -804,8 +803,8 @@ def main():
     n_data = len(feat_list)
     if n_data >= 225:
         batch_size_utt = round(n_data/150)
-        if batch_size_utt > 60:
-            batch_size_utt = 60
+        if batch_size_utt > 55:
+            batch_size_utt = 55
     else:
         batch_size_utt = 1
     logging.info("number of training_data -- batch_size = %d -- %d " % (n_data, batch_size_utt))
@@ -1003,10 +1002,10 @@ def main():
     loss_f0 = [None]*n_rec
     loss_uvcap = [None]*n_rec
     loss_cap = [None]*n_rec
-    loss_laplace = [None]*n_rec
+    loss_gauss = [None]*n_rec
     loss_melsp = [None]*n_rec
     loss_melsp_dB = [None]*n_rec
-    loss_laplace_cv = [None]*n_rec
+    loss_gauss_cv = [None]*n_rec
     loss_melsp_cv = [None]*n_rec
     loss_uv_cv = [None]*n_rec
     loss_f0_cv = [None]*n_rec
@@ -1045,9 +1044,9 @@ def main():
         loss_f0[i] = []
         loss_uvcap[i] = []
         loss_cap[i] = []
-        loss_laplace[i] = []
+        loss_gauss[i] = []
         loss_melsp[i] = []
-        loss_laplace_cv[i] = []
+        loss_gauss_cv[i] = []
         loss_melsp_cv[i] = []
         loss_melsp_dB[i] = []
         loss_uv_cv[i] = []
@@ -1058,11 +1057,11 @@ def main():
     batch_loss_f0 = [None]*n_rec
     batch_loss_uvcap = [None]*n_rec
     batch_loss_cap = [None]*n_rec
-    batch_loss_laplace = [None]*n_rec
+    batch_loss_gauss = [None]*n_rec
     batch_loss_melsp = [None]*n_rec
     batch_loss_sc_feat = [None]*n_rec
     batch_loss_melsp_dB = [None]*n_rec
-    batch_loss_laplace_cv = [None]*n_cv
+    batch_loss_gauss_cv = [None]*n_cv
     batch_loss_melsp_cv = [None]*n_cv
     batch_loss_sc_feat_cv = [None]*n_cv
     batch_loss_uv_cv = [None]*n_cv
@@ -1134,14 +1133,14 @@ def main():
     eval_loss_uvcap_std = [None]*n_half_cyc_eval
     eval_loss_cap = [None]*n_half_cyc_eval
     eval_loss_cap_std = [None]*n_half_cyc_eval
-    eval_loss_laplace = [None]*n_half_cyc_eval
-    eval_loss_laplace_std = [None]*n_half_cyc_eval
+    eval_loss_gauss = [None]*n_half_cyc_eval
+    eval_loss_gauss_std = [None]*n_half_cyc_eval
     eval_loss_melsp = [None]*n_half_cyc_eval
     eval_loss_melsp_std = [None]*n_half_cyc_eval
     eval_loss_melsp_dB = [None]*n_half_cyc_eval
     eval_loss_melsp_dB_std = [None]*n_half_cyc_eval
-    eval_loss_laplace_cv = [None]*n_cv_eval
-    eval_loss_laplace_cv_std = [None]*n_cv_eval
+    eval_loss_gauss_cv = [None]*n_cv_eval
+    eval_loss_gauss_cv_std = [None]*n_cv_eval
     eval_loss_melsp_cv = [None]*n_cv_eval
     eval_loss_melsp_cv_std = [None]*n_cv_eval
     eval_loss_uv_cv = [None]*n_cv_eval
@@ -1186,14 +1185,14 @@ def main():
     min_eval_loss_uvcap_std = [None]*n_half_cyc_eval
     min_eval_loss_cap = [None]*n_half_cyc_eval
     min_eval_loss_cap_std = [None]*n_half_cyc_eval
-    min_eval_loss_laplace = [None]*n_half_cyc_eval
-    min_eval_loss_laplace_std = [None]*n_half_cyc_eval
+    min_eval_loss_gauss = [None]*n_half_cyc_eval
+    min_eval_loss_gauss_std = [None]*n_half_cyc_eval
     min_eval_loss_melsp = [None]*n_half_cyc_eval
     min_eval_loss_melsp_std = [None]*n_half_cyc_eval
     min_eval_loss_melsp_dB = [None]*n_half_cyc_eval
     min_eval_loss_melsp_dB_std = [None]*n_half_cyc_eval
-    min_eval_loss_laplace_cv = [None]*n_cv_eval
-    min_eval_loss_laplace_cv_std = [None]*n_cv_eval
+    min_eval_loss_gauss_cv = [None]*n_cv_eval
+    min_eval_loss_gauss_cv_std = [None]*n_cv_eval
     min_eval_loss_melsp_cv = [None]*n_cv_eval
     min_eval_loss_melsp_cv_std = [None]*n_cv_eval
     min_eval_loss_uv_cv = [None]*n_cv_eval
@@ -1208,8 +1207,8 @@ def main():
     min_eval_loss_melsp_dB_std[0] = 99999999.99
     min_eval_loss_melsp_cv[0] = 99999999.99
     min_eval_loss_melsp[0] = 99999999.99
-    min_eval_loss_laplace_cv[0] = 99999999.99
-    min_eval_loss_laplace[0] = 99999999.99
+    min_eval_loss_gauss_cv[0] = 99999999.99
+    min_eval_loss_gauss[0] = 99999999.99
     eval_loss_melsp_dB_src_trg = 99999999.99
     eval_loss_melsp_dB_src_trg_std = 99999999.99
     min_eval_loss_melsp_dB_src_trg = 99999999.99
@@ -1227,8 +1226,8 @@ def main():
         min_eval_loss_melsp_dB_std[0] = checkpoint["min_eval_loss_melsp_dB_std"]
         min_eval_loss_melsp_cv[0] = checkpoint["min_eval_loss_melsp_cv"]
         min_eval_loss_melsp[0] = checkpoint["min_eval_loss_melsp"]
-        min_eval_loss_laplace_cv[0] = checkpoint["min_eval_loss_laplace_cv"]
-        min_eval_loss_laplace[0] = checkpoint["min_eval_loss_laplace"]
+        min_eval_loss_gauss_cv[0] = checkpoint["min_eval_loss_gauss_cv"]
+        min_eval_loss_gauss[0] = checkpoint["min_eval_loss_gauss"]
         min_eval_loss_melsp_dB_src_trg = checkpoint["min_eval_loss_melsp_dB_src_trg"]
         min_eval_loss_melsp_dB_src_trg_std = checkpoint["min_eval_loss_melsp_dB_src_trg_std"]
         min_eval_loss_gv_src_trg = checkpoint["min_eval_loss_gv_src_trg"]
@@ -1276,7 +1275,7 @@ def main():
                             "%.6f (+- %.6f) %% %.6f (+- %.6f) %% , %.6f (+- %.6f) dB %.6f (+- %.6f) dB ;; " % (
                         np.mean(loss_sc_z[i]), np.std(loss_sc_z[i]),
                         np.mean(loss_sc_feat[i]), np.std(loss_sc_feat[i]), np.mean(loss_sc_feat_cv[i//2]), np.std(loss_sc_feat_cv[i//2]),
-                        np.mean(loss_laplace[i]), np.std(loss_laplace[i]), np.mean(loss_laplace_cv[i//2]), np.std(loss_laplace_cv[i//2]),
+                        np.mean(loss_gauss[i]), np.std(loss_gauss[i]), np.mean(loss_gauss_cv[i//2]), np.std(loss_gauss_cv[i//2]),
                         np.mean(loss_melsp[i]), np.std(loss_melsp[i]), np.mean(loss_melsp_cv[i//2]), np.std(loss_melsp_cv[i//2]), np.mean(loss_melsp_dB[i]), np.std(loss_melsp_dB[i]),
                         np.mean(loss_uv[i]), np.std(loss_uv[i]), np.mean(loss_uv_cv[i//2]), np.std(loss_uv_cv[i//2]),
                         np.mean(loss_f0[i]), np.std(loss_f0[i]), np.mean(loss_f0_cv[i//2]), np.std(loss_f0_cv[i//2]),
@@ -1293,7 +1292,7 @@ def main():
                         np.mean(loss_qy_py[i]), np.std(loss_qy_py[i]), np.mean(loss_qy_py_err[i]), np.std(loss_qy_py_err[i]), np.mean(loss_qz_pz[i]), np.std(loss_qz_pz[i]),
                         np.mean(loss_qy_py_e[i]), np.std(loss_qy_py_e[i]), np.mean(loss_qy_py_err_e[i]), np.std(loss_qy_py_err_e[i]), np.mean(loss_qz_pz_e[i]), np.std(loss_qz_pz_e[i]), 
                         np.mean(loss_sc_z[i]), np.std(loss_sc_z[i]), np.mean(loss_sc_feat[i]), np.std(loss_sc_feat[i]),
-                        np.mean(loss_laplace[i]), np.std(loss_laplace[i]), np.mean(loss_melsp[i]), np.std(loss_melsp[i]), np.mean(loss_melsp_dB[i]), np.std(loss_melsp_dB[i]),
+                        np.mean(loss_gauss[i]), np.std(loss_gauss[i]), np.mean(loss_melsp[i]), np.std(loss_melsp[i]), np.mean(loss_melsp_dB[i]), np.std(loss_melsp_dB[i]),
                         np.mean(loss_uv[i]), np.std(loss_uv[i]), np.mean(loss_f0[i]), np.std(loss_f0[i]),
                         np.mean(loss_uvcap[i]), np.std(loss_uvcap[i]), np.mean(loss_cap[i]), np.std(loss_cap[i]))
             logging.info("%s (%.3f min., %.3f sec / batch)" % (text_log, total / 60.0, total / iter_count))
@@ -1338,9 +1337,9 @@ def main():
                 loss_f0[i] = []
                 loss_uvcap[i] = []
                 loss_cap[i] = []
-                loss_laplace[i] = []
+                loss_gauss[i] = []
                 loss_melsp[i] = []
-                loss_laplace_cv[i] = []
+                loss_gauss_cv[i] = []
                 loss_melsp_cv[i] = []
                 loss_melsp_dB[i] = []
                 loss_uv_cv[i] = []
@@ -2126,8 +2125,8 @@ def main():
                         else:
                             sc_cv_onehot = F.one_hot(batch_sc_cv[i//2], num_classes=n_spk).float()
 
-                        batch_loss_laplace_ = criterion_laplace(pdf[:,:,:args.mel_dim], pdf[:,:,args.mel_dim:], melsp)
-                        batch_loss_laplace[i] = batch_loss_laplace_.mean()
+                        batch_loss_gauss_ = criterion_gauss(pdf[:,:,:args.mel_dim], pdf[:,:,args.mel_dim:], melsp)
+                        batch_loss_gauss[i] = batch_loss_gauss_.mean()
 
                         ## U/V, lf0, codeap, melsp acc.
                         batch_loss_uv_ = torch.mean(100*criterion_l1(uv_est, uv), -1)
@@ -2159,7 +2158,7 @@ def main():
                             batch_loss_px_sum += batch_loss_f0_cv_.sum()
                             batch_loss_uvcap_cv[i//2] = torch.mean(torch.mean(100*criterion_l1(uvcap_cv, uvcap), -1))
                             batch_loss_cap_cv[i//2] = torch.mean(torch.sqrt(torch.mean(torch.sum(criterion_l2(cap_cv, cap), -1), -1)))
-                            batch_loss_laplace_cv[i//2] = torch.mean(criterion_laplace(pdf_cv[:,:,:args.mel_dim], pdf_cv[:,:,args.mel_dim:], melsp))
+                            batch_loss_gauss_cv[i//2] = torch.mean(criterion_gauss(pdf_cv[:,:,:args.mel_dim], pdf_cv[:,:,args.mel_dim:], melsp))
                             batch_loss_melsp_cv[i//2] = torch.mean(torch.sum(criterion_l1(melsp_cv, melsp), -1))
 
                         # KL-div lat., CE and error-percentage spk.
@@ -2257,27 +2256,27 @@ def main():
                         total_eval_loss["eval/loss_f0-%d"%(i+1)].append(batch_loss_f0[i].item())
                         total_eval_loss["eval/loss_uvcap-%d"%(i+1)].append(batch_loss_uvcap[i].item())
                         total_eval_loss["eval/loss_cap-%d"%(i+1)].append(batch_loss_cap[i].item())
-                        total_eval_loss["eval/loss_laplace-%d"%(i+1)].append(batch_loss_laplace[i].item())
+                        total_eval_loss["eval/loss_gauss-%d"%(i+1)].append(batch_loss_gauss[i].item())
                         total_eval_loss["eval/loss_melsp-%d"%(i+1)].append(batch_loss_melsp[i].item())
                         total_eval_loss["eval/loss_melsp_dB-%d"%(i+1)].append(batch_loss_melsp_dB[i].item())
                         loss_uv[i].append(batch_loss_uv[i].item())
                         loss_f0[i].append(batch_loss_f0[i].item())
                         loss_uvcap[i].append(batch_loss_uvcap[i].item())
                         loss_cap[i].append(batch_loss_cap[i].item())
-                        loss_laplace[i].append(batch_loss_laplace[i].item())
+                        loss_gauss[i].append(batch_loss_gauss[i].item())
                         loss_melsp[i].append(batch_loss_melsp[i].item())
                         loss_melsp_dB[i].append(batch_loss_melsp_dB[i].item())
                         ## conversion
                         if i % 2 == 0:
                             total_eval_loss["eval/loss_sc_feat_cv-%d"%(i+1)].append(batch_loss_sc_feat_cv[i//2].item())
-                            total_eval_loss["eval/loss_laplace_cv-%d"%(i+1)].append(batch_loss_laplace_cv[i//2].item())
+                            total_eval_loss["eval/loss_gauss_cv-%d"%(i+1)].append(batch_loss_gauss_cv[i//2].item())
                             total_eval_loss["eval/loss_melsp_cv-%d"%(i+1)].append(batch_loss_melsp_cv[i//2].item())
                             total_eval_loss["eval/loss_uv_cv-%d"%(i+1)].append(batch_loss_uv_cv[i//2].item())
                             total_eval_loss["eval/loss_f0_cv-%d"%(i+1)].append(batch_loss_f0_cv[i//2].item())
                             total_eval_loss["eval/loss_uvcap_cv-%d"%(i+1)].append(batch_loss_uvcap_cv[i//2].item())
                             total_eval_loss["eval/loss_cap_cv-%d"%(i+1)].append(batch_loss_cap_cv[i//2].item())
                             loss_sc_feat_cv[i//2].append(batch_loss_sc_feat_cv[i//2].item())
-                            loss_laplace_cv[i//2].append(batch_loss_laplace_cv[i//2].item())
+                            loss_gauss_cv[i//2].append(batch_loss_gauss_cv[i//2].item())
                             loss_melsp_cv[i//2].append(batch_loss_melsp_cv[i//2].item())
                             loss_uv_cv[i//2].append(batch_loss_uv_cv[i//2].item())
                             loss_f0_cv[i//2].append(batch_loss_f0_cv[i//2].item())
@@ -2320,7 +2319,7 @@ def main():
                                 "%.3f %% %.3f %% , %.3f Hz %.3f Hz , %.3f %% %.3f %% , %.3f dB %.3f dB ;; " % (
                                     batch_loss_sc_z[i].item(),
                                     batch_loss_sc_feat[i].item(), batch_loss_sc_feat_cv[i//2].item(),
-                                        batch_loss_laplace[i].item(), batch_loss_laplace_cv[i//2].item(),
+                                        batch_loss_gauss[i].item(), batch_loss_gauss_cv[i//2].item(),
                                         batch_loss_melsp[i].item(), batch_loss_melsp_cv[i//2].item(), batch_loss_melsp_dB[i].item(),
                                             batch_loss_uv[i].item(), batch_loss_uv_cv[i//2].item(),
                                             batch_loss_f0[i].item(), batch_loss_f0_cv[i//2].item(),
@@ -2333,7 +2332,7 @@ def main():
                                     batch_loss_qy_py[i].item(), batch_loss_qy_py_err[i].item(), batch_loss_qz_pz[i].item(),
                                     batch_loss_qy_py_e[i].item(), batch_loss_qy_py_err_e[i].item(), batch_loss_qz_pz_e[i].item(),
                                         batch_loss_sc_z[i].item(), batch_loss_sc_feat[i].item(),
-                                            batch_loss_laplace[i].item(), batch_loss_melsp[i].item(), batch_loss_melsp_dB[i].item(),
+                                            batch_loss_gauss[i].item(), batch_loss_melsp[i].item(), batch_loss_melsp_dB[i].item(),
                                                 batch_loss_uv[i].item(), batch_loss_f0[i].item(),
                                                 batch_loss_uvcap[i].item(), batch_loss_cap[i].item())
                     logging.info("%s (%.3f sec)" % (text_log, time.time() - start))
@@ -2422,8 +2421,8 @@ def main():
                 eval_loss_uvcap_std[i] = np.std(loss_uvcap[i])
                 eval_loss_cap[i] = np.mean(loss_cap[i])
                 eval_loss_cap_std[i] = np.std(loss_cap[i])
-                eval_loss_laplace[i] = np.mean(loss_laplace[i])
-                eval_loss_laplace_std[i] = np.std(loss_laplace[i])
+                eval_loss_gauss[i] = np.mean(loss_gauss[i])
+                eval_loss_gauss_std[i] = np.std(loss_gauss[i])
                 eval_loss_melsp[i] = np.mean(loss_melsp[i])
                 eval_loss_melsp_std[i] = np.std(loss_melsp[i])
                 eval_loss_melsp_dB[i] = np.mean(loss_melsp_dB[i])
@@ -2431,8 +2430,8 @@ def main():
                 if i % 2 == 0:
                     eval_loss_sc_feat_cv[i//2] = np.mean(loss_sc_feat_cv[i//2])
                     eval_loss_sc_feat_cv_std[i//2] = np.std(loss_sc_feat_cv[i//2])
-                    eval_loss_laplace_cv[i//2] = np.mean(loss_laplace_cv[i//2])
-                    eval_loss_laplace_cv_std[i//2] = np.std(loss_laplace_cv[i//2])
+                    eval_loss_gauss_cv[i//2] = np.mean(loss_gauss_cv[i//2])
+                    eval_loss_gauss_cv_std[i//2] = np.std(loss_gauss_cv[i//2])
                     eval_loss_melsp_cv[i//2] = np.mean(loss_melsp_cv[i//2])
                     eval_loss_melsp_cv_std[i//2] = np.std(loss_melsp_cv[i//2])
                     eval_loss_uv_cv[i//2] = np.mean(loss_uv_cv[i//2])
@@ -2469,7 +2468,7 @@ def main():
                         "%.6f (+- %.6f) %% %.6f (+- %.6f) %% , %.6f (+- %.6f) dB %.6f (+- %.6f) dB ; %.6f %.6f " % (
                         eval_loss_sc_z[i], eval_loss_sc_z_std[i],
                         eval_loss_sc_feat[i], eval_loss_sc_feat_std[i], eval_loss_sc_feat_cv[i//2], eval_loss_sc_feat_cv_std[i//2],
-                        eval_loss_laplace[i], eval_loss_laplace_std[i], eval_loss_laplace_cv[i//2], eval_loss_laplace_cv_std[i//2],
+                        eval_loss_gauss[i], eval_loss_gauss_std[i], eval_loss_gauss_cv[i//2], eval_loss_gauss_cv_std[i//2],
                         eval_loss_melsp[i], eval_loss_melsp_std[i], eval_loss_melsp_cv[i//2], eval_loss_melsp_cv_std[i//2], eval_loss_melsp_dB[i], eval_loss_melsp_dB_std[i],
                         eval_loss_uv[i], eval_loss_uv_std[i], eval_loss_uv_cv[i//2], eval_loss_uv_cv_std[i//2],
                         eval_loss_f0[i], eval_loss_f0_std[i], eval_loss_f0_cv[i//2], eval_loss_f0_cv_std[i//2],
@@ -2495,7 +2494,7 @@ def main():
                         eval_loss_qy_py[i], eval_loss_qy_py_std[i], eval_loss_qy_py_err[i], eval_loss_qy_py_err_std[i], eval_loss_qz_pz[i], eval_loss_qz_pz_std[i],
                         eval_loss_qy_py_e[i], eval_loss_qy_py_e_std[i], eval_loss_qy_py_err_e[i], eval_loss_qy_py_err_e_std[i], eval_loss_qz_pz_e[i], eval_loss_qz_pz_e_std[i],
                         eval_loss_sc_z[i], eval_loss_sc_z_std[i], eval_loss_sc_feat[i], eval_loss_sc_feat_std[i],
-                        eval_loss_laplace[i], eval_loss_laplace_std[i], eval_loss_melsp[i], eval_loss_melsp_std[i], eval_loss_melsp_dB[i], eval_loss_melsp_dB_std[i],
+                        eval_loss_gauss[i], eval_loss_gauss_std[i], eval_loss_melsp[i], eval_loss_melsp_std[i], eval_loss_melsp_dB[i], eval_loss_melsp_dB_std[i],
                         eval_loss_uv[i], eval_loss_uv_std[i], eval_loss_f0[i], eval_loss_f0_std[i],
                         eval_loss_uvcap[i], eval_loss_uvcap_std[i], eval_loss_cap[i], eval_loss_cap_std[i])
             logging.info("%s (%.3f min., %.3f sec / batch)" % (text_log, total / 60.0, total / iter_count))
@@ -2503,7 +2502,7 @@ def main():
                 sparse_check_flag = True
             if (not sparse_min_flag and sparse_check_flag) or (float(round(Decimal(str(eval_loss_gv_src_trg-0.03)),2)) <= float(round(Decimal(str(min_eval_loss_gv_src_trg)),2)) and \
                 float(round(Decimal(str(eval_loss_melsp_cv[0]-eval_loss_melsp[0])),2)) >= round(float(round(Decimal(str(min_eval_loss_melsp_cv[0]-min_eval_loss_melsp[0])),2))-0.03,2) and \
-                (round(float(round(Decimal(str(eval_loss_laplace[0])),2))-0.02,2) <= float(round(Decimal(str(min_eval_loss_laplace[0])),2)) or \
+                (round(float(round(Decimal(str(eval_loss_gauss[0])),2))-0.02,2) <= float(round(Decimal(str(min_eval_loss_gauss[0])),2)) or \
                  round(float(round(Decimal(str(eval_loss_melsp_dB[0])),2))-0.02,2) <= float(round(Decimal(str(min_eval_loss_melsp_dB[0])),2))) and \
                     (not pair_exist or (pair_exist and \
                         (float(round(Decimal(str(eval_loss_melsp_dB_src_trg-0.01)),2)) <= float(round(Decimal(str(min_eval_loss_melsp_dB_src_trg)),2)) \
@@ -2576,8 +2575,8 @@ def main():
                     min_eval_loss_uvcap_std[i] = eval_loss_uvcap_std[i]
                     min_eval_loss_cap[i] = eval_loss_cap[i]
                     min_eval_loss_cap_std[i] = eval_loss_cap_std[i]
-                    min_eval_loss_laplace[i] = eval_loss_laplace[i]
-                    min_eval_loss_laplace_std[i] = eval_loss_laplace_std[i]
+                    min_eval_loss_gauss[i] = eval_loss_gauss[i]
+                    min_eval_loss_gauss_std[i] = eval_loss_gauss_std[i]
                     min_eval_loss_melsp[i] = eval_loss_melsp[i]
                     min_eval_loss_melsp_std[i] = eval_loss_melsp_std[i]
                     min_eval_loss_melsp_dB[i] = eval_loss_melsp_dB[i]
@@ -2585,8 +2584,8 @@ def main():
                     if i % 2 == 0:
                         min_eval_loss_sc_feat_cv[i//2] = eval_loss_sc_feat_cv[i//2]
                         min_eval_loss_sc_feat_cv_std[i//2] = eval_loss_sc_feat_cv_std[i//2]
-                        min_eval_loss_laplace_cv[i//2] = eval_loss_laplace_cv[i//2]
-                        min_eval_loss_laplace_cv_std[i//2] = eval_loss_laplace_cv_std[i//2]
+                        min_eval_loss_gauss_cv[i//2] = eval_loss_gauss_cv[i//2]
+                        min_eval_loss_gauss_cv_std[i//2] = eval_loss_gauss_cv_std[i//2]
                         min_eval_loss_melsp_cv[i//2] = eval_loss_melsp_cv[i//2]
                         min_eval_loss_melsp_cv_std[i//2] = eval_loss_melsp_cv_std[i//2]
                         min_eval_loss_uv_cv[i//2] = eval_loss_uv_cv[i//2]
@@ -2627,7 +2626,7 @@ def main():
                             "%.6f (+- %.6f) %% %.6f (+- %.6f) %% , %.6f (+- %.6f) dB %.6f (+- %.6f) dB ; %.6f %.6f " % (
                             min_eval_loss_sc_z[i], min_eval_loss_sc_z_std[i],
                             min_eval_loss_sc_feat[i], min_eval_loss_sc_feat_std[i], min_eval_loss_sc_feat_cv[i//2], min_eval_loss_sc_feat_cv_std[i//2],
-                            min_eval_loss_laplace[i], min_eval_loss_laplace_std[i], min_eval_loss_laplace_cv[i//2], min_eval_loss_laplace_std[i//2],
+                            min_eval_loss_gauss[i], min_eval_loss_gauss_std[i], min_eval_loss_gauss_cv[i//2], min_eval_loss_gauss_std[i//2],
                             min_eval_loss_melsp[i], min_eval_loss_melsp_std[i], min_eval_loss_melsp_cv[i//2], min_eval_loss_melsp_cv_std[i//2], min_eval_loss_melsp_dB[i], min_eval_loss_melsp_dB_std[i],
                             min_eval_loss_uv[i], min_eval_loss_uv_std[i], min_eval_loss_uv_cv[i//2], min_eval_loss_uv_cv_std[i//2],
                             min_eval_loss_f0[i], min_eval_loss_f0_std[i], min_eval_loss_f0_cv[i//2], min_eval_loss_f0_cv_std[i//2],
@@ -2653,7 +2652,7 @@ def main():
                             min_eval_loss_qy_py[i], min_eval_loss_qy_py_std[i], min_eval_loss_qy_py_err[i], min_eval_loss_qy_py_err_std[i], min_eval_loss_qz_pz[i], min_eval_loss_qz_pz_std[i],
                             min_eval_loss_qy_py_e[i], min_eval_loss_qy_py_e_std[i], min_eval_loss_qy_py_err_e[i], min_eval_loss_qy_py_err_e_std[i], min_eval_loss_qz_pz_e[i], min_eval_loss_qz_pz_e_std[i],
                             min_eval_loss_sc_z[i], min_eval_loss_sc_z_std[i], min_eval_loss_sc_feat[i], min_eval_loss_sc_feat_std[i],
-                            min_eval_loss_laplace[i], min_eval_loss_laplace_std[i], min_eval_loss_melsp[i], min_eval_loss_melsp_std[i], min_eval_loss_melsp_dB[i], min_eval_loss_melsp_dB_std[i],
+                            min_eval_loss_gauss[i], min_eval_loss_gauss_std[i], min_eval_loss_melsp[i], min_eval_loss_melsp_std[i], min_eval_loss_melsp_dB[i], min_eval_loss_melsp_dB_std[i],
                             min_eval_loss_uv[i], min_eval_loss_uv_std[i], min_eval_loss_f0[i], min_eval_loss_f0_std[i],
                             min_eval_loss_uvcap[i], min_eval_loss_uvcap_std[i], min_eval_loss_cap[i], min_eval_loss_cap_std[i])
                 logging.info("%s min_idx=%d" % (text_log, min_idx+1))
@@ -2662,7 +2661,7 @@ def main():
                 logging.info('save epoch:%d' % (epoch_idx+1))
                 save_checkpoint(args.expdir, model_encoder_melsp, model_decoder_melsp, model_encoder_excit, model_decoder_excit,
                     model_spk, model_classifier, min_eval_loss_melsp_dB[0], min_eval_loss_melsp_dB_std[0], min_eval_loss_melsp_cv[0],
-                    min_eval_loss_melsp[0], min_eval_loss_laplace_cv[0], min_eval_loss_laplace[0],
+                    min_eval_loss_melsp[0], min_eval_loss_gauss_cv[0], min_eval_loss_gauss[0],
                     min_eval_loss_melsp_dB_src_trg, min_eval_loss_melsp_dB_src_trg_std, min_eval_loss_gv_src_trg,
                     iter_idx, min_idx, optimizer, numpy_random_state, torch_random_state, epoch_idx + 1, model_spkidtr=model_spkidtr)
             total = 0
@@ -2693,9 +2692,9 @@ def main():
                 loss_f0[i] = []
                 loss_uvcap[i] = []
                 loss_cap[i] = []
-                loss_laplace[i] = []
+                loss_gauss[i] = []
                 loss_melsp[i] = []
-                loss_laplace_cv[i] = []
+                loss_gauss_cv[i] = []
                 loss_melsp_cv[i] = []
                 loss_melsp_dB[i] = []
                 loss_uv_cv[i] = []
@@ -3285,8 +3284,6 @@ def main():
         if len(idx_select) > 0:
             logging.info('len_idx_select: '+str(len(idx_select)))
             batch_loss_px_select = 0
-            batch_loss_px_ms_norm_select = 0
-            batch_loss_px_ms_err_select = 0
             batch_loss_qz_pz_kl_select = 0
             batch_loss_qy_py_ce_select = 0
             batch_loss_sc_feat_in_kl_select = 0
@@ -3321,7 +3318,7 @@ def main():
                     melsp_est = batch_melsp_rec[i][k,:flens_utt]
                     melsp_est_rest = (torch.exp(melsp_est)-1)/10000
 
-                    batch_loss_px_select += criterion_laplace(pdf[:,:args.mel_dim], pdf[:,args.mel_dim:], melsp)
+                    batch_loss_px_select += criterion_gauss(pdf[:,:args.mel_dim], pdf[:,args.mel_dim:], melsp)
                     ## U/V, lf0, codeap, melsp acc.
                     if flens_utt > 1:
                         batch_loss_px_select += torch.mean(torch.sum(criterion_l1(melsp_est, melsp), -1)) \
@@ -3372,8 +3369,7 @@ def main():
                         z_ref = torch.cat((z_e[0][k,:flens_utt], z[0][k,:flens_utt]), 1)
                         z_ref_denom = torch.sqrt(torch.sum(z_ref**2, -1))
 
-            batch_loss += batch_loss_px_select + batch_loss_px_ms_norm_select + batch_loss_px_ms_err_select \
-                        + batch_loss_qz_pz_kl_select + batch_loss_qy_py_ce_select \
+            batch_loss += batch_loss_px_select + batch_loss_qz_pz_kl_select + batch_loss_qy_py_ce_select \
                             + batch_loss_sc_feat_kl_select + batch_loss_sc_z_kl_select + batch_loss_sc_feat_in_kl_select
             if len(idx_select_full) > 0:
                 logging.info('len_idx_select_full: '+str(len(idx_select_full)))
@@ -3475,9 +3471,9 @@ def main():
             else:
                 sc_cv_onehot = F.one_hot(batch_sc_cv[i//2], num_classes=n_spk).float()
 
-            batch_loss_laplace_ = criterion_laplace(pdf[:,:,:args.mel_dim], pdf[:,:,args.mel_dim:], melsp)
-            batch_loss_laplace[i] = batch_loss_laplace_.mean()
-            batch_loss_px_sum = batch_loss_laplace_.sum()
+            batch_loss_gauss_ = criterion_gauss(pdf[:,:,:args.mel_dim], pdf[:,:,args.mel_dim:], melsp)
+            batch_loss_gauss[i] = batch_loss_gauss_.mean()
+            batch_loss_px_sum = batch_loss_gauss_.sum()
 
             ## U/V, lf0, codeap, melsp acc.
             batch_loss_uv_ = torch.mean(100*criterion_l1(uv_est, uv), -1)
@@ -3515,7 +3511,7 @@ def main():
                     batch_loss_px_sum += batch_loss_f0_cv[i//2]
                 batch_loss_uvcap_cv[i//2] = torch.mean(torch.mean(100*criterion_l1(uvcap_cv, uvcap), -1))
                 batch_loss_cap_cv[i//2] = torch.mean(torch.sqrt(torch.mean(torch.sum(criterion_l2(cap_cv, cap), -1), -1)))
-                batch_loss_laplace_cv[i//2] = torch.mean(criterion_laplace(pdf_cv[:,:,:args.mel_dim], pdf_cv[:,:,args.mel_dim:], melsp))
+                batch_loss_gauss_cv[i//2] = torch.mean(criterion_gauss(pdf_cv[:,:,:args.mel_dim], pdf_cv[:,:,args.mel_dim:], melsp))
                 batch_loss_melsp_cv[i//2] = torch.mean(torch.sum(criterion_l1(melsp_cv, melsp), -1))
 
             # KL-div lat., CE and error-percentage spk.
@@ -3614,27 +3610,27 @@ def main():
             total_train_loss["train/loss_f0-%d"%(i+1)].append(batch_loss_f0[i].item())
             total_train_loss["train/loss_uvcap-%d"%(i+1)].append(batch_loss_uvcap[i].item())
             total_train_loss["train/loss_cap-%d"%(i+1)].append(batch_loss_cap[i].item())
-            total_train_loss["train/loss_laplace-%d"%(i+1)].append(batch_loss_laplace[i].item())
+            total_train_loss["train/loss_gauss-%d"%(i+1)].append(batch_loss_gauss[i].item())
             total_train_loss["train/loss_melsp-%d"%(i+1)].append(batch_loss_melsp[i].item())
             total_train_loss["train/loss_melsp_dB-%d"%(i+1)].append(batch_loss_melsp_dB[i].item())
             loss_uv[i].append(batch_loss_uv[i].item())
             loss_f0[i].append(batch_loss_f0[i].item())
             loss_uvcap[i].append(batch_loss_uvcap[i].item())
             loss_cap[i].append(batch_loss_cap[i].item())
-            loss_laplace[i].append(batch_loss_laplace[i].item())
+            loss_gauss[i].append(batch_loss_gauss[i].item())
             loss_melsp[i].append(batch_loss_melsp[i].item())
             loss_melsp_dB[i].append(batch_loss_melsp_dB[i].item())
             ## conversion
             if i % 2 == 0:
                 total_train_loss["train/loss_sc_feat_cv-%d"%(i+1)].append(batch_loss_sc_feat_cv[i//2].item())
-                total_train_loss["train/loss_laplace_cv-%d"%(i+1)].append(batch_loss_laplace_cv[i//2].item())
+                total_train_loss["train/loss_gauss_cv-%d"%(i+1)].append(batch_loss_gauss_cv[i//2].item())
                 total_train_loss["train/loss_melsp_cv-%d"%(i+1)].append(batch_loss_melsp_cv[i//2].item())
                 total_train_loss["train/loss_uv_cv-%d"%(i+1)].append(batch_loss_uv_cv[i//2].item())
                 total_train_loss["train/loss_f0_cv-%d"%(i+1)].append(batch_loss_f0_cv[i//2].item())
                 total_train_loss["train/loss_uvcap_cv-%d"%(i+1)].append(batch_loss_uvcap_cv[i//2].item())
                 total_train_loss["train/loss_cap_cv-%d"%(i+1)].append(batch_loss_cap_cv[i//2].item())
                 loss_sc_feat_cv[i//2].append(batch_loss_sc_feat_cv[i//2].item())
-                loss_laplace_cv[i//2].append(batch_loss_laplace_cv[i//2].item())
+                loss_gauss_cv[i//2].append(batch_loss_gauss_cv[i//2].item())
                 loss_melsp_cv[i//2].append(batch_loss_melsp_cv[i//2].item())
                 loss_uv_cv[i//2].append(batch_loss_uv_cv[i//2].item())
                 loss_f0_cv[i//2].append(batch_loss_f0_cv[i//2].item())
@@ -3693,7 +3689,7 @@ def main():
                     "%.3f %% %.3f %% , %.3f Hz %.3f Hz , %.3f %% %.3f %% , %.3f dB %.3f dB ;; " % (
                         batch_loss_sc_z[i].item(),
                         batch_loss_sc_feat[i].item(), batch_loss_sc_feat_cv[i//2].item(),
-                            batch_loss_laplace[i].item(), batch_loss_laplace_cv[i//2].item(),
+                            batch_loss_gauss[i].item(), batch_loss_gauss_cv[i//2].item(),
                             batch_loss_melsp[i].item(), batch_loss_melsp_cv[i//2].item(), batch_loss_melsp_dB[i].item(),
                                 batch_loss_uv[i].item(), batch_loss_uv_cv[i//2].item(),
                                 batch_loss_f0[i].item(), batch_loss_f0_cv[i//2].item(),
@@ -3706,7 +3702,7 @@ def main():
                         batch_loss_qy_py[i].item(), batch_loss_qy_py_err[i].item(), batch_loss_qz_pz[i].item(),
                         batch_loss_qy_py_e[i].item(), batch_loss_qy_py_err_e[i].item(), batch_loss_qz_pz_e[i].item(),
                             batch_loss_sc_z[i].item(), batch_loss_sc_feat[i].item(),
-                                batch_loss_laplace[i].item(), batch_loss_melsp[i].item(), batch_loss_melsp_dB[i].item(),
+                                batch_loss_gauss[i].item(), batch_loss_melsp[i].item(), batch_loss_melsp_dB[i].item(),
                                     batch_loss_uv[i].item(), batch_loss_f0[i].item(),
                                     batch_loss_uvcap[i].item(), batch_loss_cap[i].item())
         logging.info("%s (%.3f sec)" % (text_log, time.time() - start))

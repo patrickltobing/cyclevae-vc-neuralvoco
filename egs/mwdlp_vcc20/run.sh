@@ -353,48 +353,48 @@ if [ `echo ${stage} | grep 0` ];then
             if [ -f "conf/${spk}.f0" ]; then
                 minf0=`cat conf/${spk}.f0 | awk '{print $1}'`
                 maxf0=`cat conf/${spk}.f0 | awk '{print $2}'`
+                tmp=`yq ".${spk}.minf0" conf/spkr.yml`
+                if [[ $tmp == "null" ]]; then
+                    if [ -f "conf/${spk}.f0" ]; then
+                        yq -yi ".${spk}.minf0=${minf0}" conf/spkr.yml
+                        echo "minF0 of ${spk} is initialized from .f0 file"
+                    else
+                        yq -yi ".${spk}.minf0=40" conf/spkr.yml
+                        echo "minF0 of ${spk} is initialized, please run stage init to obtain the proper config."
+                    fi
+                elif [[ $tmp -ne $minf0 ]]; then
+                    yq -yi ".${spk}.minf0=${minf0}" conf/spkr.yml
+                    echo "minF0 of ${spk} is changed based on .f0 file"
+                fi
+                tmp=`yq ".${spk}.maxf0" conf/spkr.yml`
+                if [[ $tmp == "null" ]]; then
+                    if [ -f "conf/${spk}.f0" ]; then
+                        yq -yi ".${spk}.maxf0=${maxf0}" conf/spkr.yml
+                        echo "maxF0 of ${spk} is initialized from .f0 file"
+                    else
+                        yq -yi ".${spk}.maxf0=700" conf/spkr.yml
+                        echo "maxF0 of ${spk} is initialized, please run stage init to obtain the proper config."
+                    fi
+                elif [[ $tmp -ne $maxf0 ]]; then
+                    yq -yi ".${spk}.maxf0=${maxf0}" conf/spkr.yml
+                    echo "maxF0 of ${spk} is changed based on .f0 file"
+                fi
             fi
             if [ -f "conf/${spk}.pow" ]; then
                 pow=`cat conf/${spk}.pow | awk '{print $1}'`
-            fi
-            tmp=`yq ".${spk}.minf0" conf/spkr.yml`
-            if [[ $tmp == "null" ]]; then
-                if [ -f "conf/${spk}.f0" ]; then
-                    yq -yi ".${spk}.minf0=${minf0}" conf/spkr.yml
-                    echo "minF0 of ${spk} is initialized from .f0 file"
-                else
-                    yq -yi ".${spk}.minf0=40" conf/spkr.yml
-                    echo "minF0 of ${spk} is initialized, please run stage init to obtain the proper config."
-                fi
-            elif [[ $tmp -ne $minf0 ]]; then
-                yq -yi ".${spk}.minf0=${minf0}" conf/spkr.yml
-                echo "minF0 of ${spk} is changed based on .f0 file"
-            fi
-            tmp=`yq ".${spk}.maxf0" conf/spkr.yml`
-            if [[ $tmp == "null" ]]; then
-                if [ -f "conf/${spk}.f0" ]; then
-                    yq -yi ".${spk}.maxf0=${maxf0}" conf/spkr.yml
-                    echo "maxF0 of ${spk} is initialized from .f0 file"
-                else
-                    yq -yi ".${spk}.maxf0=700" conf/spkr.yml
-                    echo "maxF0 of ${spk} is initialized, please run stage init to obtain the proper config."
-                fi
-            elif [[ $tmp -ne $maxf0 ]]; then
-                yq -yi ".${spk}.maxf0=${maxf0}" conf/spkr.yml
-                echo "maxF0 of ${spk} is changed based on .f0 file"
-            fi
-            tmp=`yq ".${spk}.npow" conf/spkr.yml`
-            if [[ $tmp == "null" ]]; then
-                if [ -f "conf/${spk}.pow" ]; then
+                tmp=`yq ".${spk}.npow" conf/spkr.yml`
+                if [[ $tmp == "null" ]]; then
+                    if [ -f "conf/${spk}.pow" ]; then
+                        yq -yi ".${spk}.npow=${pow}" conf/spkr.yml
+                        echo "npow of ${spk} is initialized from .pow file"
+                    else
+                        yq -yi ".${spk}.npow=-25" conf/spkr.yml
+                        echo "npow of ${spk} is initialized, please run stage init to get the proper config."
+                    fi
+                elif [[ "$tmp" != "$pow" ]]; then
                     yq -yi ".${spk}.npow=${pow}" conf/spkr.yml
-                    echo "npow of ${spk} is initialized from .pow file"
-                else
-                    yq -yi ".${spk}.npow=-25" conf/spkr.yml
-                    echo "npow of ${spk} is initialized, please run stage init to get the proper config."
+                    echo "npow of ${spk} is changed based on .pow file"
                 fi
-            elif [[ "$tmp" != "$pow" ]]; then
-                yq -yi ".${spk}.npow=${pow}" conf/spkr.yml
-                echo "npow of ${spk} is changed based on .pow file"
             fi
         fi
         set -e

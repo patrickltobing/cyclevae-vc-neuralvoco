@@ -141,6 +141,8 @@ def main():
 
     stats_list = config.stats_list.split('@')
     assert(n_spk == len(stats_list))
+    #for i in range(n_spk):
+    #    stats_list[i] = stats_list[i].replace('data','../cycvae_mwdlp_vcc18noisy/data')
 
     spk_src = os.path.basename(os.path.dirname(feat_list[0]))
     src_idx = spk_list.index(spk_src)
@@ -212,7 +214,7 @@ def main():
                     causal_conv=config.causal_conv_dec,
                     pad_first=True,
                     right_size=config.right_size_dec,
-                    pdf=True,
+                    pdf_gauss=True,
                     red_dim=config.mel_dim)
                 logging.info(model_decoder_melsp)
                 model_encoder_excit = GRU_VAE_ENCODER(

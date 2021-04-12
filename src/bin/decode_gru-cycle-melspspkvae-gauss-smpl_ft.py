@@ -199,7 +199,7 @@ def main():
                     pad_first=True,
                     right_size=config.right_size_dec,
                     red_dim_upd=config.mel_dim,
-                    pdf=True)
+                    pdf_gauss=True)
                 logging.info(model_decoder_melsp)
                 model_encoder_excit = GRU_VAE_ENCODER(
                     in_dim=config.mel_dim,

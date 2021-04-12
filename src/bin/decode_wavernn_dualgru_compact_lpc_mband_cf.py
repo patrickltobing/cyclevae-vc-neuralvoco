@@ -283,10 +283,16 @@ def main():
                         lpc=config.lpc)
                     logging.info(model_waveform)
                 else:
-                    if 'stft_emb' in config.expdir or 'cf_emb' in config.expdir:
+                    #if 'stft_emb' in config.expdir or 'cf_emb' in config.expdir:
+                    if '_emb' in config.expdir:
                         emb_flag = True
                     else:
                         emb_flag = False
+                    #if 'stft_lin' in config.expdir or 'cf_emb' in config.expdir:
+                    if '_lin' in config.expdir:
+                        lin_flag = True
+                    else:
+                        lin_flag = False
                     model_waveform = GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(
                         feat_dim=config.mcep_dim+config.excit_dim,
                         upsampling_factor=config.upsampling_factor,
@@ -303,6 +309,7 @@ def main():
                         res_flag=args.wlat_res_flag,
                         res_smpl_flag=True,
                         emb_flag=emb_flag,
+                        lin_flag=lin_flag,
                         lpc=config.lpc)
                     logging.info(model_waveform)
                 model_waveform.cuda()

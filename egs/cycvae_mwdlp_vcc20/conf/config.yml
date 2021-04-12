@@ -101,15 +101,15 @@ do_prob: 0.5
 
 ## maximum step count
 step_count: 1035000
-step_count_wave: 4400000
+step_count_wave: 4250000
 
 # number of workers (threads) for batch data handling
 n_workers: 1
 #n_workers: 2
 
-mdl_name_vc: cycmelspxlf0capspkvae-laplace-smpl_sparse
-mdl_name_ft: cycmelspspkvae-laplace-smpl_sparse_mwdlp_smpl
-mdl_name_sp: cycmelspspkvae-ftspkdec-laplace-smpl_sparse_mwdlp_smpl
+mdl_name_vc: cycmelspxlf0capspkvae-gauss-smpl_sparse
+mdl_name_ft: cycmelspspkvae-gauss-smpl_sparse_mwdlp_smpl
+mdl_name_sp: cycmelspspkvae-ftspkdec-gauss-smpl_sparse_mwdlp_smpl
 
 mdl_name_wave: wavernn_dualgru_compact_lpc_mband_10bit_cf_stft_emb
 
@@ -122,7 +122,7 @@ n_stage_cycvae: 4
 
 ## sparsification scheduling settings for wavernn
 t_start: 20000
-t_end: 1170000
+t_end: 1070000
 interval: 20
 densities: 0.09-0.09-0.12
 n_stage: 4
