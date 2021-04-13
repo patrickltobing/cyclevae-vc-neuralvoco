@@ -18,6 +18,12 @@ $ make
 $ cd ..
 ```
 
+
+## Samples and real-time compilable demo with CPU
+* [Samples](https://drive.google.com/file/d/1j7ddvltaWwie0wEp79W6VL2EV-SSAW-g/view?usp=sharing)
+* [Real-time compilable demo with CPU](https://drive.google.com/drive/folders/14pJSpYsoPpLR6Ah-EbENSsN6ABcSvB0w?usp=sharing)
+
+
 ## Steps to build the models:
 1. Data preparation and preprocessing
 2. VC and neural vocoder models training [~ 2.5 and 4 days each, respectively]
@@ -48,4 +54,3 @@ Patrick Lumban Tobing
 patrickltobing@gmail.com
 
 patrick.lumbantobing@g.sp.m.is.nagoya-u.ac.jp
-
