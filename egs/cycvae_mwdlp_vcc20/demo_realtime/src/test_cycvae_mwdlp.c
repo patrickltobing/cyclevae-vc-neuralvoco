@@ -226,6 +226,7 @@ int main(int argc, char **argv) {
             char data_buffer[size_of_each_sample];
             float x_buffer[FRAME_SHIFT];
             int read = 0;
+            //clock_t t_;
 
             // initialize waveform-->features processing struct
             DSPState *dsp;
@@ -277,8 +278,10 @@ int main(int argc, char **argv) {
                             //extract melspectrogram here
                             mel_spec_extract(dsp, features);
 
+                            //t_ = clock();
                             if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 0);
                             else mwdlp10net_synthesize_nodlpc(net, features, pcm, &n_output, 0);
+                            //printf("\nwav %f sec.\n", ((double)(clock()-t_))/CLOCKS_PER_SEC);
 
                             if (print_melsp_flag) {
                                 for (l=0;l<FEATURES_DIM;l++) {

@@ -44,8 +44,10 @@
 #include "nnet_cv_data.h"
 #include "mwdlp10net_cycvae_private.h"
 
-#define HALF_RAND_MAX (RAND_MAX / 2)
-#define HALF_RAND_MAX_FLT_MIN (HALF_RAND_MAX + FLT_MIN)
+//#define HALF_RAND_MAX (RAND_MAX / 2)
+//#define HALF_RAND_MAX_FLT_MIN (HALF_RAND_MAX + FLT_MIN)
+#define RAND_MAX_FLT_MIN_FLT_MIN (RAND_MAX + FLT_MIN + FLT_MIN)
+//#define ONE_FLT_MIN (1 - FLT_MIN)
 
 #define SOFTMAX_HACK
 
@@ -95,6 +97,9 @@ void compute_activation(float *output, float *input, int N, int activation)
    } else if (activation == ACTIVATION_SIGMOID_EXP) { //PLT_Feb21
       vec_sigmoid_exp(output, input, N);
    } else if (activation == ACTIVATION_TANH_EXP) { //PLT_Feb21
+      vec_tanh_exp(output, input, N);
+   } else if (activation == ACTIVATION_TANH_EXP_NOCLAMP) { //PLT_Apr21
+      //vec_tanh_exp_noclamp(output, input, N);
       vec_tanh_exp(output, input, N);
    } else if (activation == ACTIVATION_RELU) {
       for (i=0;i<N;i++)
@@ -419,7 +424,6 @@ void compute_mdense_mwdlp10_nodlpc(const MDenseLayerMWDLP10 *layer, const DenseL
     //exit(0);
 }
 
-
 //PLT_Sep20
 void compute_gru3(const GRULayer *gru, float *state, const float *input)
 {
@@ -709,15 +713,36 @@ void compute_sparse_gru_dec_melsp(const SparseFrameGRULayer *gru, float *state, 
       state[i] = r[i]*state[i] + (1-r[i])*h[i]; //h_t = z_t o h_{t-1} + (1-z_t) o n_t
 }
 
-//PLT_Dec20
-void compute_sampling_laplace(float *loc, const float *scale, int dim)
+//PLT_Apr21
+void compute_sampling_gauss(float *mu, const float *std, int dim)
 {
-    float r;
+    //float r;
+    float u1, u2 = 0, mag = 0;
     for (int i=0;i<dim;i++) {
-        r = ((float) rand() - HALF_RAND_MAX) / HALF_RAND_MAX_FLT_MIN; //r ~ (-1,1)
-        // loc - sign(r)*scale*log(1-2|r/2|)
-        if (r > 0) loc[i] -= scale[i] * log(1-r);
-        else loc[i] += scale[i] * log(1+r);
+        //r = ((float) rand() - HALF_RAND_MAX) / HALF_RAND_MAX_FLT_MIN; //r ~ (-1,1)
+        //// loc - sign(r)*scale*log(1-2|r/2|)
+        //if (r > 0) loc[i] -= scale[i] * log(1-r);
+        //else loc[i] += scale[i] * log(1+r);
+        if (i % 2 == 0) {
+            u1 = ((float) rand() + FLT_MIN) / RAND_MAX_FLT_MIN_FLT_MIN; //u1 ~ (0,1)
+            u2 = ((float) rand() + FLT_MIN) / RAND_MAX_FLT_MIN_FLT_MIN; //u2 ~ (0,1)
+            ////u1 ~ (0,1)
+            //u1 = ((float) rand()) / RAND_MAX;
+            //if (u1 == 0) u1 = FLT_MIN;
+            //else if (u1 == 1) u1 = ONE_FLT_MIN;
+            ////u2 ~ (0,1)
+            //u2 = ((float) rand()) / RAND_MAX;
+            //if (u2 == 0) u2 = FLT_MIN;
+            //else if (u2 == 1) u2 = ONE_FLT_MIN;
+            //z0 = sqrt(-2*ln(u1))*cos(2pi*u2)
+            //z1 = sqrt(-2*ln(u1))*sin(2pi*u2)
+            mag = sqrt(-2*log(u1));
+            u2 *= 6.283185307179586476925286766559;
+            //mu[i] += std[i]*mag*cos(u2);
+            //temperature sampling: 0.25
+            mu[i] += 0.25*std[i]*mag*cos(u2);
+        //} else mu[i] += std[i]*mag*sin(u2);
+        } else mu[i] += 0.25*std[i]*mag*sin(u2);
     }
 }
 

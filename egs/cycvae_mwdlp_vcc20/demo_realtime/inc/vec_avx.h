@@ -236,7 +236,7 @@ static void softmax(float *y, const float *x, int N)
     //}
     //for (;i<N;i++)
     //    y[i] = celt_exp(x[i]);
-    for (int i=0;i<N;i++)
+    for (int i=0;i<N;i++) {
         //if (x[i] < -32)
         //    y[i] = exp(-32);
         //else if (x[i] > 32)
@@ -244,14 +244,34 @@ static void softmax(float *y, const float *x, int N)
         //else
         //    y[i] = exp(x[i]);
         //y[i] = celt_exp_approx(x[i]);
-        if (x[i] > -32) {
-            if (x[i] < 32) y[i] = exp(x[i]);
-            else y[i] = 78962960182680.695160978022635108;
-        } else y[i] = 1.2664165549094175723120904155965e-14;
+        //if (x[i] > 88 || x[i] < -88) printf("%lf\n", x[i]);
+        //y[i] = exp(x[i]);
+        //y[i] = celt_exp(x[i]);
+        //if (x[i] > -32) {
+        //    if (x[i] < 32) y[i] = exp(x[i]);
+        //    else y[i] = 78962960182680.695160978022635108;
+        //} else y[i] = 1.2664165549094175723120904155965e-14;
+        if (x[i] > -103) {
+            if (x[i] < 85) y[i] = exp(x[i]);
+            else y[i] = 8.223013E+36;
+        } else y[i] = 1.401298E-45;
+        //if (x[i] > -700) {
+        //    if (x[i] < 700) y[i] = exp(x[i]);
+        //    else y[i] = 1.0142320547350045094553295952313e+304;
+        //} else y[i] = 9.8596765437597708567053729478495e-305;
+        //if (x[i] > -745.132) {
+        //    if (x[i] < 709.78268) y[i] = exp(x[i]);
+        //    else y[i] = 1.797587E+308;
+        //} else y[i] = 4.940656E-324;
+        //if (x[i] > -88) {
+        //    if (x[i] < 88) y[i] = exp(x[i]);
+        //    else y[i] = 1.6516362549940018555283297962649e+38;
+        //} else y[i] = 6.0546018954011858845318605338106e-39;
         //if (x[i] < 32)
         //    y[i] = exp(x[i]);
         //else
         //    y[i] = 78962960182680.687500;
+    }
 }
 
 //PLT_Feb21
@@ -265,7 +285,7 @@ static void vec_exp(float *y, const float *x, int N)
     //    Y = exp8_approx(X);
     //    _mm256_storeu_ps(&y[i], Y);
     //}
-    for (int i=0;i<N;i++)
+    for (int i=0;i<N;i++) {
     //for (;i<N;i++)
         //if (x[i] < -32)
         //    y[i] = exp(-32);
@@ -275,34 +295,63 @@ static void vec_exp(float *y, const float *x, int N)
         //    y[i] = exp(x[i]);
             //y[i] = celt_exp(x[i]);
         //y[i] = celt_exp(x[i]);
+        //if (x[i] > 88 || x[i] < -88) printf("%lf\n", x[i]);
+        //if (x[i] > 38 || x[i] < -38) printf("exp %lf\n", x[i]);
         //y[i] = exp(x[i]);
-        if (x[i] > -32) {
-            if (x[i] < 32) y[i] = exp(x[i]);
-            else y[i] = 78962960182680.695160978022635108;
-        } else y[i] = 1.2664165549094175723120904155965e-14;
+        //if (x[i] > -32) {
+        //    if (x[i] < 32) y[i] = exp(x[i]);
+        //    else y[i] = 78962960182680.695160978022635108;
+        //} else y[i] = 1.2664165549094175723120904155965e-14;
+        //if (x[i] > -38) {
+        //    if (x[i] < 38) y[i] = exp(x[i]);
+        //    else y[i] = 31855931757113756.220328671701299;
+        //} else y[i] = 3.1391327920480296287089646522319e-17;
+        if (x[i] > -103) {
+            if (x[i] < 85) y[i] = exp(x[i]);
+            else y[i] = 8.223013E+36;
+        } else y[i] = 1.401298E-45;
+        //if (x[i] > -700) {
+        //    if (x[i] < 700) y[i] = exp(x[i]);
+        //    else y[i] = 1.0142320547350045094553295952313e+304;
+        //} else y[i] = 9.8596765437597708567053729478495e-305;
+        //if (x[i] > -745.132) {
+        //    if (x[i] < 709.78268) y[i] = exp(x[i]);
+        //    else y[i] = 1.797587E+308;
+        //} else y[i] = 4.940656E-324;
+        //if (x[i] > -88) {
+        //    if (x[i] < 88) y[i] = exp(x[i]);
+        //    else y[i] = 1.6516362549940018555283297962649e+38;
+        //} else y[i] = 6.0546018954011858845318605338106e-39;
         //if (x[i] < 32)
         //    y[i] = exp(x[i]);
         //else
         //    y[i] = 78962960182680.687500;
+    }
 }
 
 //PLT_Mar21
 static void vec_tanh(float *y, const float *x, int N)
 {
     int i;
-    const __m256 two = _mm256_set1_ps(2.f);
-    const __m256 one = _mm256_set1_ps(1.f);
-    __m256 Y;
+    //const __m256 two = _mm256_set1_ps(2.f);
+    //const __m256 one = _mm256_set1_ps(1.f);
+    __m256 Y, rcp_Y;
     for (i=0;i<N-7;i+=8)
     {
-        Y = exp256_ps(_mm256_mul_ps(_mm256_loadu_ps(&x[i]), two));
-        _mm256_storeu_ps(&y[i], _mm256_mul_ps(_mm256_sub_ps(Y, one),  _mm256_rcp_ps(_mm256_add_ps(Y, one))));
+        //Y = exp256_ps(_mm256_mul_ps(_mm256_loadu_ps(&x[i]), two));
+        //_mm256_storeu_ps(&y[i], _mm256_mul_ps(_mm256_sub_ps(Y, one),  _mm256_rcp_ps(_mm256_add_ps(Y, one))));
+        Y = exp256_ps(_mm256_loadu_ps(&x[i]));
+        rcp_Y = _mm256_rcp_ps(Y);
+        _mm256_storeu_ps(&y[i], _mm256_mul_ps(_mm256_sub_ps(Y, rcp_Y),  _mm256_rcp_ps(_mm256_add_ps(Y, rcp_Y))));
     }
     for (;i<N;i++)
     {
-        float ex2;
-        ex2 = celt_exp(2*x[i]);
-        y[i] = (ex2-1)/(ex2+1);
+        //float ex2;
+        //ex2 = celt_exp(2*x[i]);
+        //y[i] = (ex2-1)/(ex2+1);
+        float ex;
+        ex = celt_exp(x[i]);
+        y[i] = (ex-1/ex)/(ex+1/ex);
     }
     //float ex2;
     //for (int i=0;i<N;i++)
@@ -327,7 +376,8 @@ static void vec_tanh_exp(float *y, const float *x, int N)
     //    Y = _mm256_mul_ps(_mm256_sub_ps(Y, one),  _mm256_rcp_ps(_mm256_add_ps(Y, one)));
     //    _mm256_storeu_ps(&y[i], Y);
     //}
-    float ex2;
+    float ex;
+    //float ex2;
     //for (;i<N;i++)
     for (int i=0;i<N;i++)
     {
@@ -335,12 +385,21 @@ static void vec_tanh_exp(float *y, const float *x, int N)
         //ex2 = celt_exp(2*x[i]);
         //ex2 = exp(2*x[i]);
         //y[i] = (ex2-1)/(ex2+1);
-        if (x[i] > -32) {
-            if (x[i] < 32) {
-                ex2 = exp(2*x[i]);
-                y[i] = (ex2-1)/(ex2+1);
-            } else y[i] = 0.99999999999999999999999999967924;
-        } else y[i] = -0.99999999999999999999999999967924;
+        //if (x[i] > -32) {
+        //    if (x[i] < 32) {
+        //        ex2 = exp(2*x[i]);
+        //        y[i] = (ex2-1)/(ex2+1);
+        //    } else y[i] = 0.99999999999999999999999999967924;
+        //} else y[i] = -0.99999999999999999999999999967924;
+        //if (x[i] > 38 || x[i] < -38) printf("tanh exp %lf\n", x[i]);
+        if (x[i] > -10) {
+            if (x[i] < 10) {
+                //ex2 = exp(2*x[i]);
+                //y[i] = (ex2-1)/(ex2+1);
+                ex = exp(x[i]);
+                y[i] = (ex-1/ex)/(ex+1/ex);
+            } else y[i] = 1;
+        } else y[i] = -1;
         //if (x[i] < 32)
     }
 }
@@ -359,7 +418,8 @@ static void vec_tanhshrink(float *y, const float *x, int N)
     //    Y = _mm256_sub_ps(X, _mm256_mul_ps(_mm256_sub_ps(Y, one),  _mm256_rcp_ps(_mm256_add_ps(Y, one))));
     //    _mm256_storeu_ps(&y[i], Y);
     //}
-    float ex2;
+    float ex;
+    //float ex2;
     //for (;i<N;i++)
     for (int i=0;i<N;i++)
     {
@@ -376,12 +436,21 @@ static void vec_tanhshrink(float *y, const float *x, int N)
         //    ex2 = exp(2*x[i]);
         //ex2 = exp(2*x[i]);
         //y[i] = x[i]-(ex2-1)/(ex2+1);
-        if (x[i] > -32) {
-            if (x[i] < 32) {
-                ex2 = exp(2*x[i]);
-                y[i] = x[i]-(ex2-1)/(ex2+1);
-            } else y[i] = x[i]-0.99999999999999999999999999967924;
-        } else y[i] = x[i]+0.99999999999999999999999999967924;
+        //if (x[i] > -32) {
+        //    if (x[i] < 32) {
+        //        ex2 = exp(2*x[i]);
+        //        y[i] = x[i]-(ex2-1)/(ex2+1);
+        //    } else y[i] = x[i]-0.99999999999999999999999999967924;
+        //} else y[i] = x[i]+0.99999999999999999999999999967924;
+        //if (x[i] > 38 || x[i] < -38) printf("tanhshrink exp %lf\n", x[i]);
+        if (x[i] > -10) {
+            if (x[i] < 10) {
+                //ex2 = exp(2*x[i]);
+                //y[i] = x[i]-(ex2-1)/(ex2+1);
+                ex = exp(x[i]);
+                y[i] = x[i]-(ex-1/ex)/(ex+1/ex);
+            } else y[i] = x[i]-1;
+        } else y[i] = x[i]+1;
     }
 }
 
@@ -395,13 +464,14 @@ static void vec_sigmoid(float *y, const float *x, int N)
     const __m256 one = _mm256_set1_ps(1.f);
     for (i=0;i<N-7;i+=8)
     {
-        _mm256_storeu_ps(&y[i], _mm256_sub_ps(one, _mm256_rcp_ps(_mm256_add_ps(exp256_ps(_mm256_loadu_ps(&x[i])), one))));
+        //_mm256_storeu_ps(&y[i], _mm256_sub_ps(one, _mm256_rcp_ps(_mm256_add_ps(exp256_ps(_mm256_loadu_ps(&x[i])), one))));
+        _mm256_storeu_ps(&y[i], _mm256_rcp_ps(_mm256_add_ps(_mm256_rcp_ps(exp256_ps(_mm256_loadu_ps(&x[i]))), one)));
     }
     for (;i<N;i++)
     {
-        float ex;
-        ex = celt_exp(x[i]);
-        y[i] = (ex)/(ex+1);
+        //float ex;
+        //ex = celt_exp(x[i]);
+        y[i] = 1/(1/celt_exp(x[i])+1);
     //    printf("[%d] %f %f ", i, x[i], y[i]);
     }
     //float ex;
@@ -414,6 +484,23 @@ static void vec_sigmoid(float *y, const float *x, int N)
     //for (i=0;i<N;i++) {
     //    printf("%d %f %f\n", i, x[i], y[i]);
     //}
+}
+
+
+//PLT_Feb21
+static void vec_sigmoid_exp(float *y, const float *x, int N)
+{
+    float ex;
+    for (int i=0;i<N;i++)
+    {
+        //if (x[i] > -37) {
+        //    if (x[i] < 29) y[i] = 1-1/(exp(x[i])+1);
+        //    else y[i] = 1;
+        //} y[i] = 0;
+        ex = exp(x[i]);
+        //y[i] = 1-1/(exp(x[i])+1);
+        y[i] = 1/(1/ex+1);
+    }
 }
 
 //PLT_Mar21
@@ -519,7 +606,6 @@ static void sgemv_fclogits16(float *out, const float *weights, int rows, int col
    //      for (j=0;j<cols;j++)
    //         out[row_bands] += weights[j*rows + i]*x[col_bands+j];
 }
-
 
 //PLT_Mar21
 static void sparse_sgemv_accum16(float *out, const float *weights, int rows, const int *idx, const float *x)

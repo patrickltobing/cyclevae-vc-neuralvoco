@@ -3,8 +3,8 @@
 
 ## Requirements:
 - UNIX
-- 3.6 >= python <= 3.8
-- CUDA 10.1
+- 3.6 >= python <= 3.9
+- CUDA 11.1
 - virtualenv
 - jq
 - make
@@ -20,8 +20,8 @@ $ cd ..
 
 
 ## Samples and real-time compilable demo with CPU
-* [Samples](https://drive.google.com/file/d/1j7ddvltaWwie0wEp79W6VL2EV-SSAW-g/view?usp=sharing)
-* [Real-time compilable demo with CPU](https://drive.google.com/drive/folders/14pJSpYsoPpLR6Ah-EbENSsN6ABcSvB0w?usp=sharing)
+* [Samples](https://drive.google.com/drive/folders/14pJSpYsoPpLR6Ah-EbENSsN6ABcSvB0w?usp=sharing)
+* [Real-time compilable demo with CPU](https://drive.google.com/file/d/1j7ddvltaWwie0wEp79W6VL2EV-SSAW-g/view?usp=sharing)
 
 
 ## Steps to build the models:

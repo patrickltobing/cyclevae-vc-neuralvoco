@@ -39,6 +39,7 @@
 #define ACTIVATION_TANHSHRINK 6 //PLT_Sep20
 #define ACTIVATION_SIGMOID_EXP 7 //PLT_Feb21
 #define ACTIVATION_TANH_EXP 8 //PLT_Feb21
+#define ACTIVATION_TANH_EXP_NOCLAMP 9 //PLT_Apr21
 
 typedef struct {
   const float *bias;
@@ -129,6 +130,7 @@ typedef struct {
 } EmbeddingLayer;
 
 //PLT_Sep20
+void sgemv_accum16_(float *out, const float *weights, int rows, int cols, int col_stride, const float *x);
 void sgemv_accum(float *out, const float *weights, int rows, int cols, int col_stride, const float *x);
 
 void compute_activation(float *output, float *input, int N, int activation);
@@ -168,7 +170,7 @@ void compute_gru_spk(const FrameGRULayer *gru, float *state, const float *input)
 
 void compute_sparse_gru_dec_melsp(const SparseFrameGRULayer *gru, float *state, const float *input);
 
-void compute_sampling_laplace(float *loc, const float *scale, int dim);
+void compute_sampling_gauss(float *loc, const float *scale, int dim);
 
 void compute_spkidtr(const DenseLayer *in_layer, const DenseLayer *out_layer, float *output, const float *input);
 void compute_spkidtr_coord(const DenseLayer *layer, float *output, const float *input);

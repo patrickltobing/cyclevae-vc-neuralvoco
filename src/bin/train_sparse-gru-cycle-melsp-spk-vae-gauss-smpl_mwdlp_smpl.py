@@ -51,6 +51,10 @@ from dtw_c import dtw_c as dtw
 #np.set_printoptions(threshold=np.inf)
 #torch.set_printoptions(threshold=np.inf)
 
+# from softmax limit on 32-dim & for exp, also acceptable for sigmoid/tanh, but in C implementation they are [-17,89]/[-10,10]
+MIN_CLAMP = -103
+MAX_CLAMP = 85
+
 
 def train_generator(dataloader, device, batch_size, n_cv, upsampling_factor, limit_count=None, n_bands=4):
     """TRAINING BATCH GENERATOR
@@ -292,7 +296,7 @@ def save_checkpoint(checkpoint_dir, model_encoder_melsp_fix, model_encoder_melsp
         min_eval_loss_melsp, min_eval_loss_gauss_cv, min_eval_loss_gauss,
         min_eval_loss_melsp_dB_src_trg, min_eval_loss_melsp_dB_src_trg_std, min_eval_loss_gv_src_trg,
         min_eval_loss_ce_avg, min_eval_loss_ce_avg_std, min_eval_loss_err_avg, min_eval_loss_err_avg_std,
-        min_eval_loss_l1_avg, min_eval_loss_l1_fb, err_flag,
+        min_eval_loss_l1_avg, min_eval_loss_l1_fb, err_flag, err_flag_count,
         iter_idx, min_idx, optimizer, numpy_random_state, torch_random_state, iterations, model_spkidtr=None):
     """FUNCTION TO SAVE CHECKPOINT
 
@@ -337,6 +341,7 @@ def save_checkpoint(checkpoint_dir, model_encoder_melsp_fix, model_encoder_melsp
         "min_eval_loss_l1_avg": min_eval_loss_l1_avg,
         "min_eval_loss_l1_fb": min_eval_loss_l1_fb,
         "err_flag": err_flag,
+        "err_flag_count": err_flag_count,
         "iter_idx": iter_idx,
         "last_epoch": iterations,
         "min_idx": min_idx,
@@ -602,6 +607,7 @@ def main():
     args.half_n_quantize = args.n_quantize // 2
     args.c_pad = args.half_n_quantize // args.cf_dim
     args.f_pad = args.half_n_quantize % args.cf_dim
+    args.t_end = 1070000
     logging.info(f'{args.t_start} {args.t_end} {args.interval} {args.step_count}')
     args.n_half_cyc = 2
     args.t_start = args.t_start // args.n_half_cyc
@@ -609,11 +615,11 @@ def main():
     args.interval = args.interval // args.n_half_cyc
     args.step_count = args.step_count // args.n_half_cyc
     logging.info(f'{args.t_start} {args.t_end} {args.interval} {args.step_count}')
-    args.factor = 0.33
+    args.factor = 0.4
     args.t_start = max(math.ceil(args.t_start * args.factor),1)
     args.t_end = max(math.ceil(args.t_end * args.factor),1)
     args.interval = max(math.ceil(args.interval * args.factor),1)
-    args.step_count = max(math.ceil(args.t_end * 3.7),1)
+    args.step_count = max(math.ceil(args.t_end * 3.6),1)
     logging.info(f'{args.t_start} {args.t_end} {args.interval} {args.step_count}')
     torch.save(args, args.expdir + "/model.conf")
 
@@ -1150,6 +1156,8 @@ def main():
     batch_magsp_rec = [None]*n_rec
     batch_feat_rec_sc = [None]*n_rec
     batch_feat_magsp_rec_sc = [None]*n_rec
+    batch_x_c_output_noclamp = [None]*n_rec
+    batch_x_f_output_noclamp = [None]*n_rec
     batch_x_c_output = [None]*n_rec
     batch_x_f_output = [None]*n_rec
     batch_x_output = [None]*n_rec
@@ -1571,6 +1579,7 @@ def main():
     iter_idx = 0
     min_idx = -1
     err_flag = False
+    err_flag_count = 0
     change_min_flag = False
     sparse_min_flag = False
     sparse_check_flag = False
@@ -1593,6 +1602,7 @@ def main():
         min_eval_loss_l1_avg[0] = checkpoint["min_eval_loss_l1_avg"]
         min_eval_loss_l1_fb[0] = checkpoint["min_eval_loss_l1_fb"]
         err_flag = checkpoint["err_flag"]
+        err_flag_count = checkpoint["err_flag_count"]
         iter_idx = checkpoint["iter_idx"]
         min_idx = checkpoint["min_idx"]
     while idx_stage < args.n_stage-1 and iter_idx + 1 >= t_starts[idx_stage+1]:
@@ -2019,10 +2029,12 @@ def main():
                                                     outpad_right=outpad_rights[idx_in], h=h_melsp_cv[i_cv])
                             ## waveform reconstruction
                             idx_in += 1
-                            batch_x_c_output[i], batch_x_f_output[i], batch_seg_conv[i], batch_conv_sc[i], \
+                            batch_x_c_output_noclamp[i], batch_x_f_output_noclamp[i], batch_seg_conv[i], batch_conv_sc[i], \
                                 batch_out[i], batch_out_2[i], batch_out_f[i], batch_signs_c[i], batch_scales_c[i], batch_logits_c[i], batch_signs_f[i], batch_scales_f[i], batch_logits_f[i], h_x[i], h_x_2[i], h_f[i] \
                                     = model_waveform(batch_melsp_rec[i], batch_x_c_prev, batch_x_f_prev, batch_x_c, h=h_x[i], h_2=h_x_2[i], h_f=h_f[i], outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in],
                                             x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc, ret_mid_feat=True, ret_mid_smpl=True)
+                            batch_x_c_output[i] = torch.clamp(batch_x_c_output_noclamp[i], min=MIN_CLAMP, max=MAX_CLAMP)
+                            batch_x_f_output[i] = torch.clamp(batch_x_f_output_noclamp[i], min=MIN_CLAMP, max=MAX_CLAMP)
                             u = torch.empty_like(batch_x_c_output[i])
                             logits_gumbel = F.softmax(batch_x_c_output[i] - torch.log(-torch.log(torch.clamp(u.uniform_(), eps, eps_1))), dim=-1)
                             logits_gumbel_norm_1hot = F.threshold(logits_gumbel / torch.max(logits_gumbel,-1,keepdim=True)[0], eps_1, 0)
@@ -2089,10 +2101,12 @@ def main():
                                                         outpad_right=outpad_rights[idx_in], h=h_melsp[j])
                             ## waveform reconstruction
                             idx_in += 1
-                            batch_x_c_output[j], batch_x_f_output[j], batch_seg_conv[j], batch_conv_sc[j], \
+                            batch_x_c_output_noclamp[j], batch_x_f_output_noclamp[j], batch_seg_conv[j], batch_conv_sc[j], \
                                 batch_out[j], batch_out_2[j], batch_out_f[j], batch_signs_c[j], batch_scales_c[j], batch_logits_c[j], batch_signs_f[j], batch_scales_f[j], batch_logits_f[j], h_x[j], h_x_2[j], h_f[j] \
                                     = model_waveform(batch_melsp_rec[j], batch_x_c_prev, batch_x_f_prev, batch_x_c, h=h_x[j], h_2=h_x_2[j], h_f=h_f[j], outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in],
                                             x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc, ret_mid_feat=True, ret_mid_smpl=True)
+                            batch_x_c_output[j] = torch.clamp(batch_x_c_output_noclamp[j], min=MIN_CLAMP, max=MAX_CLAMP)
+                            batch_x_f_output[j] = torch.clamp(batch_x_f_output_noclamp[j], min=MIN_CLAMP, max=MAX_CLAMP)
                             logits_gumbel = F.softmax(batch_x_c_output[j] - torch.log(-torch.log(torch.clamp(u.uniform_(), eps, eps_1))), dim=-1)
                             logits_gumbel_norm_1hot = F.threshold(logits_gumbel / torch.max(logits_gumbel,-1,keepdim=True)[0], eps_1, 0)
                             sample_indices_c = torch.sum(logits_gumbel_norm_1hot*indices_1hot,-1)
@@ -2262,10 +2276,12 @@ def main():
                                                     outpad_right=outpad_rights[idx_in])
                             ## waveform reconstruction
                             idx_in += 1
-                            batch_x_c_output[i], batch_x_f_output[i], batch_seg_conv[i], batch_conv_sc[i], \
+                            batch_x_c_output_noclamp[i], batch_x_f_output_noclamp[i], batch_seg_conv[i], batch_conv_sc[i], \
                                 batch_out[i], batch_out_2[i], batch_out_f[i], batch_signs_c[i], batch_scales_c[i], batch_logits_c[i], batch_signs_f[i], batch_scales_f[i], batch_logits_f[i], h_x[i], h_x_2[i], h_f[i] \
                                     = model_waveform(batch_melsp_rec[i], batch_x_c_prev, batch_x_f_prev, batch_x_c, outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in],
                                             x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc, ret_mid_feat=True, ret_mid_smpl=True)
+                            batch_x_c_output[i] = torch.clamp(batch_x_c_output_noclamp[i], min=MIN_CLAMP, max=MAX_CLAMP)
+                            batch_x_f_output[i] = torch.clamp(batch_x_f_output_noclamp[i], min=MIN_CLAMP, max=MAX_CLAMP)
                             u = torch.empty_like(batch_x_c_output[i])
                             logits_gumbel = F.softmax(batch_x_c_output[i] - torch.log(-torch.log(torch.clamp(u.uniform_(), eps, eps_1))), dim=-1)
                             logits_gumbel_norm_1hot = F.threshold(logits_gumbel / torch.max(logits_gumbel,-1,keepdim=True)[0], eps_1, 0)
@@ -2332,10 +2348,12 @@ def main():
                                                         outpad_right=outpad_rights[idx_in])
                             ## waveform reconstruction
                             idx_in += 1
-                            batch_x_c_output[j], batch_x_f_output[j], batch_seg_conv[j], batch_conv_sc[j], \
+                            batch_x_c_output_noclamp[j], batch_x_f_output_noclamp[j], batch_seg_conv[j], batch_conv_sc[j], \
                                 batch_out[j], batch_out_2[j], batch_out_f[j], batch_signs_c[j], batch_scales_c[j], batch_logits_c[j], batch_signs_f[j], batch_scales_f[j], batch_logits_f[j], h_x[j], h_x_2[j], h_f[j] \
                                     = model_waveform(batch_melsp_rec[j], batch_x_c_prev, batch_x_f_prev, batch_x_c, outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in],
                                             x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc, ret_mid_feat=True, ret_mid_smpl=True)
+                            batch_x_c_output[j] = torch.clamp(batch_x_c_output_noclamp[j], min=MIN_CLAMP, max=MAX_CLAMP)
+                            batch_x_f_output[j] = torch.clamp(batch_x_f_output_noclamp[j], min=MIN_CLAMP, max=MAX_CLAMP)
                             logits_gumbel = F.softmax(batch_x_c_output[j] - torch.log(-torch.log(torch.clamp(u.uniform_(), eps, eps_1))), dim=-1)
                             logits_gumbel_norm_1hot = F.threshold(logits_gumbel / torch.max(logits_gumbel,-1,keepdim=True)[0], eps_1, 0)
                             sample_indices_c = torch.sum(logits_gumbel_norm_1hot*indices_1hot,-1)
@@ -2421,6 +2439,8 @@ def main():
                                 batch_scales_f_ = batch_scales_f[i][k,:slens_utt]
                                 batch_signs_f_ = batch_signs_f[i][k,:slens_utt]
                                 batch_logits_f_ = batch_logits_f[i][k,:slens_utt]
+                                batch_x_c_output_noclamp_ = batch_x_c_output_noclamp[i][k,:slens_utt]
+                                batch_x_f_output_noclamp_ = batch_x_f_output_noclamp[i][k,:slens_utt]
                                 batch_out_ = batch_out[i][k,:slens_utt]
                                 batch_out_2_ = batch_out_2[i][k,:slens_utt]
                                 batch_out_f_ = batch_out_f[i][k,:slens_utt]
@@ -2452,10 +2472,10 @@ def main():
                                                         + torch.sqrt(torch.mean(criterion_l2(batch_scales_f_, scales_f_))) \
                                                     + torch.mean(criterion_l1(batch_logits_f_, logits_f_)) \
                                                         + torch.sqrt(torch.mean(criterion_l2(batch_logits_f_, logits_f_))) \
-                                                    + torch.mean(criterion_l1(batch_x_c_output_, x_c_output_)) \
-                                                        + torch.sqrt(torch.mean(criterion_l2(batch_x_c_output_, x_c_output_))) \
-                                                    + torch.mean(criterion_l1(batch_x_f_output_, x_f_output_)) \
-                                                        + torch.sqrt(torch.mean(criterion_l2(batch_x_f_output_, x_f_output_)))
+                                                    + torch.mean(criterion_l1(batch_x_c_output_noclamp_, x_c_output_)) \
+                                                        + torch.sqrt(torch.mean(criterion_l2(batch_x_c_output_noclamp_, x_c_output_))) \
+                                                    + torch.mean(criterion_l1(batch_x_f_output_noclamp_, x_f_output_)) \
+                                                        + torch.sqrt(torch.mean(criterion_l2(batch_x_f_output_noclamp_, x_f_output_)))
 
                                 if flens_utt > 1:
                                     batch_loss_seg_conv[i] += torch.mean(criterion_l1(batch_seg_conv_, seg_conv_)) \
@@ -2629,6 +2649,8 @@ def main():
                                 batch_x_f_output[i] = torch.index_select(batch_x_f_output[i],0,idx_select_full)
                                 batch_x_output[i] = torch.index_select(batch_x_output[i],0,idx_select_full)
                                 batch_x_output_fb[i] = torch.index_select(batch_x_output_fb[i],0,idx_select_full)
+                                batch_x_c_output_noclamp[i] = torch.index_select(batch_x_c_output_noclamp[i],0,idx_select_full)
+                                batch_x_f_output_noclamp[i] = torch.index_select(batch_x_f_output_noclamp[i],0,idx_select_full)
                                 batch_seg_conv[i] = torch.index_select(batch_seg_conv[i],0,idx_select_full)
                                 batch_conv_sc[i] = torch.index_select(batch_conv_sc[i],0,idx_select_full)
                                 batch_out[i] = torch.index_select(batch_out[i],0,idx_select_full)
@@ -2806,10 +2828,10 @@ def main():
                                                 + torch.sqrt(torch.mean(torch.mean(torch.mean(criterion_l2(batch_scales_f[i], scales_f), -1), -1), -1)) \
                                             + torch.mean(torch.mean(torch.mean(criterion_l1(batch_logits_f[i], logits_f), -1), -1), -1) \
                                                 + torch.sqrt(torch.mean(torch.mean(torch.mean(criterion_l2(batch_logits_f[i], logits_f), -1), -1), -1)) \
-                                            + torch.mean(torch.mean(torch.mean(criterion_l1(batch_x_c_output[i], x_c_output), -1), -1), -1) \
-                                                + torch.sqrt(torch.mean(torch.mean(torch.mean(criterion_l2(batch_x_c_output[i], x_c_output), -1), -1), -1)) \
-                                            + torch.mean(torch.mean(torch.mean(criterion_l1(batch_x_f_output[i], x_f_output), -1), -1), -1) \
-                                                + torch.sqrt(torch.mean(torch.mean(torch.mean(criterion_l2(batch_x_f_output[i], x_f_output), -1), -1), -1))
+                                            + torch.mean(torch.mean(torch.mean(criterion_l1(batch_x_c_output_noclamp[i], x_c_output), -1), -1), -1) \
+                                                + torch.sqrt(torch.mean(torch.mean(torch.mean(criterion_l2(batch_x_c_output_noclamp[i], x_c_output), -1), -1), -1)) \
+                                            + torch.mean(torch.mean(torch.mean(criterion_l1(batch_x_f_output_noclamp[i], x_f_output), -1), -1), -1) \
+                                                + torch.sqrt(torch.mean(torch.mean(torch.mean(criterion_l2(batch_x_f_output_noclamp[i], x_f_output), -1), -1), -1))
                         batch_loss_mid_smpl[i] = batch_loss_mid_smpl_.mean()
 
                         batch_loss_wave = batch_loss_seg_conv_.sum() + batch_loss_conv_sc_.sum() \
@@ -2878,6 +2900,8 @@ def main():
                         total_eval_loss["eval/loss_l1-%d"%(i+1)].append(batch_loss_l1_avg[i])
                         total_eval_loss["eval/loss_fro_fb-%d"%(i+1)].append(batch_loss_fro_fb[i])
                         total_eval_loss["eval/loss_l1_fb-%d"%(i+1)].append(batch_loss_l1_fb[i])
+                        total_eval_loss["eval/loss_seg_conv-%d"%(i+1)].append(batch_loss_seg_conv[i].item())
+                        total_eval_loss["eval/loss_conv_sc-%d"%(i+1)].append(batch_loss_conv_sc[i].item())
                         total_eval_loss["eval/loss_seg_conv-%d"%(i+1)].append(batch_loss_seg_conv[i].item())
                         total_eval_loss["eval/loss_conv_sc-%d"%(i+1)].append(batch_loss_conv_sc[i].item())
                         total_eval_loss["eval/loss_h-%d"%(i+1)].append(batch_loss_h[i].item())
@@ -3158,21 +3182,25 @@ def main():
                 or ((round(float(round(Decimal(str(eval_loss_err_avg[0])),2))-0.66,2) <= float(round(Decimal(str(min_eval_loss_err_avg[0])),2))) and \
                     (round(float(round(Decimal(str(eval_loss_l1_avg[0])),2))-0.09,2) <= float(round(Decimal(str(min_eval_loss_l1_avg[0])),2))) and \
                     (round(float(round(Decimal(str(eval_loss_l1_fb[0])),2))-0.09,2) <= float(round(Decimal(str(min_eval_loss_l1_fb[0])),2))) and \
-                    (float(round(Decimal(str(eval_loss_gauss_cv[0]-eval_loss_gauss[0])),2)) >= round(float(round(Decimal(str(min_eval_loss_gauss_cv[0]-min_eval_loss_gauss[0])),2))-0.03,2)) and \
-                    (round(float(round(Decimal(str(eval_loss_gauss[0])),2))-0.05,2) <= float(round(Decimal(str(min_eval_loss_gauss[0])),2))) and \
+                    (float(round(Decimal(str(eval_loss_gauss_cv[0]-eval_loss_gauss[0])),2)) >= round(float(round(Decimal(str(min_eval_loss_gauss_cv[0]-min_eval_loss_gauss[0])),2))-0.67,2)) and \
+                    (round(float(round(Decimal(str(eval_loss_gauss[0])),2))-0.21,2) <= float(round(Decimal(str(min_eval_loss_gauss[0])),2))) and \
                     (round(float(round(Decimal(str(eval_loss_ce_avg[0]+eval_loss_ce_avg_std[0])),2))-0.02,2) <= float(round(Decimal(str(min_eval_loss_ce_avg[0]+min_eval_loss_ce_avg_std[0])),2)) \
                         or round(float(round(Decimal(str(eval_loss_ce_avg[0])),2))-0.02,2) <= float(round(Decimal(str(min_eval_loss_ce_avg[0])),2)))):
                 round_eval_loss_err_avg = float(round(Decimal(str(eval_loss_err_avg[0])),2))
                 round_min_eval_loss_err_avg = float(round(Decimal(str(min_eval_loss_err_avg[0])),2))
-                if (round_eval_loss_err_avg <= round_min_eval_loss_err_avg) or (not err_flag and round_eval_loss_err_avg > round_min_eval_loss_err_avg) or (not sparse_min_flag and sparse_check_flag):
+                if (round_eval_loss_err_avg <= round_min_eval_loss_err_avg) or (not err_flag and round_eval_loss_err_avg > round_min_eval_loss_err_avg) \
+                    or (err_flag_count < 2 and (round_eval_loss_err_avg-0.05) <= round_min_eval_loss_err_avg) or (not sparse_min_flag and sparse_check_flag):
                     if sparse_min_flag:
                         if round_eval_loss_err_avg > round_min_eval_loss_err_avg:
                             err_flag = True
+                            err_flag_count += 1
                         elif round_eval_loss_err_avg <= round_min_eval_loss_err_avg:
                             err_flag = False
+                            err_flag_count = 0
                     elif sparse_check_flag:
                         sparse_min_flag = True
                         err_flag = False
+                        err_flag_count = 0
                     min_eval_loss_gv_src_src = eval_loss_gv_src_src
                     min_eval_loss_gv_src_trg = eval_loss_gv_src_trg
                     min_eval_loss_sc_feat_in = eval_loss_sc_feat_in
@@ -3340,7 +3368,7 @@ def main():
                     min_eval_loss_melsp[0], min_eval_loss_gauss_cv[0], min_eval_loss_gauss[0],
                     min_eval_loss_melsp_dB_src_trg, min_eval_loss_melsp_dB_src_trg_std, min_eval_loss_gv_src_trg,
                     min_eval_loss_ce_avg[0], min_eval_loss_ce_avg_std[0], min_eval_loss_err_avg[0], min_eval_loss_err_avg_std[0],
-                    min_eval_loss_l1_avg[0], min_eval_loss_l1_fb[0], err_flag,
+                    min_eval_loss_l1_avg[0], min_eval_loss_l1_fb[0], err_flag, err_flag_count,
                     iter_idx, min_idx, optimizer, numpy_random_state, torch_random_state, epoch_idx + 1,
                     model_spkidtr=model_spkidtr)
                 if model_waveform.use_weight_norm:
@@ -3693,10 +3721,12 @@ def main():
                                         outpad_right=outpad_rights[idx_in], h=h_melsp_cv[i_cv])
                 ## waveform reconstruction
                 idx_in += 1
-                batch_x_c_output[i], batch_x_f_output[i], batch_seg_conv[i], batch_conv_sc[i], \
+                batch_x_c_output_noclamp[i], batch_x_f_output_noclamp[i], batch_seg_conv[i], batch_conv_sc[i], \
                     batch_out[i], batch_out_2[i], batch_out_f[i], batch_signs_c[i], batch_scales_c[i], batch_logits_c[i], batch_signs_f[i], batch_scales_f[i], batch_logits_f[i], h_x[i], h_x_2[i], h_f[i] \
                         = model_waveform(batch_melsp_rec[i], batch_x_c_prev, batch_x_f_prev, batch_x_c, h=h_x[i], h_2=h_x_2[i], h_f=h_f[i], outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in],
                                 x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc, ret_mid_feat=True, ret_mid_smpl=True)
+                batch_x_c_output[i] = torch.clamp(batch_x_c_output_noclamp[i], min=MIN_CLAMP, max=MAX_CLAMP)
+                batch_x_f_output[i] = torch.clamp(batch_x_f_output_noclamp[i], min=MIN_CLAMP, max=MAX_CLAMP)
                 u = torch.empty_like(batch_x_c_output[i])
                 logits_gumbel = F.softmax(batch_x_c_output[i] - torch.log(-torch.log(torch.clamp(u.uniform_(), eps, eps_1))), dim=-1)
                 logits_gumbel_norm_1hot = F.threshold(logits_gumbel / torch.max(logits_gumbel,-1,keepdim=True)[0], eps_1, 0)
@@ -3763,10 +3793,12 @@ def main():
                                             outpad_right=outpad_rights[idx_in], h=h_melsp[j])
                 ## waveform reconstruction
                 idx_in += 1
-                batch_x_c_output[j], batch_x_f_output[j], batch_seg_conv[j], batch_conv_sc[j], \
+                batch_x_c_output_noclamp[j], batch_x_f_output_noclamp[j], batch_seg_conv[j], batch_conv_sc[j], \
                     batch_out[j], batch_out_2[j], batch_out_f[j], batch_signs_c[j], batch_scales_c[j], batch_logits_c[j], batch_signs_f[j], batch_scales_f[j], batch_logits_f[j], h_x[j], h_x_2[j], h_f[j] \
                         = model_waveform(batch_melsp_rec[j], batch_x_c_prev, batch_x_f_prev, batch_x_c, h=h_x[j], h_2=h_x_2[j], h_f=h_f[j], outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in],
                                 x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc, ret_mid_feat=True, ret_mid_smpl=True)
+                batch_x_c_output[j] = torch.clamp(batch_x_c_output_noclamp[j], min=MIN_CLAMP, max=MAX_CLAMP)
+                batch_x_f_output[j] = torch.clamp(batch_x_f_output_noclamp[j], min=MIN_CLAMP, max=MAX_CLAMP)
                 logits_gumbel = F.softmax(batch_x_c_output[j] - torch.log(-torch.log(torch.clamp(u.uniform_(), eps, eps_1))), dim=-1)
                 logits_gumbel_norm_1hot = F.threshold(logits_gumbel / torch.max(logits_gumbel,-1,keepdim=True)[0], eps_1, 0)
                 sample_indices_c = torch.sum(logits_gumbel_norm_1hot*indices_1hot,-1)
@@ -3842,10 +3874,12 @@ def main():
                                         outpad_right=outpad_rights[idx_in])
                 ## waveform reconstruction
                 idx_in += 1
-                batch_x_c_output[i], batch_x_f_output[i], batch_seg_conv[i], batch_conv_sc[i], \
+                batch_x_c_output_noclamp[i], batch_x_f_output_noclamp[i], batch_seg_conv[i], batch_conv_sc[i], \
                     batch_out[i], batch_out_2[i], batch_out_f[i], batch_signs_c[i], batch_scales_c[i], batch_logits_c[i], batch_signs_f[i], batch_scales_f[i], batch_logits_f[i], h_x[i], h_x_2[i], h_f[i] \
                         = model_waveform(batch_melsp_rec[i], batch_x_c_prev, batch_x_f_prev, batch_x_c, outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in],
                                 x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc, ret_mid_feat=True, ret_mid_smpl=True)
+                batch_x_c_output[i] = torch.clamp(batch_x_c_output_noclamp[i], min=MIN_CLAMP, max=MAX_CLAMP)
+                batch_x_f_output[i] = torch.clamp(batch_x_f_output_noclamp[i], min=MIN_CLAMP, max=MAX_CLAMP)
                 u = torch.empty_like(batch_x_c_output[i])
                 logits_gumbel = F.softmax(batch_x_c_output[i] - torch.log(-torch.log(torch.clamp(u.uniform_(), eps, eps_1))), dim=-1)
                 logits_gumbel_norm_1hot = F.threshold(logits_gumbel / torch.max(logits_gumbel,-1,keepdim=True)[0], eps_1, 0)
@@ -3912,10 +3946,12 @@ def main():
                                             outpad_right=outpad_rights[idx_in])
                 ## waveform reconstruction
                 idx_in += 1
-                batch_x_c_output[j], batch_x_f_output[j], batch_seg_conv[j], batch_conv_sc[j], \
+                batch_x_c_output_noclamp[j], batch_x_f_output_noclamp[j], batch_seg_conv[j], batch_conv_sc[j], \
                     batch_out[j], batch_out_2[j], batch_out_f[j], batch_signs_c[j], batch_scales_c[j], batch_logits_c[j], batch_signs_f[j], batch_scales_f[j], batch_logits_f[j], h_x[j], h_x_2[j], h_f[j] \
                         = model_waveform(batch_melsp_rec[j], batch_x_c_prev, batch_x_f_prev, batch_x_c, outpad_left=outpad_lefts[idx_in], outpad_right=outpad_rights[idx_in],
                                 x_c_lpc=batch_x_c_lpc, x_f_lpc=batch_x_f_lpc, ret_mid_feat=True, ret_mid_smpl=True)
+                batch_x_c_output[j] = torch.clamp(batch_x_c_output_noclamp[j], min=MIN_CLAMP, max=MAX_CLAMP)
+                batch_x_f_output[j] = torch.clamp(batch_x_f_output_noclamp[j], min=MIN_CLAMP, max=MAX_CLAMP)
                 logits_gumbel = F.softmax(batch_x_c_output[j] - torch.log(-torch.log(torch.clamp(u.uniform_(), eps, eps_1))), dim=-1)
                 logits_gumbel_norm_1hot = F.threshold(logits_gumbel / torch.max(logits_gumbel,-1,keepdim=True)[0], eps_1, 0)
                 sample_indices_c = torch.sum(logits_gumbel_norm_1hot*indices_1hot,-1)
@@ -4011,6 +4047,8 @@ def main():
                     batch_scales_f_ = batch_scales_f[i][k,:slens_utt]
                     batch_signs_f_ = batch_signs_f[i][k,:slens_utt]
                     batch_logits_f_ = batch_logits_f[i][k,:slens_utt]
+                    batch_x_c_output_noclamp_ = batch_x_c_output_noclamp[i][k,:slens_utt]
+                    batch_x_f_output_noclamp_ = batch_x_f_output_noclamp[i][k,:slens_utt]
                     batch_out_ = batch_out[i][k,:slens_utt]
                     batch_out_2_ = batch_out_2[i][k,:slens_utt]
                     batch_out_f_ = batch_out_f[i][k,:slens_utt]
@@ -4042,10 +4080,10 @@ def main():
                                             + torch.sqrt(torch.mean(criterion_l2(batch_scales_f_, scales_f_))) \
                                         + torch.mean(criterion_l1(batch_logits_f_, logits_f_)) \
                                             + torch.sqrt(torch.mean(criterion_l2(batch_logits_f_, logits_f_))) \
-                                        + torch.mean(criterion_l1(batch_x_c_output_, x_c_output_)) \
-                                            + torch.sqrt(torch.mean(criterion_l2(batch_x_c_output_, x_c_output_))) \
-                                        + torch.mean(criterion_l1(batch_x_f_output_, x_f_output_)) \
-                                            + torch.sqrt(torch.mean(criterion_l2(batch_x_f_output_, x_f_output_)))
+                                        + torch.mean(criterion_l1(batch_x_c_output_noclamp_, x_c_output_)) \
+                                            + torch.sqrt(torch.mean(criterion_l2(batch_x_c_output_noclamp_, x_c_output_))) \
+                                        + torch.mean(criterion_l1(batch_x_f_output_noclamp_, x_f_output_)) \
+                                            + torch.sqrt(torch.mean(criterion_l2(batch_x_f_output_noclamp_, x_f_output_)))
 
                     if flens_utt > 1:
                         batch_loss_seg_conv[i] += torch.mean(criterion_l1(batch_seg_conv_, seg_conv_)) \
@@ -4265,6 +4303,8 @@ def main():
                     batch_x_f_output[i] = torch.index_select(batch_x_f_output[i],0,idx_select_full)
                     batch_x_output[i] = torch.index_select(batch_x_output[i],0,idx_select_full)
                     batch_x_output_fb[i] = torch.index_select(batch_x_output_fb[i],0,idx_select_full)
+                    batch_x_c_output_noclamp[i] = torch.index_select(batch_x_c_output_noclamp[i],0,idx_select_full)
+                    batch_x_f_output_noclamp[i] = torch.index_select(batch_x_f_output_noclamp[i],0,idx_select_full)
                     batch_seg_conv[i] = torch.index_select(batch_seg_conv[i],0,idx_select_full)
                     batch_conv_sc[i] = torch.index_select(batch_conv_sc[i],0,idx_select_full)
                     batch_out[i] = torch.index_select(batch_out[i],0,idx_select_full)
@@ -4525,10 +4565,10 @@ def main():
                                     + torch.sqrt(torch.mean(torch.mean(torch.mean(criterion_l2(batch_scales_f[i], scales_f), -1), -1), -1)) \
                                 + torch.mean(torch.mean(torch.mean(criterion_l1(batch_logits_f[i], logits_f), -1), -1), -1) \
                                     + torch.sqrt(torch.mean(torch.mean(torch.mean(criterion_l2(batch_logits_f[i], logits_f), -1), -1), -1)) \
-                                + torch.mean(torch.mean(torch.mean(criterion_l1(batch_x_c_output[i], x_c_output), -1), -1), -1) \
-                                    + torch.sqrt(torch.mean(torch.mean(torch.mean(criterion_l2(batch_x_c_output[i], x_c_output), -1), -1), -1)) \
-                                + torch.mean(torch.mean(torch.mean(criterion_l1(batch_x_f_output[i], x_f_output), -1), -1), -1) \
-                                    + torch.sqrt(torch.mean(torch.mean(torch.mean(criterion_l2(batch_x_f_output[i], x_f_output), -1), -1), -1))
+                                + torch.mean(torch.mean(torch.mean(criterion_l1(batch_x_c_output_noclamp[i], x_c_output), -1), -1), -1) \
+                                    + torch.sqrt(torch.mean(torch.mean(torch.mean(criterion_l2(batch_x_c_output_noclamp[i], x_c_output), -1), -1), -1)) \
+                                + torch.mean(torch.mean(torch.mean(criterion_l1(batch_x_f_output_noclamp[i], x_f_output), -1), -1), -1) \
+                                    + torch.sqrt(torch.mean(torch.mean(torch.mean(criterion_l2(batch_x_f_output_noclamp[i], x_f_output), -1), -1), -1))
             batch_loss_mid_smpl[i] = batch_loss_mid_smpl_.mean()
 
             batch_loss_wave = batch_loss_seg_conv_.sum() + batch_loss_conv_sc_.sum() \

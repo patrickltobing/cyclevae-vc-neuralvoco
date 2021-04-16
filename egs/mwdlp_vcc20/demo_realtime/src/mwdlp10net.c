@@ -91,7 +91,7 @@ static void run_frame_network_mwdlp10(MWDLP10NNetState *net, float *gru_a_condit
 }
 
 
-//PLT_Dec20
+//PLT_Mar21
 static void run_sample_network_mwdlp10_coarse(MWDLP10NNetState *net, const EmbeddingLayer *a_embed_coarse,
     const EmbeddingLayer *a_embed_fine, const EmbeddingLayer *prev_logits_coarse, float *pdf,
         const float *gru_a_condition, const float *gru_b_condition, int *last_coarse, int *last_fine)
@@ -123,7 +123,7 @@ static void run_sample_network_mwdlp10_coarse(MWDLP10NNetState *net, const Embed
 }
 
 
-//PLT_Dec20
+//PLT_Mar21
 static void run_sample_network_mwdlp10_fine(MWDLP10NNetState *net, const EmbeddingLayer *c_embed_coarse,
     const EmbeddingLayer *prev_logits_fine, float *pdf, const float *gru_c_condition, int *coarse, int *last_fine)
 {
