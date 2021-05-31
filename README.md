@@ -1,6 +1,12 @@
-# Real-time low-latency multispeaker voice conversion (VC) with cyclic variational autoencoder (CycleVAE) and multiband WaveRNN using data-driven linear prediction (MWDLP)
+# Low-latency real-time multispeaker voice conversion (VC) with cyclic variational autoencoder (CycleVAE) and multiband WaveRNN using data-driven linear prediction (MWDLP)
 
-Paper can be found here: [Low-latency real-time non-parallel voice conversion based on cyclic variational autoencoder and multiband WaveRNN with data-driven linear prediction](https://arxiv.org/pdf/2105.09858.pdf)
+- VC Paper can be found here: 
+
+[Low-latency real-time non-parallel voice conversion based on cyclic variational autoencoder and multiband WaveRNN with data-driven linear prediction](https://arxiv.org/pdf/2105.09858.pdf)
+
+- Neural vocoder paper can be found here:
+
+[High-Fidelity and Low-Latency Universal Neural Vocoder based on Multiband WaveRNN with Data-Driven Linear Prediction for Discrete Waveform Modeling](https://arxiv.org/abs/2105.09856.pdf)
 
 
 ## Requirements:
@@ -21,7 +27,15 @@ $ cd ..
 ```
 
 
-## Samples and real-time compilable demo with CPU
+## Latest version and current status
+- 3.1:
+    - Revised handling of speaker-code with factorized and controllable trainable basis vectors
+    - Revised MWDLP architecture with trainable basis vectors of previous logits and an additional FC layer for data-driven LP
+    - Revised C implementation for faster FC layer computation in MWDLP
+- On going to update samples and demo
+
+
+## Samples and real-time compilable demo with CPU [from version 3.0]
 * [Samples](https://drive.google.com/drive/folders/14pJSpYsoPpLR6Ah-EbENSsN6ABcSvB0w?usp=sharing)
 * [Real-time compilable demo with CPU](https://drive.google.com/file/d/1j7ddvltaWwie0wEp79W6VL2EV-SSAW-g/view?usp=sharing)
 

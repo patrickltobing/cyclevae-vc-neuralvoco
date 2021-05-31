@@ -394,7 +394,9 @@ int main(int argc, char **argv) {
                 net = mwdlp10cyclevaenet_create();
 
                 // set spk-conditioning here
-                float spk_code_aux[FEATURE_N_SPK_2];
+                float spk_code_coeff[FEATURE_N_WEIGHT_EMBED_SPK];
+                float spk_code_aux[FEATURE_SPK_DIM];
+                RNN_COPY(spk_code_aux, (&embed_spk_ti)->embedding_weights, FEATURE_SPK_DIM);
                 if (cv_point_flag) { //exact point spk-code location
                     float one_hot_code[FEATURE_N_SPK] = {0};
                     one_hot_code[spk_idx-1] = 1;
@@ -404,9 +406,9 @@ int main(int argc, char **argv) {
                         printf("[%ld] %f ", k+1, one_hot_code[k]);
                     }
                     printf("\n");
-                    compute_spkidtr(&fc_in_spk_code_transform, &fc_out_spk_code_transform, spk_code_aux, one_hot_code);
-                    printf("%d-dim embed.: ", FEATURE_N_SPK);
-                    for (k = 0; k < FEATURE_N_SPK; k++) {
+                    compute_spkidtr(&fc_in_spk_code, &fc_in_spk_code_transform, &fc_out_spk_code_transform, spk_code_aux, spk_code_coeff, one_hot_code);
+                    printf("%d-dim spk-embed.: ", FEATURE_SPK_DIM);
+                    for (k = 0; k < FEATURE_SPK_DIM; k++) {
                         printf("[%ld] %f ", k+1, spk_code_aux[k]);
                     }
                     printf("\n");
@@ -416,9 +418,9 @@ int main(int argc, char **argv) {
                     spk_coord[1] = y_coord;
                     //2-dim --> N-dim [N_SPK]
                     printf("2-dim spk-coord: %f %f\n", spk_coord[0], spk_coord[1]);
-                    compute_spkidtr_coord(&fc_out_spk_code_transform, spk_code_aux, spk_coord);
-                    printf("%d-dim embed.: ", FEATURE_N_SPK);
-                    for (k = 0; k < FEATURE_N_SPK; k++) {
+                    compute_spkidtr_coord(&fc_out_spk_code_transform, spk_code_aux, spk_code_coeff, spk_coord);
+                    printf("%d-dim spk-embed.: ", FEATURE_SPK_DIM);
+                    for (k = 0; k < FEATURE_SPK_DIM; k++) {
                         printf("[%ld] %f ", k+1, spk_code_aux[k]);
                     }
                     printf("\n");
@@ -822,7 +824,9 @@ int main(int argc, char **argv) {
                 net = mwdlp10cyclevaenet_create();
 
                 // set spk-conditioning here
-                float spk_code_aux[FEATURE_N_SPK_2];
+                float spk_code_coeff[FEATURE_N_WEIGHT_EMBED_SPK];
+                float spk_code_aux[FEATURE_SPK_DIM];
+                RNN_COPY(spk_code_aux, (&embed_spk_ti)->embedding_weights, FEATURE_SPK_DIM);
                 if (cv_point_flag) { //exact point spk-code location
                     float one_hot_code[FEATURE_N_SPK] = {0};
                     one_hot_code[spk_idx-1] = 1;
@@ -832,21 +836,21 @@ int main(int argc, char **argv) {
                         printf("[%ld] %f ", k+1, one_hot_code[k]);
                     }
                     printf("\n");
-                    compute_spkidtr(&fc_in_spk_code_transform, &fc_out_spk_code_transform, spk_code_aux, one_hot_code);
-                    printf("%d-dim embed.: ", FEATURE_N_SPK);
-                    for (k = 0; k < FEATURE_N_SPK; k++) {
+                    compute_spkidtr(&fc_in_spk_code, &fc_in_spk_code_transform, &fc_out_spk_code_transform, spk_code_aux, spk_code_coeff, one_hot_code);
+                    printf("%d-dim spk-embed.: ", FEATURE_SPK_DIM);
+                    for (k = 0; k < FEATURE_SPK_DIM; k++) {
                         printf("[%ld] %f ", k+1, spk_code_aux[k]);
                     }
                     printf("\n");
                 } else { //interpolated spk-code location
                     float spk_coord[2];
-                    spk_coord[0] = atof(argv[1]);
-                    spk_coord[1] = atof(argv[2]);
+                    spk_coord[0] = x_coord;
+                    spk_coord[1] = y_coord;
                     //2-dim --> N-dim [N_SPK]
                     printf("2-dim spk-coord: %f %f\n", spk_coord[0], spk_coord[1]);
-                    compute_spkidtr_coord(&fc_out_spk_code_transform, spk_code_aux, spk_coord);
-                    printf("%d-dim embed.: ", FEATURE_N_SPK);
-                    for (k = 0; k < FEATURE_N_SPK; k++) {
+                    compute_spkidtr_coord(&fc_out_spk_code_transform, spk_code_aux, spk_code_coeff, spk_coord);
+                    printf("%d-dim spk-embed.: ", FEATURE_SPK_DIM);
+                    for (k = 0; k < FEATURE_SPK_DIM; k++) {
                         printf("[%ld] %f ", k+1, spk_code_aux[k]);
                     }
                     printf("\n");

@@ -151,197 +151,70 @@ void compute_dense_linear(const DenseLayer *layer, float *output, const float *i
 void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *fc_layer,
     const float *prev_logits, float *output, const float *input, const int *last_output)
 {
-    //int i, j, k, l, m, c, n, last_idx;
-    //int i, j, k, l, m, c, n, n_lpcbands_signs, n_lpcbands_mags, last_idx;
-    //int i, j, k, l, m, n, n_lpcbands_signs, n_lpcbands_mags, last_idx;
-    int i, j, n, n_lpcbands_signs, n_lpcbands_mags, last_idx;
-    //int i, j, n, n_lpcbands_signs, n_lpcbands_mags, last_idx;
-    //int i, c, n;
-    //int j;
-    //int n_lpcbands, n_c_lpcbands2;
-    //int n_logitsbands, n_c_logitsbands2;
-    //int last_idx;
-    //float tmp[MDENSE_OUT];
-    //float tmp[MDENSE_OUT], vec_out[MDENSE_OUT], dualfc_out[MDENSE_OUT_DUALFC];
-    float vec_out[MDENSE_OUT], dualfc_out[MDENSE_OUT_DUALFC];
-    //float signs[LPC_ORDER_MBANDS_2], mags[LPC_ORDER_MBANDS_2], mids[MID_OUT_MBANDS_2];
-    //float lpc_signs[LPC_ORDER_MBANDS], lpc_mags[LPC_ORDER_MBANDS], res_mids[MID_OUT_MBANDS];
-    //float res_mids[MID_OUT_MBANDS];
-    //float *logits;
-    //celt_assert(input != output);
+    //int i, j, k, l, m, n, last_idx;
+    int i, j, k, n, last_idx;
+    float vec_out[MDENSE_OUT_DUALFC_2_MBANDS], dualfc_out[MDENSE_OUT_DUALFC_MBANDS], fc_out[MDENSE_OUT_FC_MBANDS];
+    float signs[LPC_ORDER_MBANDS], mags[LPC_ORDER_MBANDS];
 
     //compute dualfc output vectors
-    for (i=0;i<MDENSE_OUT;i++)
+    for (i=0;i<MDENSE_OUT_DUALFC_2_MBANDS;i++)
        vec_out[i] = layer->bias[i];
-       //tmp[i] = layer->bias[i];
-    //sgemv_accum16(tmp, layer->input_weights, MDENSE_OUT, RNN_SUB_NEURONS, MDENSE_OUT, input);
-    sgemv_accum16(vec_out, layer->input_weights, MDENSE_OUT, RNN_SUB_NEURONS, MDENSE_OUT, input);
-    //for (i=0;i<MDENSE_OUT;i++) {
-    //    printf("mdense_out [%d] %f\n", i, tmp[i]);
-    //}
-    //exit(0);
-    //output_dim:2*N_MBANDS*(DLPC_ORDER*2+MID_OUT),e.g.,DLPC_ORDER=6,N_MBANDS=5,MID_OUT=32->440
-    //signs, 1st 6*5*2
-    //for (i=0;i<LPC_ORDER_MBANDS_4;i++)
-    //   if (tmp[i] < -32) tmp[i] = -32;
-    //   else if (tmp[i] > 32) tmp[i] = 32;
-    //RNN_COPY(signs, tmp, LPC_ORDER_MBANDS_2);
-    //RNN_COPY(vec_out, tmp, LPC_ORDER_MBANDS);
-    //RNN_COPY(&vec_out[LPC_ORDER_MBANDS_2_MID_OUT_MBANDS], &tmp[LPC_ORDER_MBANDS], LPC_ORDER_MBANDS);
-    //-1,1
-    //compute_activation(signs, signs, LPC_ORDER_MBANDS_2, layer->activation_signs);
-    compute_activation(vec_out, vec_out, LPC_ORDER_MBANDS, layer->activation_signs);
-    compute_activation(&vec_out[LPC_ORDER_MBANDS_2_MID_OUT_MBANDS], &vec_out[LPC_ORDER_MBANDS_2_MID_OUT_MBANDS],
-            LPC_ORDER_MBANDS, layer->activation_signs);
-    //for (i=0;i<LPC_ORDER_MBANDS_2;i++) {
-    //    printf("signs [%d] %f\n", i, signs[i]);
-    //}
-    //exit(0);
-    //mags, 2nd 6*5*2
-    //RNN_COPY(mags, &tmp[LPC_ORDER_MBANDS_2], LPC_ORDER_MBANDS_2);
-    //RNN_COPY(&vec_out[LPC_ORDER_MBANDS], &tmp[LPC_ORDER_MBANDS_2], LPC_ORDER_MBANDS);
-    //RNN_COPY(&vec_out[LPC_ORDER_MBANDS_3_MID_OUT_MBANDS], &tmp[LPC_ORDER_MBANDS_3], LPC_ORDER_MBANDS);
-    //>= 0
-    //compute_activation(mags, mags, LPC_ORDER_MBANDS_2, layer->activation_mags);
-    compute_activation(&vec_out[LPC_ORDER_MBANDS], &vec_out[LPC_ORDER_MBANDS], LPC_ORDER_MBANDS, layer->activation_mags);
-    compute_activation(&vec_out[LPC_ORDER_MBANDS_3_MID_OUT_MBANDS], &vec_out[LPC_ORDER_MBANDS_3_MID_OUT_MBANDS],
-            LPC_ORDER_MBANDS, layer->activation_mags);
-    //for (i=0;i<LPC_ORDER_MBANDS_2;i++) {
-    //    printf("mags [%d] %f\n", i, mags[i]);
-    //}
-    //exit(0);
-    //mids, last 32*5*2
-    //RNN_COPY(mids, &tmp[LPC_ORDER_MBANDS_4], MID_OUT_MBANDS_2);
-    //RNN_COPY(&vec_out[LPC_ORDER_MBANDS_2], &tmp[LPC_ORDER_MBANDS_4], MID_OUT_MBANDS);
-    //RNN_COPY(&vec_out[LPC_ORDER_MBANDS_4_MID_OUT_MBANDS], &tmp[LPC_ORDER_MBANDS_4_MID_OUT_MBANDS], MID_OUT_MBANDS);
-    //compute_activation(mids, mids, MID_OUT_MBANDS_2, layer->activation_mids);
-    compute_activation(&vec_out[LPC_ORDER_MBANDS_2], &vec_out[LPC_ORDER_MBANDS_2],
-            MID_OUT_MBANDS, layer->activation_mids);
-    compute_activation(&vec_out[LPC_ORDER_MBANDS_4_MID_OUT_MBANDS], &vec_out[LPC_ORDER_MBANDS_4_MID_OUT_MBANDS],
-            MID_OUT_MBANDS, layer->activation_mids);
-    //for (i=0;i<MID_OUT_MBANDS_2;i++) {
-    //    printf("mids [%d] %f\n", i, mids[i]);
-    //}
-
-    ////n_dim = DLPC_ORDER or MID_OUT; n_channel = 2
-    ////n_bands x n_channel x n_dim --> n_bands x n_dim x n_channel
-    ////FIXME: change structure in training script as above
-    //for (n=0;n<N_MBANDS;n++) {
-    //    i = n*DLPC_ORDER;
-    //    j = n*2*DLPC_ORDER;
-    //    k = n*MID_OUT;
-    //    l = n*2*MID_OUT;
-    //    m = j+DLPC_ORDER;
-    //    //1st channel
-    //    RNN_COPY(&vec_out[i], &signs[j], DLPC_ORDER);
-    //    RNN_COPY(&vec_out[LPC_ORDER_MBANDS+i], &mags[j], DLPC_ORDER);
-    //    RNN_COPY(&vec_out[LPC_ORDER_MBANDS_2+k], &mids[l], MID_OUT);
-    //    //2nd channel
-    //    RNN_COPY(&vec_out[LPC_ORDER_MBANDS_2_MID_OUT_MBANDS+i], &signs[m], DLPC_ORDER);
-    //    RNN_COPY(&vec_out[LPC_ORDER_MBANDS_3_MID_OUT_MBANDS+i], &mags[m], DLPC_ORDER);
-    //    RNN_COPY(&vec_out[LPC_ORDER_MBANDS_4_MID_OUT_MBANDS+k], &mids[l+MID_OUT], MID_OUT);
-    //}
+    sgemv_accum16(vec_out, layer->input_weights, MDENSE_OUT_DUALFC_2_MBANDS, RNN_SUB_NEURONS, MDENSE_OUT_DUALFC_2_MBANDS, input);
+    compute_activation(vec_out, vec_out, MDENSE_OUT_DUALFC_2_MBANDS, layer->activation);
     //combine dualfc channels
-    sgev_dualfc8(dualfc_out, layer->factors, MDENSE_OUT, vec_out);
+    // [[[K,K,32]_1,...,[K,K,32]_NB]_1,[[K,K,32]_1,...,[K,K,32]_NB]_2]
+    sgev_dualfc8(dualfc_out, layer->factors, MDENSE_OUT_DUALFC_2_MBANDS, vec_out);
 
-    ////logits by last fc-layer
-    for (n=0;n<N_MBANDS;n++)
-        for (i=0,j=n*SQRT_QUANTIZE;i<SQRT_QUANTIZE;i++)
-            output[j+i] = fc_layer->bias[i];
-    //for (n=0;n<N_MBANDS;n++)
-    //    for (i=0,j=n*DLPC_ORDER;i<DLPC_ORDER;i++)
-    //        printf("signs [%d][%d] %f\n", n, i, dualfc_out[j+i]);
-    //for (n=0;n<N_MBANDS;n++)
-    //    for (i=0,j=n*DLPC_ORDER+LPC_ORDER_MBANDS;i<DLPC_ORDER;i++)
-    //        printf("mags [%d][%d] %f\n", n, i, dualfc_out[j+i]);
-    //for (n=0;n<N_MBANDS;n++)
-    //    for (i=0,j=n*MID_OUT+LPC_ORDER_MBANDS_2;i<MID_OUT;i++)
-    //        printf("mids [%d][%d] %f\n", n, i, dualfc_out[j+i]);
-    sgemv_fclogits16(output, fc_layer->input_weights, SQRT_QUANTIZE, MID_OUT, N_MBANDS, &dualfc_out[LPC_ORDER_MBANDS_2]);
-    //for (n=0;n<N_MBANDS;n++)
-    //    for (i=0,j=n*SQRT_QUANTIZE;i<SQRT_QUANTIZE;i++)
-    //        printf("out [%d][%d] %f\n", n, i, output[j+i]);
-    compute_activation(output, output, SQRT_QUANTIZE_MBANDS, fc_layer->activation);
-
-    //exit(0);
-    //for (i=0;i<LPC_ORDER_MBANDS;i++) {
-    //    lpc_signs[i] = 0;
-    //    lpc_mags[i] = 0;
+    //final fc layer
+    // [[K,K,32]_1,...,[K,K,32]_NB]
+    for (i=0;i<MDENSE_OUT_FC_MBANDS;i++)
+       fc_out[i] = fc_layer->bias[i];
+    //sgemv_fclogits16(fc_out, fc_layer->input_weights, MDENSE_OUT_FC, MDENSE_OUT_DUALFC, N_MBANDS, dualfc_out);
+    sgemv_fcout32(fc_out, fc_layer->input_weights, MDENSE_OUT_FC, MDENSE_OUT_DUALFC, N_MBANDS, dualfc_out);
+    //for (n=0,k=0;n<N_MBANDS;n++) {
+    //    compute_activation(&fc_out[k], &fc_out[k], DLPC_ORDER, layer->activation_signs); //signs
+    //    k += DLPC_ORDER;
+    //    compute_activation(&fc_out[k], &fc_out[k], DLPC_ORDER, layer->activation_mags); //mags
+    //    k += DLPC_ORDER;
+    //    compute_activation(&fc_out[k], &fc_out[k], SQRT_QUANTIZE, layer->activation_logits); //mags
+    //    RNN_COPY(&output[n*SQRT_QUANTIZE], &fc_out[k], SQRT_QUANTIZE);
+    //    k += SQRT_QUANTIZE;
     //}
-    //for (i=0;i<MID_OUT_MBANDS;i++)
-    //    res_mids[i] = 0;
+    //compute_activation(fc_out, fc_out, LPC_ORDER_MBANDS, layer->activation_signs); //signs
+    //compute_activation(&fc_out[LPC_ORDER_MBANDS], &fc_out[LPC_ORDER_MBANDS], LPC_ORDER_MBANDS, layer->activation_mags); //mags
+    //compute_activation(&fc_out[LPC_ORDER_MBANDS_2], &fc_out[LPC_ORDER_MBANDS_2], SQRT_QUANTIZE_MBANDS, layer->activation_logits); //logits
+    //RNN_COPY(output, &fc_out[LPC_ORDER_MBANDS_2], SQRT_QUANTIZE_MBANDS);
+    for (n=0,i=0,j=0,k=0;n<N_MBANDS;n++) {
+        RNN_COPY(&signs[i], &fc_out[k], DLPC_ORDER);
+        k += DLPC_ORDER;
+        RNN_COPY(&mags[i], &fc_out[k], DLPC_ORDER);
+        k += DLPC_ORDER;
+        RNN_COPY(&output[j], &fc_out[k], SQRT_QUANTIZE);
+        i += DLPC_ORDER;
+        j += SQRT_QUANTIZE;
+        k += SQRT_QUANTIZE;
+    }
+    compute_activation(signs, signs, LPC_ORDER_MBANDS, layer->activation_signs); //signs
+    compute_activation(mags, mags, LPC_ORDER_MBANDS, layer->activation_mags); //mags
+    compute_activation(output, output, SQRT_QUANTIZE_MBANDS, layer->activation_logits); //logits
 
     //refine logits with data-driven linear prediction procedure
-    for (n=0;n<N_MBANDS;n++) { //n_bands x 2 x n_lpc or 32, loop order is n_bands --> 2 --> n_lpc/32
-        ////lpc: n_b x 2 x n_lpc
-        //for (c=0,n_lpcbands=n*DLPC_ORDER,n_c_lpcbands2=n_lpcbands*2;c<2;c++) {
-        //    for (i=0;i<DLPC_ORDER;i++,n_c_lpcbands2++) {
-        //        //previous code uses shared factors for signs/mags between bands [c*DLPC_ORDER + i]
-        //        //changed into band-dependent factors for signs/mags [n*DLPC_ORDER*2 + c*DLPC_ORDER + i]
-        //        //lpc_signs[n_lpcbands+i] += signs[n_c_lpcbands2]*layer->factor_signs[n_c_lpcbands2];
-        //        //lpc_mags[n_lpcbands+i] += mags[n_c_lpcbands2]*layer->factor_mags[n_c_lpcbands2];
-        //        //lpc_signs[n_lpcbands+i] += signs[n_c_lpcbands2]*layer->factors[i+n_lpcbands+c*MDENSE_OUT_DUALFC];
-        //        //lpc_mags[n_lpcbands+i] += mags[n_c_lpcbands2]*layer->factors[i+n_lpcbands+LPC_ORDER_MBANDS+c*MDENSE_OUT_DUALFC];
-        //        lpc_signs[n_lpcbands+i] += vec_out[i+n_lpcbands+c*MDENSE_OUT_DUALFC]*layer->factors[i+n_lpcbands+c*MDENSE_OUT_DUALFC];
-        //        lpc_mags[n_lpcbands+i] += vec_out[i+n_lpcbands+LPC_ORDER_MBANDS+c*MDENSE_OUT_DUALFC]*layer->factors[i+n_lpcbands+LPC_ORDER_MBANDS+c*MDENSE_OUT_DUALFC];
-        //    }
-        //}
-        ////mids: n_b x 32
-        //for (c=0,n_logitsbands=n*MID_OUT,n_c_logitsbands2=n_logitsbands*2;c<2;c++) {
-        //    //factor of mids also band-dependent, indexing similar as above signs/mags with 32-dim
-        //    for (i=0;i<MID_OUT;i++,n_c_logitsbands2++)
-        //        //res_mids[n_logitsbands+i] += mids[n_c_logitsbands2]*layer->factor_mids[n_c_logitsbands2];
-        //        //res_mids[n_logitsbands+i] += mids[n_c_logitsbands2]*layer->factors[i+n_logitsbands+LPC_ORDER_MBANDS_2+c*MDENSE_OUT_DUALFC];
-        //        res_mids[n_logitsbands+i] += vec_out[i+n_logitsbands+LPC_ORDER_MBANDS_2+c*MDENSE_OUT_DUALFC]*layer->factors[i+n_logitsbands+LPC_ORDER_MBANDS_2+c*MDENSE_OUT_DUALFC];
-        //}
-        ////////logits: 32 x 32 [[o_1,...,o_256]_1,...,[o_1,...,o_256]_N]
-        //logits = &output[n*SQRT_QUANTIZE];
-        //for (i=0;i<SQRT_QUANTIZE;i++)
-        //    logits[i] = fc_layer->bias[i];
-        ////sgemv_accum16(logits, fc_layer->input_weights, SQRT_QUANTIZE, MID_OUT, SQRT_QUANTIZE, &dualfc_out[LPC_ORDER_MBANDS_2+n*MID_OUT]);
-        //sgemv_accum16(logits, fc_layer->input_weights, SQRT_QUANTIZE, MID_OUT, SQRT_QUANTIZE, &res_mids[n_logitsbands]);
-        //////for (i=0;i<SQRT_QUANTIZE;i++)
-        //////    if (logits[i] > 32) logits[i] = 32;
-        //compute_activation(logits, logits, SQRT_QUANTIZE, fc_layer->activation);
-        ////for (i=0;i<MID_OUT;i++) {
-        ////    printf("res_mids [%d][%d] %f\n", n, i, res_mids[n_logitsbands+i]);
-        ////}
-        ////for (i=0;i<SQRT_QUANTIZE;i++) {
-        ////    printf("logits_out [%d][%d] %f\n", n, i, logits[i]);
-        ////}
-        ////refine logits using linear prediction with one-hot basis of previous samples and data-driven lpc
-        ////last_output: [[o_1,...,o_N]_1,...,[o_1,...,o_N]_K]; lpc: [[o_1,...,o_K]_1,...,[o_1,...,o_K]_N]
-        //for (i=0;i<DLPC_ORDER;i++) {
-        for (i=0,j=n*SQRT_QUANTIZE,n_lpcbands_signs=n*DLPC_ORDER,n_lpcbands_mags=LPC_ORDER_MBANDS+n_lpcbands_signs;i<DLPC_ORDER;i++) {
-        //for (i=0,n_lpcbands_signs=n*DLPC_ORDER,n_lpcbands_mags=LPC_ORDER_MBANDS+n_lpcbands_signs;i<DLPC_ORDER;i++) {
+    //for (n=0,k=0;n<N_MBANDS;n++) {
+    for (n=0;n<N_MBANDS;n++) {
+        //compute_activation(&fc_out[k], &fc_out[k], DLPC_ORDER, layer->activation_signs); //signs
+        //k += DLPC_ORDER;
+        //compute_activation(&fc_out[k], &fc_out[k], DLPC_ORDER, layer->activation_mags); //mags
+        //k += DLPC_ORDER;
+        //compute_activation(&fc_out[k], &fc_out[k], SQRT_QUANTIZE, layer->activation_logits); //mags
+        //RNN_COPY(&output[n*SQRT_QUANTIZE], &fc_out[k], SQRT_QUANTIZE);
+        //k += SQRT_QUANTIZE;
+        //for (i=0,j=n*SQRT_QUANTIZE,m=n*MDENSE_OUT_FC,l=m+DLPC_ORDER;i<DLPC_ORDER;i++) {
+        for (i=0,j=n*SQRT_QUANTIZE;i<DLPC_ORDER;i++) {
             last_idx = last_output[i*N_MBANDS+n];
-            //logits[last_idx] += lpc_signs[n_lpcbands+i]*lpc_mags[n_lpcbands+i]*prev_logits[last_idx];
-            //logits[last_idx] += dualfc_out[n_lpcbands_signs+i]*dualfc_out[n_lpcbands_mags+i]*prev_logits[last_idx];
-            output[j+last_idx] += dualfc_out[n_lpcbands_signs+i]*dualfc_out[n_lpcbands_mags+i]*prev_logits[last_idx];
-            //j = last_output[i*N_MBANDS+n];
-            //logits[j] += lpc_signs[n_lpcbands+i]*lpc_mags[n_lpcbands+i];
-            //if (logits[j] < -32) logits[j] = -32;
-            //else if (logits[j] > 32) logits[j] = 32;
+            output[j+last_idx] += signs[i]*mags[i]*prev_logits[last_idx];
+            //output[j+last_idx] += fc_out[m+i]*fc_out[l+i]*prev_logits[last_idx];
         }
-        //for (i=0;i<DLPC_ORDER;i++) {
-        //    j = last_output[i*N_MBANDS+n];
-        //    if (logits[j] > 32) logits[j] = 32;
-        //}
-        //    //logits[last_output[i*N_MBANDS+n]] += lpc[n_lpcbands+i];
-   }
-   //for (i=0;i<MID_OUT_MBANDS;i++) {
-   //    printf("res_mids [%d] %f\n", i, res_mids[i]);
-   //}
-   //for (i=0;i<MID_OUT_MBANDS;i++) {
-   //    printf("logits_outs [%d] %f\n", i, output[i]);
-   //}
-   //for (i=0;i<LPC_ORDER_MBANDS;i++) {
-   //    printf("lpc_signs [%d] %f\n", i, lpc_signs[i]);
-   //}
-   //for (i=0;i<LPC_ORDER_MBANDS;i++) {
-   //    printf("lpc_mags [%d] %f\n", i, lpc_mags[i]);
-   //}
-   //exit(0);
+    }
 }
 
 //PLT_Mar21
@@ -349,69 +222,23 @@ void compute_mdense_mwdlp10_nodlpc(const MDenseLayerMWDLP10 *layer, const DenseL
     const float *input)
 {
     int i, j, n;
-    //int i, c, n;
-    //int j;
-    //int n_logitsbands, n_c_logitsbands2;
-    //float mids[MID_OUT_MBANDS_2], vec_out[MID_OUT_MBANDS_2];
     float vec_out[MID_OUT_MBANDS_2];
-    //float res_mids[MID_OUT_MBANDS];
     float dualfc_out[MID_OUT_MBANDS];
-    //float *logits;
-    //celt_assert(input != output);
 
     //mid-logits by dualfc
     for (i=0;i<MID_OUT_MBANDS_2;i++)
        vec_out[i] = layer->bias[i];
-       //mids[i] = layer->bias[i];
-    //sgemv_accum16(mids, layer->input_weights, MID_OUT_MBANDS_2, RNN_SUB_NEURONS, MID_OUT_MBANDS_2, input);
     sgemv_accum16(vec_out, layer->input_weights, MID_OUT_MBANDS_2, RNN_SUB_NEURONS, MID_OUT_MBANDS_2, input);
-    //exit(0);
-    //mids, last 32*5*2
-    //compute_activation(mids, mids, MID_OUT_MBANDS_2, layer->activation_mids);
-    compute_activation(vec_out, vec_out, MID_OUT_MBANDS_2, layer->activation_mids);
-    //for (i=0;i<MID_OUT_MBANDS_2;i++) {
-    //    printf("mids [%d] %f\n", i, mids[i]);
-    //}
-    //exit(0);
-
-    ////n_dim = DLPC_ORDER or MID_OUT; n_channel = 2
-    ////n_bands x n_channel x n_dim --> n_bands x n_dim x n_channel
-    ////FIXME: change structure in training script as above
-    //for (n=0;n<N_MBANDS;n++) {
-    //    i = n*MID_OUT;
-    //    j = n*2*MID_OUT;
-    //    //1st channel
-    //    RNN_COPY(&vec_out[i], &mids[j], MID_OUT);
-    //    //2nd channel
-    //    RNN_COPY(&vec_out[MID_OUT_MBANDS+i], &mids[j+MID_OUT], MID_OUT);
-    //}
+    compute_activation(vec_out, vec_out, MID_OUT_MBANDS_2, layer->activation);
     //combine dualfc channels
-    sgev_dualfc8(dualfc_out, layer->factors, MDENSE_OUT, vec_out);
+    sgev_dualfc8(dualfc_out, layer->factors, MDENSE_OUT_DUALFC_2_MBANDS, vec_out);
 
     //logits by last fc-layer
     for (n=0;n<N_MBANDS;n++)
         for (i=0,j=n*SQRT_QUANTIZE;i<SQRT_QUANTIZE;i++)
             output[j+i] = fc_layer->bias[i];
     sgemv_fclogits16(output, fc_layer->input_weights, SQRT_QUANTIZE, MID_OUT, N_MBANDS, dualfc_out);
-    compute_activation(output, output, SQRT_QUANTIZE_MBANDS, fc_layer->activation);
-
-    //for (i=0;i<MID_OUT_MBANDS;i++)
-    //    res_mids[i] = 0;
-    //for (n=0;n<N_MBANDS;n++) { //n_bands x 2 x n_lpc or 32, loop order is n_bands --> 2 --> n_lpc/32
-    //    //mids: n_b x 32
-    //    for (c=0,n_logitsbands=n*MID_OUT,n_c_logitsbands2=n_logitsbands*2;c<2;c++) {
-    //        //factor of mids also band-dependent, indexing similar as above signs/mags with 32-dim
-    //        for (i=0;i<MID_OUT;i++,n_c_logitsbands2++)
-    //            res_mids[n_logitsbands+i] += mids[n_c_logitsbands2]*layer->factor_mids[n_c_logitsbands2];
-    //    }
-    //    //logits: 32 x 32 [[o_1,...,o_256]_1,...,[o_1,...,o_256]_N]
-    //    logits = &output[n*SQRT_QUANTIZE];
-    //    for (i=0;i<SQRT_QUANTIZE;i++)
-    //        logits[i] = fc_layer->bias[i];
-    //    sgemv_accum16(logits, fc_layer->input_weights, SQRT_QUANTIZE, MID_OUT, SQRT_QUANTIZE, &res_mids[n_logitsbands]);
-    //    compute_activation(logits, logits, SQRT_QUANTIZE, fc_layer->activation);
-    //}
-    //exit(0);
+    compute_activation(output, output, SQRT_QUANTIZE_MBANDS, layer->activation_logits);
 }
 
 //PLT_Sep20

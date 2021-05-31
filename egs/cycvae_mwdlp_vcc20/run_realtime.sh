@@ -172,8 +172,9 @@ dilation_size_lf0=`awk '{if ($1 == "dilation_size_lf0:") print $2}' conf/config.
 causal_conv_enc=`awk '{if ($1 == "causal_conv_enc:") print $2}' conf/config.yml`
 causal_conv_dec=`awk '{if ($1 == "causal_conv_dec:") print $2}' conf/config.yml`
 causal_conv_lf0=`awk '{if ($1 == "causal_conv_lf0:") print $2}' conf/config.yml`
-pad_len=`awk '{if ($1 == "pad_len:") print $2}' conf/config.yml`
 spkidtr_dim=`awk '{if ($1 == "spkidtr_dim:") print $2}' conf/config.yml`
+emb_spk_dim=`awk '{if ($1 == "emb_spk_dim:") print $2}' conf/config.yml`
+n_weight_emb=`awk '{if ($1 == "n_weight_emb:") print $2}' conf/config.yml`
 right_size_spk=`awk '{if ($1 == "right_size_spk:") print $2}' conf/config.yml`
 right_size_dec=`awk '{if ($1 == "right_size_dec:") print $2}' conf/config.yml`
 right_size_lf0=`awk '{if ($1 == "right_size_lf0:") print $2}' conf/config.yml`
@@ -212,10 +213,10 @@ mid_dim=`awk '{if ($1 == "mid_dim:") print $2}' conf/config.yml`
 ### This is for VC source-target pairs
 spks_src_dec=(SEM1 SEF2 SEM2 SEF1)
 spks_src_dec=(SEM1 SEF1)
-spks_src_dec=(SEF1)
+spks_src_dec=(SEF2)
 spks_trg_dec=(TFM1 TGM1 TMM1 TEF1 TEM1 TEF2 TEM2 TFF1 TGF1 TMF1)
 spks_trg_dec=(TEF1 TEM2)
-spks_trg_dec=(TEF1)
+spks_trg_dec=(TEM2)
 ###
 
 ###
@@ -223,6 +224,7 @@ spks_trg_dec=(TEF1)
 #n_interp=2
 n_interp=4
 #n_interp=8
+#n_interp=10
 ###
 
 ### This is for speakers that will be used in analysis-synthesis
@@ -249,8 +251,8 @@ set -e
 
 if [ `echo ${stage} | grep 0` ] || [ `echo ${stage} | grep 4` ];then
 echo $mdl_name_vc
-if [ $mdl_name_vc == "cycmelspxlf0capspkvae-gauss-smpl_sparse" ]; then
-    setting_vc=${mdl_name_vc}_${data_name}_lr${lr}_bs${batch_size}_lat${lat_dim}_late${lat_dim_e}_hue${hidden_units_enc}_hud${hidden_units_dec}_huf${hidden_units_lf0}_kse${kernel_size_enc}_kss${kernel_size_spk}_ksd${kernel_size_dec}_ksf${kernel_size_lf0}_rse${right_size_enc}_rss${right_size_spk}_rsd${right_size_dec}_rsf${right_size_lf0}_do${do_prob}_st${step_count}_mel${mel_dim}_nhcyc${n_half_cyc}_s${spkidtr_dim}_ts${t_start_cycvae}_te${t_end_cycvae}_i${interval_cycvae}_d${densities_cycvae}_ns${n_stage_cycvae}
+if [ $mdl_name_vc == "cycmelspxlf0capspkvae-gauss-smpl_sparse_weightemb_v2" ]; then
+    setting_vc=${mdl_name_vc}_${data_name}_lr${lr}_bs${batch_size}_lat${lat_dim}_late${lat_dim_e}_hue${hidden_units_enc}_hud${hidden_units_dec}_huf${hidden_units_lf0}_kse${kernel_size_enc}_kss${kernel_size_spk}_ksd${kernel_size_dec}_ksf${kernel_size_lf0}_rse${right_size_enc}_rss${right_size_spk}_rsd${right_size_dec}_rsf${right_size_lf0}_do${do_prob}_st${step_count}_mel${mel_dim}_nhcyc${n_half_cyc}_s${spkidtr_dim}_e${emb_spk_dim}_w${n_weight_emb}_ts${t_start_cycvae}_te${t_end_cycvae}_i${interval_cycvae}_d${densities_cycvae}_ns${n_stage_cycvae}
 fi
 expdir_vc=exp/tr_${setting_vc}
 echo $expdir_vc
@@ -267,7 +269,7 @@ fi
 
 
 echo $mdl_name_wave
-if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf_stft" ]; then
+if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf_stft_emb" ]; then
     setting_wave=${mdl_name_wave}_${data_name}_lr${lr}_bs${batch_size_wave}_huw${hidden_units_wave}_hu2w${hidden_units_wave_2}_ksw${kernel_size_wave}_dsw${dilation_size_wave}_do${do_prob}_st${step_count_wave}_mel${mel_dim}_ts${t_start}_te${t_end}_i${interval}_d${densities}_ns${n_stage}_lpc${lpc}_rs${right_size_wave}_nb${n_bands}_m${mid_dim}
 fi
 expdir_wave=exp/tr_${setting_wave}
@@ -285,8 +287,8 @@ fi
 
 
 echo $mdl_name_ft
-if [ $mdl_name_ft == "cycmelspspkvae-gauss-smpl_sparse_mwdlp_smpl" ]; then
-    setting_ft=${mdl_name_ft}_${data_name}_lr${lr}_bs${batch_size_wave}_lat${lat_dim}_late${lat_dim_e}_hue${hidden_units_enc}_hud${hidden_units_dec}_huw${hidden_units_wave}_kse${kernel_size_enc}_kss${kernel_size_spk}_ksd${kernel_size_dec}_ksw${kernel_size_wave}_rse${right_size_enc}_rss${right_size_spk}_rsd${right_size_dec}_rsw${right_size_wave}_st${step_count_wave}_nhcyc${n_half_cyc}_s${spkidtr_dim}_ts${t_start}_te${t_end}_i${interval}_d${densities_cycvae}_ns${n_stage}_${min_idx_cycvae}-${min_idx_wave}
+if [ $mdl_name_ft == "cycmelspspkvae-gauss-smpl_sparse_weightemb_mwdlp_smpl_v2" ]; then
+    setting_ft=${mdl_name_ft}_${data_name}_lr${lr}_bs${batch_size_wave}_lat${lat_dim}_late${lat_dim_e}_hue${hidden_units_enc}_hud${hidden_units_dec}_huw${hidden_units_wave}_kse${kernel_size_enc}_kss${kernel_size_spk}_ksd${kernel_size_dec}_ksw${kernel_size_wave}_rse${right_size_enc}_rss${right_size_spk}_rsd${right_size_dec}_rsw${right_size_wave}_st${step_count_wave}_nhcyc${n_half_cyc}_s${spkidtr_dim}_e${emb_spk_dim}_w${n_weight_emb}_ts${t_start}_te${t_end}_i${interval}_d${densities_cycvae}_ns${n_stage}_${min_idx_cycvae}-${min_idx_wave}
 fi
 expdir_ft=exp/tr_${setting_ft}
 echo $expdir_ft
@@ -302,10 +304,9 @@ else
 fi
 
 
-if [ `echo ${stage} | grep 0` ];then
 echo $mdl_name_sp
-if [ $mdl_name_sp == "cycmelspspkvae-ftspkdec-gauss-smpl_sparse_mwdlp_smpl" ]; then
-    setting_sp=${mdl_name_sp}_${data_name}_lr${lr}_bs${batch_size_wave}_lat${lat_dim}_late${lat_dim_e}_hue${hidden_units_enc}_hud${hidden_units_dec}_huw${hidden_units_wave}_kse${kernel_size_enc}_kss${kernel_size_spk}_ksd${kernel_size_dec}_ksw${kernel_size_wave}_rse${right_size_enc}_rss${right_size_spk}_rsd${right_size_dec}_rsw${right_size_wave}_st${step_count_wave}_nhcyc${n_half_cyc}_s${spkidtr_dim}_ts${t_start}_te${t_end}_i${interval}_d${densities_cycvae}_ns${n_stage}_${min_idx_cycvae}-${min_idx_wave}-${min_idx_ft}
+if [ $mdl_name_sp == "cycmelspspkvae-ftdec-gauss-smpl_sparse_wemb_mwdlp_smpl_v2" ]; then
+    setting_sp=${mdl_name_sp}_${data_name}_lr${lr}_bs${batch_size_wave}_lat${lat_dim}_late${lat_dim_e}_hue${hidden_units_enc}_hud${hidden_units_dec}_huw${hidden_units_wave}_kse${kernel_size_enc}_kss${kernel_size_spk}_ksd${kernel_size_dec}_ksw${kernel_size_wave}_rse${right_size_enc}_rss${right_size_spk}_rsd${right_size_dec}_rsw${right_size_wave}_st${step_count_wave}_nhcyc${n_half_cyc}_s${spkidtr_dim}_e${emb_spk_dim}_w${n_weight_emb}_ts${t_start}_te${t_end}_i${interval}_d${densities_cycvae}_ns${n_stage}_${min_idx_cycvae}-${min_idx_wave}-${min_idx_ft}
 fi
 expdir_sp=exp/tr_${setting_sp}
 echo $expdir_sp
@@ -320,8 +321,9 @@ else
     echo "fine-tuned vc decoder checkpoints not found, please run vc decoder fine-tuning step"
 fi
 fi
-fi
 
+
+demo_dir=demo_realtime
 
 # STAGE 0 {{{
 if [ `echo ${stage} | grep 0` ];then
@@ -333,7 +335,7 @@ if [ `echo ${stage} | grep 0` ];then
     echo "model is been dumping, please check ${expdir_sp}/dump_model.log"
     echo ""
     ${train_cmd} ${expdir_sp}/dump_model.log \
-        dump_sparse-cyclevae_mwdlp-10b.py \
+        dump_sparse-cyclevae_jnt_mwdlp-10b.py \
             ${expdir_sp}/model.conf \
             ${expdir_sp}/checkpoint-${min_idx_sp}.pkl \
             --fs ${fs} \
@@ -341,14 +343,14 @@ if [ `echo ${stage} | grep 0` ];then
             --winms ${winms} \
             --fftl ${fftl} \
             --highpass_cutoff ${highpass_cutoff}
-    mv -v *.h demo_realtime/inc
-    mv -v *.c demo_realtime/src
+    mv -v *.h ${demo_dir}/inc
+    mv -v *.c ${demo_dir}/src
     echo ""
     echo "dump model finished"
     echo ""
     echo "now compiling..."
     echo ""
-    cd demo_realtime
+    cd ${demo_dir}
     make clean
     make
     cd ..
@@ -388,7 +390,7 @@ if [ `echo ${stage} | grep 1` ];then
             echo $line ${out_spk_dv_dir}/log.txt
             echo $line >> ${out_spk_dv_dir}/log.txt
             echo ${out_spk_dv_dir}/$name >> ${out_spk_dv_dir}/log.txt
-            ./demo_realtime/bin/test_cycvae_mwdlp $line ${out_spk_dv_dir}/$name >> ${out_spk_dv_dir}/log.txt
+            ./${demo_dir}/bin/test_cycvae_mwdlp $line ${out_spk_dv_dir}/$name >> ${out_spk_dv_dir}/log.txt
         done < ${wav_dv_scp}
 
         rm -f ${wav_dv_scp}
@@ -408,7 +410,7 @@ if [ `echo ${stage} | grep 1` ];then
             echo $line ${out_spk_ts_dir}/log.txt
             echo $line >> ${out_spk_ts_dir}/log.txt
             echo ${out_spk_ts_dir}/$name >> ${out_spk_ts_dir}/log.txt
-            ./demo_realtime/bin/test_cycvae_mwdlp $line ${out_spk_ts_dir}/$name >> ${out_spk_ts_dir}/log.txt
+            ./${demo_dir}/bin/test_cycvae_mwdlp $line ${out_spk_ts_dir}/$name >> ${out_spk_ts_dir}/log.txt
         done < ${wav_ts_scp}
 
         rm -f ${wav_ts_scp}
@@ -452,14 +454,14 @@ if [ `echo ${stage} | grep 2` ];then
             echo $line ${out_spk_dv_dir}/log.txt
             echo $line >> ${out_spk_dv_dir}/log.txt
             echo ${out_spk_dv_dir}/${name}_anasyn.wav >> ${out_spk_dv_dir}/log.txt
-            ./demo_realtime/bin/test_cycvae_mwdlp -o ${out_spk_dv_dir}/${name}_melsp.bin ${out_spk_dv_dir}/${name}_melsp.txt \
+            ./${demo_dir}/bin/test_cycvae_mwdlp -o ${out_spk_dv_dir}/${name}_melsp.bin ${out_spk_dv_dir}/${name}_melsp.txt \
                 $line ${out_spk_dv_dir}/${name}_anasyn.wav >> ${out_spk_dv_dir}/log.txt
             echo $line >> ${out_spk_dv_dir}/log.txt
             echo ${out_spk_dv_dir}/${name}_binsyn.wav >> ${out_spk_dv_dir}/log.txt
-            ./demo_realtime/bin/test_cycvae_mwdlp -b ${out_spk_dv_dir}/${name}_melsp.bin ${out_spk_dv_dir}/${name}_binsyn.wav >> ${out_spk_dv_dir}/log.txt
+            ./${demo_dir}/bin/test_cycvae_mwdlp -b ${out_spk_dv_dir}/${name}_melsp.bin ${out_spk_dv_dir}/${name}_binsyn.wav >> ${out_spk_dv_dir}/log.txt
             echo $line >> ${out_spk_dv_dir}/log.txt
             echo ${out_spk_dv_dir}/${name}_txtsyn.wav >> ${out_spk_dv_dir}/log.txt
-            ./demo_realtime/bin/test_cycvae_mwdlp -t ${out_spk_dv_dir}/${name}_melsp.txt ${out_spk_dv_dir}/${name}_txtsyn.wav >> ${out_spk_dv_dir}/log.txt
+            ./${demo_dir}/bin/test_cycvae_mwdlp -t ${out_spk_dv_dir}/${name}_melsp.txt ${out_spk_dv_dir}/${name}_txtsyn.wav >> ${out_spk_dv_dir}/log.txt
         done < ${wav_dv_scp}
 
         rm -f ${wav_dv_scp}
@@ -480,14 +482,14 @@ if [ `echo ${stage} | grep 2` ];then
             echo $line >> ${out_spk_ts_dir}/log.txt
             echo ${out_spk_ts_dir}/$name >> ${out_spk_ts_dir}/log.txt
             echo ${out_spk_ts_dir}/${name}_anasyn.wav >> ${out_spk_ts_dir}/log.txt
-            ./demo_realtime/bin/test_cycvae_mwdlp -o ${out_spk_ts_dir}/${name}_melsp.bin ${out_spk_ts_dir}/${name}_melsp.txt \
+            ./${demo_dir}/bin/test_cycvae_mwdlp -o ${out_spk_ts_dir}/${name}_melsp.bin ${out_spk_ts_dir}/${name}_melsp.txt \
                 $line ${out_spk_ts_dir}/${name}_anasyn.wav >> ${out_spk_ts_dir}/log.txt
             echo $line >> ${out_spk_ts_dir}/log.txt
             echo ${out_spk_ts_dir}/${name}_binsyn.wav >> ${out_spk_ts_dir}/log.txt
-            ./demo_realtime/bin/test_cycvae_mwdlp -b ${out_spk_ts_dir}/${name}_melsp.bin ${out_spk_ts_dir}/${name}_binsyn.wav >> ${out_spk_ts_dir}/log.txt
+            ./${demo_dir}/bin/test_cycvae_mwdlp -b ${out_spk_ts_dir}/${name}_melsp.bin ${out_spk_ts_dir}/${name}_binsyn.wav >> ${out_spk_ts_dir}/log.txt
             echo $line >> ${out_spk_ts_dir}/log.txt
             echo ${out_spk_ts_dir}/${name}_txtsyn.wav >> ${out_spk_ts_dir}/log.txt
-            ./demo_realtime/bin/test_cycvae_mwdlp -t ${out_spk_ts_dir}/${name}_melsp.txt ${out_spk_ts_dir}/${name}_txtsyn.wav >> ${out_spk_ts_dir}/log.txt
+            ./${demo_dir}/bin/test_cycvae_mwdlp -t ${out_spk_ts_dir}/${name}_melsp.txt ${out_spk_ts_dir}/${name}_txtsyn.wav >> ${out_spk_ts_dir}/log.txt
         done < ${wav_ts_scp}
 
         rm -f ${wav_ts_scp}
@@ -544,7 +546,7 @@ if [ `echo ${stage} | grep 3` ];then
             echo $line ${out_spk_dv_dir}/log.txt
             echo $line >> ${out_spk_dv_dir}/log.txt
             echo ${out_spk_dv_dir}/$name >> ${out_spk_dv_dir}/log.txt
-            ./demo_realtime/bin/test_cycvae_mwdlp -i ${spk_idx} $line ${out_spk_dv_dir}/$name >> ${out_spk_dv_dir}/log.txt
+            ./${demo_dir}/bin/test_cycvae_mwdlp -i ${spk_idx} $line ${out_spk_dv_dir}/$name >> ${out_spk_dv_dir}/log.txt
         done < ${wav_dv_scp}
 
         rm -f ${wav_dv_scp}
@@ -564,7 +566,7 @@ if [ `echo ${stage} | grep 3` ];then
             echo $line ${out_spk_ts_dir}/log.txt
             echo $line >> ${out_spk_ts_dir}/log.txt
             echo ${out_spk_ts_dir}/$name >> ${out_spk_ts_dir}/log.txt
-            ./demo_realtime/bin/test_cycvae_mwdlp -i ${spk_idx} $line ${out_spk_ts_dir}/$name >> ${out_spk_ts_dir}/log.txt
+            ./${demo_dir}/bin/test_cycvae_mwdlp -i ${spk_idx} $line ${out_spk_ts_dir}/$name >> ${out_spk_ts_dir}/log.txt
         done < ${wav_ts_scp}
 
         rm -f ${wav_ts_scp}
@@ -672,7 +674,7 @@ if [ `echo ${stage} | grep 4` ];then
                 echo $line ${out_spk_dv_dir}/log.txt $x_coord $y_coord
                 echo $line ${x_coord} ${y_coord} >> ${out_spk_dv_dir}/log.txt
                 echo ${out_spk_dv_dir}/${name}_${x_coord}_${y_coord}.wav >> ${out_spk_dv_dir}/log.txt
-                ./demo_realtime/bin/test_cycvae_mwdlp -c ${x_coord} ${y_coord} \
+                ./${demo_dir}/bin/test_cycvae_mwdlp -c ${x_coord} ${y_coord} \
                     $line ${out_spk_dv_dir}/${name}_${x_coord}_${y_coord}.wav >> ${out_spk_dv_dir}/log.txt
             done
             done
@@ -697,7 +699,7 @@ if [ `echo ${stage} | grep 4` ];then
                 echo $line ${out_spk_ts_dir}/log.txt $x_coord $y_coord
                 echo $line ${x_coord} ${y_coord} >> ${out_spk_ts_dir}/log.txt
                 echo ${out_spk_ts_dir}/${name}_${x_coord}_${y_coord}.wav >> ${out_spk_ts_dir}/log.txt
-                ./demo_realtime/bin/test_cycvae_mwdlp -c ${x_coord} ${y_coord} \
+                ./${demo_dir}/bin/test_cycvae_mwdlp -c ${x_coord} ${y_coord} \
                     $line ${out_spk_ts_dir}/${name}_${x_coord}_${y_coord}.wav >> ${out_spk_ts_dir}/log.txt
             done
             done

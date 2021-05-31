@@ -193,7 +193,7 @@ set -e
 
 if [ `echo ${stage} | grep 0` ]; then
 echo $mdl_name_wave
-if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf_stft" ]; then
+if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf_stft_emb" ]; then
     setting_wave=${mdl_name_wave}_${data_name}_lr${lr}_bs${batch_size_wave}_huw${hidden_units_wave}_hu2w${hidden_units_wave_2}_ksw${kernel_size_wave}_dsw${dilation_size_wave}_do${do_prob}_st${step_count_wave}_mel${mel_dim}_ts${t_start}_te${t_end}_i${interval}_d${densities}_ns${n_stage}_lpc${lpc}_rs${right_size_wave}_nb${n_bands}_m${mid_dim}
 fi
 expdir_wave=exp/tr_${setting_wave}
@@ -210,6 +210,8 @@ else
 fi
 fi
 
+
+demo_dir=demo_realtime
 
 # STAGE 0 {{{
 if [ `echo ${stage} | grep 0` ];then
@@ -229,14 +231,14 @@ if [ `echo ${stage} | grep 0` ];then
             --winms ${winms} \
             --fftl ${fftl} \
             --highpass_cutoff ${highpass_cutoff}
-    mv -v *.h demo_realtime/inc
-    mv -v *.c demo_realtime/src
+    mv -v *.h ${demo_dir}/inc
+    mv -v *.c ${demo_dir}/src
     echo ""
     echo "dump model finished"
     echo ""
     echo "now compiling..."
     echo ""
-    cd demo_realtime
+    cd ${demo_dir}
     make clean
     make
     cd ..
@@ -276,7 +278,7 @@ if [ `echo ${stage} | grep 1` ];then
             echo $line ${out_spk_dv_dir}/log.txt
             echo $line >> ${out_spk_dv_dir}/log.txt
             echo ${out_spk_dv_dir}/$name >> ${out_spk_dv_dir}/log.txt
-            ./demo_realtime/bin/test_mwdlp $line ${out_spk_dv_dir}/$name >> ${out_spk_dv_dir}/log.txt
+            ./${demo_dir}/bin/test_mwdlp $line ${out_spk_dv_dir}/$name >> ${out_spk_dv_dir}/log.txt
         done < ${wav_dv_scp}
 
         rm -f ${wav_dv_scp}
@@ -296,7 +298,7 @@ if [ `echo ${stage} | grep 1` ];then
             echo $line ${out_spk_ts_dir}/log.txt
             echo $line >> ${out_spk_ts_dir}/log.txt
             echo ${out_spk_ts_dir}/$name >> ${out_spk_ts_dir}/log.txt
-            ./demo_realtime/bin/test_mwdlp $line ${out_spk_ts_dir}/$name >> ${out_spk_ts_dir}/log.txt
+            ./${demo_dir}/bin/test_mwdlp $line ${out_spk_ts_dir}/$name >> ${out_spk_ts_dir}/log.txt
         done < ${wav_ts_scp}
 
         rm -f ${wav_ts_scp}
@@ -340,14 +342,14 @@ if [ `echo ${stage} | grep 2` ];then
             echo $line ${out_spk_dv_dir}/log.txt
             echo $line >> ${out_spk_dv_dir}/log.txt
             echo ${out_spk_dv_dir}/${name}_anasyn.wav >> ${out_spk_dv_dir}/log.txt
-            ./demo_realtime/bin/test_mwdlp -o ${out_spk_dv_dir}/${name}_melsp.bin ${out_spk_dv_dir}/${name}_melsp.txt \
+            ./${demo_dir}/bin/test_mwdlp -o ${out_spk_dv_dir}/${name}_melsp.bin ${out_spk_dv_dir}/${name}_melsp.txt \
                 $line ${out_spk_dv_dir}/${name}_anasyn.wav >> ${out_spk_dv_dir}/log.txt
             echo $line >> ${out_spk_dv_dir}/log.txt
             echo ${out_spk_dv_dir}/${name}_binsyn.wav >> ${out_spk_dv_dir}/log.txt
-            ./demo_realtime/bin/test_mwdlp -b ${out_spk_dv_dir}/${name}_melsp.bin ${out_spk_dv_dir}/${name}_binsyn.wav >> ${out_spk_dv_dir}/log.txt
+            ./${demo_dir}/bin/test_mwdlp -b ${out_spk_dv_dir}/${name}_melsp.bin ${out_spk_dv_dir}/${name}_binsyn.wav >> ${out_spk_dv_dir}/log.txt
             echo $line >> ${out_spk_dv_dir}/log.txt
             echo ${out_spk_dv_dir}/${name}_txtsyn.wav >> ${out_spk_dv_dir}/log.txt
-            ./demo_realtime/bin/test_mwdlp -t ${out_spk_dv_dir}/${name}_melsp.txt ${out_spk_dv_dir}/${name}_txtsyn.wav >> ${out_spk_dv_dir}/log.txt
+            ./${demo_dir}/bin/test_mwdlp -t ${out_spk_dv_dir}/${name}_melsp.txt ${out_spk_dv_dir}/${name}_txtsyn.wav >> ${out_spk_dv_dir}/log.txt
         done < ${wav_dv_scp}
 
         rm -f ${wav_dv_scp}
@@ -368,14 +370,14 @@ if [ `echo ${stage} | grep 2` ];then
             echo $line >> ${out_spk_ts_dir}/log.txt
             echo ${out_spk_ts_dir}/$name >> ${out_spk_ts_dir}/log.txt
             echo ${out_spk_ts_dir}/${name}_anasyn.wav >> ${out_spk_ts_dir}/log.txt
-            ./demo_realtime/bin/test_mwdlp -o ${out_spk_ts_dir}/${name}_melsp.bin ${out_spk_ts_dir}/${name}_melsp.txt \
+            ./${demo_dir}/bin/test_mwdlp -o ${out_spk_ts_dir}/${name}_melsp.bin ${out_spk_ts_dir}/${name}_melsp.txt \
                 $line ${out_spk_ts_dir}/${name}_anasyn.wav >> ${out_spk_ts_dir}/log.txt
             echo $line >> ${out_spk_ts_dir}/log.txt
             echo ${out_spk_ts_dir}/${name}_binsyn.wav >> ${out_spk_ts_dir}/log.txt
-            ./demo_realtime/bin/test_mwdlp -b ${out_spk_ts_dir}/${name}_melsp.bin ${out_spk_ts_dir}/${name}_binsyn.wav >> ${out_spk_ts_dir}/log.txt
+            ./${demo_dir}/bin/test_mwdlp -b ${out_spk_ts_dir}/${name}_melsp.bin ${out_spk_ts_dir}/${name}_binsyn.wav >> ${out_spk_ts_dir}/log.txt
             echo $line >> ${out_spk_ts_dir}/log.txt
             echo ${out_spk_ts_dir}/${name}_txtsyn.wav >> ${out_spk_ts_dir}/log.txt
-            ./demo_realtime/bin/test_mwdlp -t ${out_spk_ts_dir}/${name}_melsp.txt ${out_spk_ts_dir}/${name}_txtsyn.wav >> ${out_spk_ts_dir}/log.txt
+            ./${demo_dir}/bin/test_mwdlp -t ${out_spk_ts_dir}/${name}_melsp.txt ${out_spk_ts_dir}/${name}_txtsyn.wav >> ${out_spk_ts_dir}/log.txt
         done < ${wav_ts_scp}
 
         rm -f ${wav_ts_scp}

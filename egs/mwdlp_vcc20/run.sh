@@ -55,7 +55,7 @@ n_jobs=30
 n_jobs=40
 #n_jobs=45
 #n_jobs=50
-#n_jobs=60
+n_jobs=60
 
 #######################################
 #          TRAINING SETTING           #
@@ -672,55 +672,57 @@ if [ `echo ${stage} | grep 1` ];then
         nj=0
         for set in ${trn} ${dev} ${tst};do
         #for set in ${tst};do
-            echo $set
-            expdir=exp/feature_extract/${set}
-            mkdir -p $expdir
-            rm -f $expdir/feature_extract.log
-            for spk in ${spks[@]}; do
-            #for spk in ${spks_open[@]}; do
-                echo $spk
-                minf0=`yq ".${spk}.minf0" conf/spkr.yml`
-                maxf0=`yq ".${spk}.maxf0" conf/spkr.yml`
-                pow=`yq ".${spk}.npow" conf/spkr.yml`
-                echo $minf0 $maxf0 $pow
-                scp=${expdir}/wav_${spk}.scp
-                n_wavs=`cat data/${set}/wav.scp | grep "\/${spk}\/" | wc -l`
-                echo $n_wavs
-                if [ $n_wavs -gt 0 ]; then
-                    cat data/${set}/wav.scp | grep "\/${spk}\/" > ${scp}
-                    ${train_cmd} --num-threads ${n_jobs} ${expdir}/feature_extract_${spk}.log \
-                        feature_extract.py \
-                            --expdir $expdir \
-                            --waveforms ${scp} \
-                            --wavdir wav_anasyn/${set}/${spk} \
-                            --wavgfdir wav_anasyn_gf/${set}/${spk} \
-                            --wavfiltdir wav_filtered/${set}/${spk} \
-                            --hdf5dir hdf5/${set}/${spk} \
-                            --fs ${fs} \
-                            --shiftms ${shiftms} \
-                            --winms ${winms} \
-                            --minf0 ${minf0} \
-                            --maxf0 ${maxf0} \
-                            --pow ${pow} \
-                            --mel_dim ${mel_dim} \
-                            --mcep_dim ${mcep_dim} \
-                            --mcep_alpha ${mcep_alpha} \
-                            --fftl ${fftl} \
-                            --highpass_cutoff ${highpass_cutoff} \
-                            --n_jobs ${n_jobs}
+            if [ -f "data/${set}/wav.scp" ]; then
+                echo $set
+                expdir=exp/feature_extract/${set}
+                mkdir -p $expdir
+                rm -f $expdir/feature_extract.log
+                for spk in ${spks[@]}; do
+                #for spk in ${spks_open[@]}; do
+                    echo $spk
+                    minf0=`yq ".${spk}.minf0" conf/spkr.yml`
+                    maxf0=`yq ".${spk}.maxf0" conf/spkr.yml`
+                    pow=`yq ".${spk}.npow" conf/spkr.yml`
+                    echo $minf0 $maxf0 $pow
+                    scp=${expdir}/wav_${spk}.scp
+                    n_wavs=`cat data/${set}/wav.scp | grep "\/${spk}\/" | wc -l`
+                    echo $n_wavs
+                    if [ $n_wavs -gt 0 ]; then
+                        cat data/${set}/wav.scp | grep "\/${spk}\/" > ${scp}
+                        ${train_cmd} --num-threads ${n_jobs} ${expdir}/feature_extract_${spk}.log \
+                            feature_extract.py \
+                                --expdir $expdir \
+                                --waveforms ${scp} \
+                                --wavdir wav_anasyn/${set}/${spk} \
+                                --wavgfdir wav_anasyn_gf/${set}/${spk} \
+                                --wavfiltdir wav_filtered/${set}/${spk} \
+                                --hdf5dir hdf5/${set}/${spk} \
+                                --fs ${fs} \
+                                --shiftms ${shiftms} \
+                                --winms ${winms} \
+                                --minf0 ${minf0} \
+                                --maxf0 ${maxf0} \
+                                --pow ${pow} \
+                                --mel_dim ${mel_dim} \
+                                --mcep_dim ${mcep_dim} \
+                                --mcep_alpha ${mcep_alpha} \
+                                --fftl ${fftl} \
+                                --highpass_cutoff ${highpass_cutoff} \
+                                --n_jobs ${n_jobs}
         
-                    # check the number of feature files
-                    n_feats=`find hdf5/${set}/${spk} -name "*.h5" | wc -l`
-                    echo "${n_feats}/${n_wavs} files are successfully processed."
+                        # check the number of feature files
+                        n_feats=`find hdf5/${set}/${spk} -name "*.h5" | wc -l`
+                        echo "${n_feats}/${n_wavs} files are successfully processed."
 
-                    # update job counts
-                    nj=$(( ${nj}+1  ))
-                    if [ ! ${max_jobs} -eq -1 ] && [ ${max_jobs} -eq ${nj} ];then
-                        wait
-                        nj=0
+                        # update job counts
+                        nj=$(( ${nj}+1  ))
+                        if [ ! ${max_jobs} -eq -1 ] && [ ${max_jobs} -eq ${nj} ];then
+                            wait
+                            nj=0
+                        fi
                     fi
-                fi
-            done
+                done
+            fi
         done
     fi
     # make scp for feats
@@ -729,16 +731,18 @@ if [ `echo ${stage} | grep 1` ];then
     #for set in ${trn} ${dev};do
     for set in ${trn} ${dev} ${tst};do
     #for set in ${tst};do
-        echo $set
-        find hdf5/${set} -name "*.h5" | sort > tmp2
-        find wav_filtered/${set} -name "*.wav" | sort > tmp3
-        rm -f data/${set}/feats.scp data/${set}/wav_filtered.scp
-        for spk in ${spks[@]}; do
-            cat tmp2 | grep "\/${spk}\/" | sort >> data/${set}/feats.scp
-            cat tmp3 | grep "\/${spk}\/" | sort >> data/${set}/wav_filtered.scp
-            echo $set $spk
-        done
-        rm -f tmp2 tmp3
+        if [ -f "data/${set}/wav.scp" ]; then
+            echo $set
+            find hdf5/${set} -name "*.h5" | sort > tmp2
+            find wav_filtered/${set} -name "*.wav" | sort > tmp3
+            rm -f data/${set}/feats.scp data/${set}/wav_filtered.scp
+            for spk in ${spks[@]}; do
+                cat tmp2 | grep "\/${spk}\/" | sort >> data/${set}/feats.scp
+                cat tmp3 | grep "\/${spk}\/" | sort >> data/${set}/wav_filtered.scp
+                echo $set $spk
+            done
+            rm -f tmp2 tmp3
+        fi
     done
     #for set in ${tst};do
     #    echo $set
@@ -765,9 +769,13 @@ if [ `echo ${stage} | grep 2` ];then
     #if false; then
         for spk in ${spks[@]};do
             echo $spk
+            set +e
             cat data/${trn}/feats.scp | grep \/${spk}\/ > data/${trn}/feats_spk-${spk}.scp
             cat data/${dev}/feats.scp | grep \/${spk}\/ > data/${dev}/feats_spk-${spk}.scp
-            cat data/${tst}/feats.scp | grep \/${spk}\/ > data/${tst}/feats_spk-${spk}.scp
+            if [ -f "data/${tst}/wav.scp" ]; then
+                cat data/${tst}/feats.scp | grep \/${spk}\/ > data/${tst}/feats_spk-${spk}.scp
+            fi
+            set -e
             ${train_cmd} exp/calculate_statistics/calc_stats_${trn}_spk-${spk}.log \
                 calc_stats.py \
                     --expdir ${expdir} \

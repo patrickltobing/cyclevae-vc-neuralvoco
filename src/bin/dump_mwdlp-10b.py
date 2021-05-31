@@ -49,12 +49,12 @@ from librosa import filters
 
 import numpy as np
 
-#FS = 8000
+FS = 8000
 #FS = 16000
 #FS = 22050
-FS = 24000
-#FFTL = 1024
-FFTL = 2048
+#FS = 24000
+FFTL = 1024
+#FFTL = 2048
 #SHIFTMS = 5
 #SHIFTMS = 4.9886621315192743764172335600907
 SHIFTMS = 10
@@ -62,6 +62,9 @@ SHIFTMS = 10
 WINMS = 27.5
 HIGHPASS_CUTOFF = 65
 HPASS_FILTER_TAPS = 1023
+
+np.set_printoptions(threshold=np.inf)
+#torch.set_printoptions(threshold=np.inf)
 
 
 def printVector(f, vector, name, dtype='float'):
@@ -127,7 +130,7 @@ def main():
                         type=str, help="path of model mwdlp10bit checkpoint")
     # optional arguments
     parser.add_argument("--fs", metavar="sampling rate", default=FS,
-                        type=int, help="waveform sampling rate [Hz]")
+                    type=int, help="waveform sampling rate [Hz]")
     parser.add_argument("--shiftms", metavar="shift ms", default=SHIFTMS,
                         type=float, help="frame shift in feature extraction [ms]")
     parser.add_argument("--winms", metavar="window length ms", default=WINMS,
@@ -161,6 +164,7 @@ def main():
         n_bands=config.n_bands,
         pad_first=True,
         mid_dim=config.mid_dim,
+        emb_flag=True,
         lpc=config.lpc)
     print(model)
     device = torch.device("cpu")
@@ -412,71 +416,77 @@ def main():
     weights = model.out.conv.weight.permute(2,1,0)[0].data.numpy() # in x out: 32 x 384 ((6*2*8)*2+6*2*16) [6 bands, 8 lpc]
     bias = model.out.conv.bias.data.numpy()
     factors = (0.5*torch.exp(model.out.fact.weight[0])).data.numpy()
-    mid_out2 = model.mid_out*2
+    ## [NBx2x(K+K+16] --> [2x(K+K+16)xNB]
+    ## [[K,K,16]_1a,[K,K,16]_1b,...,[K,K,16]_NBa,[K,K,16]_NBb]
     if model.lpc > 0:
-        ## permute weights and bias out structure from [NBx2xK,NBx2xK,NBx2x16] to [NBxK,NBxK,NBx16,NBxK,NBxK,NBx16]
+        ## permute weights and bias out structure from [NBx2x(K+K+16)] to [2x(K+K+16)xNB]
         lpc2 = model.lpc*2
-        lpc2bands = model.lpc*2*model.n_bands
-        lpc3bands = model.lpc*3*model.n_bands
-        lpc4bands = model.lpc*4*model.n_bands
-        lpc2midbands = (model.lpc*2+model.mid_out)*model.n_bands
-        lpc3midbands = (model.lpc*3+model.mid_out)*model.n_bands
-        lpc4midbands = (model.lpc*4+model.mid_out)*model.n_bands
-        bias_signs = bias[:lpc2bands]
-        bias_mags = bias[lpc2bands:lpc4bands]
-        bias_mids = bias[lpc4bands:]
-        bias_signs_1 = bias_signs[:model.lpc]
-        bias_signs_2 = bias_signs[model.lpc:lpc2]
-        bias_mags_1 = bias_mags[:model.lpc]
-        bias_mags_2 = bias_mags[model.lpc:lpc2]
-        bias_mids_1 = bias_mids[:model.mid_out]
-        bias_mids_2 = bias_mids[model.mid_out:mid_out2]
+        lpc2mid = lpc2+model.mid_out
+        lpc3mid = lpc2mid+model.lpc
+        lpc4mid = lpc3mid+model.lpc
+        lpc4mid2 = lpc4mid+model.mid_out
+        #bias_signs_1 = bias[:lpc]
+        #bias_mags_1 = bias[lpc:lpc2]
+        #bias_mids_1 = bias[lpc2:lpc2mid]
+        bias_1 = bias[:lpc2mid]
+        #bias_signs_2 = bias[lpc2mid:lpc3mid]
+        #bias_mags_2 = bias[lpc3mid:lpc4mid]
+        #bias_mids_2 = bias[lpc4mid:lpc4mid2]
+        bias_2 = bias[lpc2mid:lpc4mid2]
         for i in range(1,model.n_bands):
-            idx = lpc2*i
-            idx_ = idx+model.lpc
-            bias_signs_1 = np.r_[bias_signs_1, bias_signs[idx:idx_]]
-            bias_signs_2 = np.r_[bias_signs_2, bias_signs[idx_:lpc2*(i+1)]]
-            bias_mags_1 = np.r_[bias_mags_1, bias_mags[idx:idx_]]
-            bias_mags_2 = np.r_[bias_mags_2, bias_mags[idx_:lpc2*(i+1)]]
-            idx = mid_out2*i
-            idx_ = idx+model.mid_out
-            bias_mids_1 = np.r_[bias_mids_1, bias_mids[idx:idx_]]
-            bias_mids_2 = np.r_[bias_mids_2, bias_mids[idx_:mid_out2*(i+1)]]
-        bias = np.r_[bias_signs_1, bias_mags_1, bias_mids_1, bias_signs_2, bias_mags_2, bias_mids_2]
-        weights_signs = weights[:,:lpc2bands]
-        weights_mags = weights[:,lpc2bands:lpc4bands]
-        weights_mids = weights[:,lpc4bands:]
-        weights_signs_1 = weights_signs[:,:model.lpc]
-        weights_signs_2 = weights_signs[:,model.lpc:lpc2]
-        weights_mags_1 = weights_mags[:,:model.lpc]
-        weights_mags_2 = weights_mags[:,model.lpc:lpc2]
-        weights_mids_1 = weights_mids[:,:model.mid_out]
-        weights_mids_2 = weights_mids[:,model.mid_out:mid_out2]
+            idx = lpc4mid2*i
+            #bias_signs_1 = np.r_[bias_signs_1, bias[idx:idx+lpc]]
+            #bias_mags_1 = np.r_[bias_mags_1, bias[idx+lpc:idx+lpc2]]
+            #bias_mids_1 = np.r_[bias_mids_1, bias[idx+lpc2:idx+lpc2mid]]
+            bias_1 = np.r_[bias_1, bias[idx:idx+lpc2mid]]
+            #bias_signs_2 = np.r_[bias_signs_2, bias[idx+lpc2mid:idx+lpc3mid]]
+            #bias_mags_2 = np.r_[bias_mags_2, bias[idx+lpc3mid:idx+lpc4mid]]
+            #bias_mids_2 = np.r_[bias_mids_2, bias[idx+lpc4mid:idx+lpc4mid2]]
+            bias_2 = np.r_[bias_2, bias[idx+lpc2mid:idx+lpc4mid2]]
+        #bias = np.r_[bias_signs_1, bias_mags_1, bias_mids_1, bias_signs_2, bias_mags_2, bias_mids_2]
+        bias = np.r_[bias_1, bias_2]
+        #weights_signs_1 = weights[:,:lpc]
+        #weights_mags_1 = weights[:,lpc:lpc2]
+        #weights_mids_1 = weights[:,lpc2:lpc2mid]
+        weights_1 = weights[:,:lpc2mid]
+        #weights_signs_2 = weights[:,lpc2mid:lpc3mid]
+        #weights_mags_2 = weights[:,lpc3mid:lpc4mid]
+        #weights_mids_2 = weights[:,lpc4mid:lpc4mid2]
+        weights_2 = weights[:,lpc2mid:lpc4mid2]
         for i in range(1,model.n_bands):
-            idx = lpc2*i
-            idx_ = idx+model.lpc
-            weights_signs_1 = np.c_[weights_signs_1, weights_signs[:,idx:idx_]]
-            weights_signs_2 = np.c_[weights_signs_2, weights_signs[:,idx_:lpc2*(i+1)]]
-            weights_mags_1 = np.c_[weights_mags_1, weights_mags[:,idx:idx_]]
-            weights_mags_2 = np.c_[weights_mags_2, weights_mags[:,idx_:lpc2*(i+1)]]
-            idx = mid_out2*i
-            idx_ = idx+model.mid_out
-            weights_mids_1 = np.c_[weights_mids_1, weights_mids[:,idx:idx_]]
-            weights_mids_2 = np.c_[weights_mids_2, weights_mids[:,idx_:mid_out2*(i+1)]]
-        weights = np.c_[weights_signs_1, weights_mags_1, weights_mids_1, weights_signs_2, weights_mags_2, weights_mids_2]
-        # change factors structure from [LPC_signs,LPC_signs,LPG_mags,LPC_mags,mid_logits,mid_logits]
-        #                          into [LPC_signs,LPC_mags,mid_logits,LPC_signs,LPC_mags,mid_logits]
-        factors_signs = factors[:lpc2bands].reshape(model.n_bands,2,model.lpc)
-        factors_signs_1 = factors_signs[:,0].reshape(-1)
-        factors_signs_2 = factors_signs[:,1].reshape(-1)
-        factors_mags = factors[lpc2bands:lpc4bands].reshape(model.n_bands,2,model.lpc)
-        factors_mags_1 = factors_mags[:,0].reshape(-1)
-        factors_mags_2 = factors_mags[:,1].reshape(-1)
-        factors_mids = factors[lpc4bands:].reshape(model.n_bands,2,model.mid_out)
-        factors_mids_1 = factors_mids[:,0].reshape(-1)
-        factors_mids_2 = factors_mids[:,1].reshape(-1)
-        factors = np.r_[factors_signs_1, factors_mags_1, factors_mids_1, factors_signs_2, factors_mags_2, factors_mids_2]
+            idx = lpc4mid2*i
+            #weights_signs_1 = np.c_[weights_signs_1, weights[:,idx:idx+lpc]]
+            #weights_mags_1 = np.c_[weights_mags_1, weights[:,idx+lpc:idx+lpc2]]
+            #weights_mids_1 = np.c_[weights_mids_1, weights[:,idx+lpc2:idx+lpc2mid]]
+            weights_1 = np.c_[weights_1, weights[:,idx:idx+lpc2mid]]
+            #weights_signs_2 = np.c_[weights_signs_2, weights[:,idx+lpc2mid:idx+lpc3mid]]
+            #weights_mags_2 = np.c_[weights_mags_2, weights[:,idx+lpc3mid:idx+lpc4mid]]
+            #weights_mids_2 = np.c_[weights_mids_2, weights[:,idx+lpc4mid:idx+lpc4mid2]]
+            weights_2 = np.c_[weights_2, weights[:,idx+lpc2mid:idx+lpc4mid2]]
+        #weights = np.c_[weights_signs_1, weights_mags_1, weights_mids_1, weights_signs_2, weights_mags_2, weights_mids_2]
+        weights = np.c_[weights_1, weights_2]
+        #factors_signs_1 = factors[:lpc]
+        #factors_mags_1 = factors[lpc:lpc2]
+        #factors_mids_1 = factors[lpc2:lpc2mid]
+        factors_1 = factors[:lpc2mid]
+        #factors_signs_2 = factors[lpc2mid:lpc3mid]
+        #factors_mags_2 = factors[lpc3mid:lpc4mid]
+        #factors_mids_2 = factors[lpc4mid:lpc4mid2]
+        factors_2 = factors[lpc2mid:lpc4mid2]
+        for i in range(1,model.n_bands):
+            idx = lpc4mid2*i
+            #factors_signs_1 = np.r_[factors_signs_1, factors[idx:idx+lpc]]
+            #factors_mags_1 = np.r_[factors_mags_1, factors[idx+lpc:idx+lpc2]]
+            #factors_mids_1 = np.r_[factors_mids_1, factors[idx+lpc2:idx+lpc2mid]]
+            factors_1 = np.r_[factors_1, factors[idx:idx+lpc2mid]]
+            #factors_signs_2 = np.r_[factors_signs_2, factors[idx+lpc2mid:idx+lpc3mid]]
+            #factors_mags_2 = np.r_[factors_mags_2, factors[idx+lpc3mid:idx+lpc4mid]]
+            #factors_mids_2 = np.r_[factors_mids_2, factors[idx+lpc4mid:idx+lpc4mid2]]
+            factors_2 = np.r_[factors_2, factors[idx+lpc2mid:idx+lpc4mid2]]
+        #factors = np.r_[factors_signs_1, factors_mags_1, factors_mids_1, factors_signs_2, factors_mags_2, factors_mids_2]
+        factors = np.r_[factors_1, factors_2]
     else:
+        mid_out2 = model.mid_out*2
         ## permute weights and bias out structure from [NBx2x16] to [NBx16x2]
         bias_mids = bias
         bias_mids_1 = bias_mids[:model.mid_out]
@@ -508,8 +518,7 @@ def main():
     #printVector(f, factors[model.out.lpc4bands:], name + '_factor_mids')
     printVector(f, factors, name + '_factors')
     f.write('const MDenseLayerMWDLP10 {} = {{\n   {}_bias,\n   {}_weights,\n   {}_factors,\n   '\
-        'ACTIVATION_TANH_EXP, ACTIVATION_EXP, ACTIVATION_RELU\n}};\n\n'.format(name, name, name, name))
-    #    'ACTIVATION_TANH, ACTIVATION_EXP, ACTIVATION_RELU\n}};\n\n'.format(name, name, name, name))
+        'ACTIVATION_RELU, ACTIVATION_TANH_EXP, ACTIVATION_EXP, ACTIVATION_TANHSHRINK\n}};\n\n'.format(name, name, name, name))
     hf.write('extern const MDenseLayerMWDLP10 {};\n\n'.format(name))
 
     #dump dense_fc_out_coarse
@@ -519,7 +528,7 @@ def main():
     bias = model.out.out.bias.data.numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
-    f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_TANHSHRINK\n}};\n\n'
+    f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_LINEAR\n}};\n\n'
             .format(name, name, name, weights.shape[0], weights.shape[1]))
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
     hf.write('extern const DenseLayer {};\n\n'.format(name))
@@ -530,63 +539,77 @@ def main():
     weights = model.out_f.conv.weight.permute(2,1,0)[0].data.numpy()
     bias = model.out_f.conv.bias.data.numpy()
     factors = (0.5*torch.exp(model.out_f.fact.weight[0])).data.numpy()
+    ## [NBx2x(K+K+16] --> [2x(K+K+16)xNB]
+    ## [[K,K,16]_1a,[K,K,16]_1b,...,[K,K,16]_NBa,[K,K,16]_NBb]
     if model.lpc > 0:
-        ## permute weights and bias out structure from [NBx2xK,NBx2xK,NBx2x16] to [NBxK,NBxK,NBx16,NBxK,NBxK,NBx16]
-        bias_signs = bias[:lpc2bands]
-        bias_mags = bias[lpc2bands:lpc4bands]
-        bias_mids = bias[lpc4bands:]
-        bias_signs_1 = bias_signs[:model.lpc]
-        bias_signs_2 = bias_signs[model.lpc:lpc2]
-        bias_mags_1 = bias_mags[:model.lpc]
-        bias_mags_2 = bias_mags[model.lpc:lpc2]
-        bias_mids_1 = bias_mids[:model.mid_out]
-        bias_mids_2 = bias_mids[model.mid_out:mid_out2]
+        ## permute weights and bias out structure from [NBx2x(K+K+16)] to [2x(K+K+16)xNB]
+        lpc2 = model.lpc*2
+        lpc2mid = lpc2+model.mid_out
+        lpc3mid = lpc2mid+model.lpc
+        lpc4mid = lpc3mid+model.lpc
+        lpc4mid2 = lpc4mid+model.mid_out
+        #bias_signs_1 = bias[:lpc]
+        #bias_mags_1 = bias[lpc:lpc2]
+        #bias_mids_1 = bias[lpc2:lpc2mid]
+        bias_1 = bias[:lpc2mid]
+        #bias_signs_2 = bias[lpc2mid:lpc3mid]
+        #bias_mags_2 = bias[lpc3mid:lpc4mid]
+        #bias_mids_2 = bias[lpc4mid:lpc4mid2]
+        bias_2 = bias[lpc2mid:lpc4mid2]
         for i in range(1,model.n_bands):
-            idx = lpc2*i
-            idx_ = idx+model.lpc
-            bias_signs_1 = np.r_[bias_signs_1, bias_signs[idx:idx_]]
-            bias_signs_2 = np.r_[bias_signs_2, bias_signs[idx_:lpc2*(i+1)]]
-            bias_mags_1 = np.r_[bias_mags_1, bias_mags[idx:idx_]]
-            bias_mags_2 = np.r_[bias_mags_2, bias_mags[idx_:lpc2*(i+1)]]
-            idx = mid_out2*i
-            idx_ = idx+model.mid_out
-            bias_mids_1 = np.r_[bias_mids_1, bias_mids[idx:idx_]]
-            bias_mids_2 = np.r_[bias_mids_2, bias_mids[idx_:mid_out2*(i+1)]]
-        bias = np.r_[bias_signs_1, bias_mags_1, bias_mids_1, bias_signs_2, bias_mags_2, bias_mids_2]
-        weights_signs = weights[:,:lpc2bands]
-        weights_mags = weights[:,lpc2bands:lpc4bands]
-        weights_mids = weights[:,lpc4bands:]
-        weights_signs_1 = weights_signs[:,:model.lpc]
-        weights_signs_2 = weights_signs[:,model.lpc:lpc2]
-        weights_mags_1 = weights_mags[:,:model.lpc]
-        weights_mags_2 = weights_mags[:,model.lpc:lpc2]
-        weights_mids_1 = weights_mids[:,:model.mid_out]
-        weights_mids_2 = weights_mids[:,model.mid_out:mid_out2]
+            idx = lpc4mid2*i
+            #bias_signs_1 = np.r_[bias_signs_1, bias[idx:idx+lpc]]
+            #bias_mags_1 = np.r_[bias_mags_1, bias[idx+lpc:idx+lpc2]]
+            #bias_mids_1 = np.r_[bias_mids_1, bias[idx+lpc2:idx+lpc2mid]]
+            bias_1 = np.r_[bias_1, bias[idx:idx+lpc2mid]]
+            #bias_signs_2 = np.r_[bias_signs_2, bias[idx+lpc2mid:idx+lpc3mid]]
+            #bias_mags_2 = np.r_[bias_mags_2, bias[idx+lpc3mid:idx+lpc4mid]]
+            #bias_mids_2 = np.r_[bias_mids_2, bias[idx+lpc4mid:idx+lpc4mid2]]
+            bias_2 = np.r_[bias_2, bias[idx+lpc2mid:idx+lpc4mid2]]
+        #bias = np.r_[bias_signs_1, bias_mags_1, bias_mids_1, bias_signs_2, bias_mags_2, bias_mids_2]
+        bias = np.r_[bias_1, bias_2]
+        #weights_signs_1 = weights[:,:lpc]
+        #weights_mags_1 = weights[:,lpc:lpc2]
+        #weights_mids_1 = weights[:,lpc2:lpc2mid]
+        weights_1 = weights[:,:lpc2mid]
+        #weights_signs_2 = weights[:,lpc2mid:lpc3mid]
+        #weights_mags_2 = weights[:,lpc3mid:lpc4mid]
+        #weights_mids_2 = weights[:,lpc4mid:lpc4mid2]
+        weights_2 = weights[:,lpc2mid:lpc4mid2]
         for i in range(1,model.n_bands):
-            idx = lpc2*i
-            idx_ = idx+model.lpc
-            weights_signs_1 = np.c_[weights_signs_1, weights_signs[:,idx:idx_]]
-            weights_signs_2 = np.c_[weights_signs_2, weights_signs[:,idx_:lpc2*(i+1)]]
-            weights_mags_1 = np.c_[weights_mags_1, weights_mags[:,idx:idx_]]
-            weights_mags_2 = np.c_[weights_mags_2, weights_mags[:,idx_:lpc2*(i+1)]]
-            idx = mid_out2*i
-            idx_ = idx+model.mid_out
-            weights_mids_1 = np.c_[weights_mids_1, weights_mids[:,idx:idx_]]
-            weights_mids_2 = np.c_[weights_mids_2, weights_mids[:,idx_:mid_out2*(i+1)]]
-        weights = np.c_[weights_signs_1, weights_mags_1, weights_mids_1, weights_signs_2, weights_mags_2, weights_mids_2]
-        # change factors structure from [LPC_signs,LPC_signs,LPG_mags,LPC_mags,mid_logits,mid_logits]
-        #                          into [LPC_signs,LPC_mags,mid_logits,LPC_signs,LPC_mags,mid_logits]
-        factors_signs = factors[:lpc2bands].reshape(model.n_bands,2,model.lpc)
-        factors_signs_1 = factors_signs[:,0].reshape(-1)
-        factors_signs_2 = factors_signs[:,1].reshape(-1)
-        factors_mags = factors[lpc2bands:lpc4bands].reshape(model.n_bands,2,model.lpc)
-        factors_mags_1 = factors_mags[:,0].reshape(-1)
-        factors_mags_2 = factors_mags[:,1].reshape(-1)
-        factors_mids = factors[lpc4bands:].reshape(model.n_bands,2,model.mid_out)
-        factors_mids_1 = factors_mids[:,0].reshape(-1)
-        factors_mids_2 = factors_mids[:,1].reshape(-1)
-        factors = np.r_[factors_signs_1, factors_mags_1, factors_mids_1, factors_signs_2, factors_mags_2, factors_mids_2]
+            idx = lpc4mid2*i
+            #weights_signs_1 = np.c_[weights_signs_1, weights[:,idx:idx+lpc]]
+            #weights_mags_1 = np.c_[weights_mags_1, weights[:,idx+lpc:idx+lpc2]]
+            #weights_mids_1 = np.c_[weights_mids_1, weights[:,idx+lpc2:idx+lpc2mid]]
+            weights_1 = np.c_[weights_1, weights[:,idx:idx+lpc2mid]]
+            #weights_signs_2 = np.c_[weights_signs_2, weights[:,idx+lpc2mid:idx+lpc3mid]]
+            #weights_mags_2 = np.c_[weights_mags_2, weights[:,idx+lpc3mid:idx+lpc4mid]]
+            #weights_mids_2 = np.c_[weights_mids_2, weights[:,idx+lpc4mid:idx+lpc4mid2]]
+            weights_2 = np.c_[weights_2, weights[:,idx+lpc2mid:idx+lpc4mid2]]
+        #weights = np.c_[weights_signs_1, weights_mags_1, weights_mids_1, weights_signs_2, weights_mags_2, weights_mids_2]
+        weights = np.c_[weights_1, weights_2]
+        #factors_signs_1 = factors[:lpc]
+        #factors_mags_1 = factors[lpc:lpc2]
+        #factors_mids_1 = factors[lpc2:lpc2mid]
+        factors_1 = factors[:lpc2mid]
+        #factors_signs_2 = factors[lpc2mid:lpc3mid]
+        #factors_mags_2 = factors[lpc3mid:lpc4mid]
+        #factors_mids_2 = factors[lpc4mid:lpc4mid2]
+        factors_2 = factors[lpc2mid:lpc4mid2]
+        for i in range(1,model.n_bands):
+            idx = lpc4mid2*i
+            #factors_signs_1 = np.r_[factors_signs_1, factors[idx:idx+lpc]]
+            #factors_mags_1 = np.r_[factors_mags_1, factors[idx+lpc:idx+lpc2]]
+            #factors_mids_1 = np.r_[factors_mids_1, factors[idx+lpc2:idx+lpc2mid]]
+            factors_1 = np.r_[factors_1, factors[idx:idx+lpc2mid]]
+            #factors_signs_2 = np.r_[factors_signs_2, factors[idx+lpc2mid:idx+lpc3mid]]
+            #factors_mags_2 = np.r_[factors_mags_2, factors[idx+lpc3mid:idx+lpc4mid]]
+            #factors_mids_2 = np.r_[factors_mids_2, factors[idx+lpc4mid:idx+lpc4mid2]]
+            factors_2 = np.r_[factors_2, factors[idx+lpc2mid:idx+lpc4mid2]]
+        #factors = np.r_[factors_signs_1, factors_mags_1, factors_mids_1, factors_signs_2, factors_mags_2, factors_mids_2]
+        factors = np.r_[factors_1, factors_2]
     else:
+        mid_out2 = model.mid_out*2
         ## permute weights and bias out structure from [NBx2x16] to [NBx16x2]
         bias_mids = bias
         bias_mids_1 = bias_mids[:model.mid_out]
@@ -618,8 +641,7 @@ def main():
     #printVector(f, factors[model.out_f.lpc4bands:], name + '_factor_mids')
     printVector(f, factors, name + '_factors')
     f.write('const MDenseLayerMWDLP10 {} = {{\n   {}_bias,\n   {}_weights,\n   {}_factors,\n   '\
-        'ACTIVATION_TANH_EXP, ACTIVATION_EXP, ACTIVATION_RELU\n}};\n\n'.format(name, name, name, name))
-    #    'ACTIVATION_TANH, ACTIVATION_EXP, ACTIVATION_RELU\n}};\n\n'.format(name, name, name, name))
+        'ACTIVATION_RELU, ACTIVATION_TANH_EXP, ACTIVATION_EXP, ACTIVATION_TANHSHRINK\n}};\n\n'.format(name, name, name, name))
     hf.write('extern const MDenseLayerMWDLP10 {};\n\n'.format(name))
 
     #dump dense_fc_out_fine
@@ -629,7 +651,7 @@ def main():
     bias = model.out_f.out.bias.data.numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
-    f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_TANHSHRINK\n}};\n\n'
+    f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_LINEAR\n}};\n\n'
             .format(name, name, name, weights.shape[0], weights.shape[1]))
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
     hf.write('extern const DenseLayer {};\n\n'.format(name))
@@ -708,9 +730,13 @@ def main():
     ## Dump high-pass filter coeffs, half hanning-window coeffs, mel-filterbank, and mu-law 10 table here
     ## hpassfilt.h, halfwin.h, melfb.h, mu_law_10_table.h
     fs = args.fs
+    #fs = FS
     fftl = args.fftl
+    #fftl = FFTL
     shiftms = args.shiftms
+    #shiftms = SHIFTMS
     winms = args.winms
+    #winms = WINMS
     print(f'{fs} {fftl} {shiftms} {winms}')
 
     hop_length = int((fs/1000)*shiftms)
@@ -718,6 +744,7 @@ def main():
     print(f'{hop_length} {win_length}')
 
     cutoff = args.highpass_cutoff
+    #cutoff = HIGHPASS_CUTOFF
     nyq = fs // 2
     norm_cutoff = cutoff / nyq
     taps = HPASS_FILTER_TAPS

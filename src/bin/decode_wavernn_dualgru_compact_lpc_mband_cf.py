@@ -25,6 +25,7 @@ import matplotlib.pyplot as plt
 from utils import find_files
 from utils import read_txt, read_hdf5, shape_hdf5
 from vcneuvoco import GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF
+#from vcneuvoco_ import GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF
 
 import torch.nn.functional as F
 
@@ -241,77 +242,22 @@ def main():
     def gpu_decode(feat_list, gpu):
         with torch.cuda.device(gpu):
             with torch.no_grad():
-                if args.string_path is not None and "spk-lat" in args.string_path:
-                    feat_dim = read_hdf5(feat_list[0], args.string_path).shape[1]
-                    model_waveform = GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(
-                        feat_dim=feat_dim,
-                        upsampling_factor=config.upsampling_factor,
-                        hidden_units=config.hidden_units_wave,
-                        hidden_units_2=config.hidden_units_wave_2,
-                        kernel_size=config.kernel_size_wave,
-                        dilation_size=config.dilation_size_wave,
-                        n_quantize=config.n_quantize,
-                        causal_conv=config.causal_conv_wave,
-                        right_size=config.right_size,
-                        n_bands=config.n_bands,
-                        pad_first=True,
-                        mid_dim=config.mid_dim,
-                        scale_in_flag=False,
-                        red_dim=config.mcep_dim,
-                        lpc=config.lpc)
-                    logging.info(model_waveform)
-                elif args.string_path is not None and "smpl_sparse_mwdlp" in args.string_path \
-                    and ("v6" in args.string_path or "v8" in args.string_path \
-                        or "v5a" in args.string_path or "v5d" in args.string_path \
-                        or "v5e" in args.string_path):
-                    model_waveform = GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(
-                        feat_dim=config.mcep_dim+config.excit_dim,
-                        upsampling_factor=config.upsampling_factor,
-                        hidden_units=config.hidden_units_wave,
-                        hidden_units_2=config.hidden_units_wave_2,
-                        kernel_size=config.kernel_size_wave,
-                        dilation_size=config.dilation_size_wave,
-                        n_quantize=config.n_quantize,
-                        causal_conv=config.causal_conv_wave,
-                        right_size=config.right_size,
-                        n_bands=config.n_bands,
-                        pad_first=True,
-                        mid_dim=config.mid_dim,
-                        res_flag=args.wlat_res_flag,
-                        res_smpl_flag=True,
-                        frm_upd_flag=True,
-                        lpc=config.lpc)
-                    logging.info(model_waveform)
-                else:
-                    #if 'stft_emb' in config.expdir or 'cf_emb' in config.expdir:
-                    if '_emb' in config.expdir:
-                        emb_flag = True
-                    else:
-                        emb_flag = False
-                    #if 'stft_lin' in config.expdir or 'cf_emb' in config.expdir:
-                    if '_lin' in config.expdir:
-                        lin_flag = True
-                    else:
-                        lin_flag = False
-                    model_waveform = GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(
-                        feat_dim=config.mcep_dim+config.excit_dim,
-                        upsampling_factor=config.upsampling_factor,
-                        hidden_units=config.hidden_units_wave,
-                        hidden_units_2=config.hidden_units_wave_2,
-                        kernel_size=config.kernel_size_wave,
-                        dilation_size=config.dilation_size_wave,
-                        n_quantize=config.n_quantize,
-                        causal_conv=config.causal_conv_wave,
-                        right_size=config.right_size,
-                        n_bands=config.n_bands,
-                        pad_first=True,
-                        mid_dim=config.mid_dim,
-                        res_flag=args.wlat_res_flag,
-                        res_smpl_flag=True,
-                        emb_flag=emb_flag,
-                        lin_flag=lin_flag,
-                        lpc=config.lpc)
-                    logging.info(model_waveform)
+                model_waveform = GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(
+                    feat_dim=config.mcep_dim+config.excit_dim,
+                    upsampling_factor=config.upsampling_factor,
+                    hidden_units=config.hidden_units_wave,
+                    hidden_units_2=config.hidden_units_wave_2,
+                    kernel_size=config.kernel_size_wave,
+                    dilation_size=config.dilation_size_wave,
+                    n_quantize=config.n_quantize,
+                    causal_conv=config.causal_conv_wave,
+                    right_size=config.right_size,
+                    n_bands=config.n_bands,
+                    pad_first=True,
+                    mid_dim=config.mid_dim,
+                    emb_flag=True,
+                    lpc=config.lpc)
+                logging.info(model_waveform)
                 model_waveform.cuda()
                 model_waveform.load_state_dict(torch.load(args.checkpoint)["model_waveform"])
                 model_waveform.remove_weight_norm()

@@ -205,8 +205,8 @@ def main():
                     feat_dim=config.lat_dim+config.lat_dim_e,
                     excit_dim=config.excit_dim,
                     out_dim=config.mel_dim,
-                    n_spk=n_spk,
-                    aux_dim=n_spk,
+                    n_spk=(config.emb_spk_dim//config.n_weight_emb)*config.n_weight_emb,
+                    aux_dim=(config.emb_spk_dim//config.n_weight_emb)*config.n_weight_emb,
                     hidden_layers=config.hidden_layers_dec,
                     hidden_units=config.hidden_units_dec,
                     kernel_size=config.kernel_size_dec,
@@ -232,8 +232,8 @@ def main():
                 model_decoder_excit = GRU_EXCIT_DECODER(
                     feat_dim=config.lat_dim_e,
                     cap_dim=config.cap_dim,
-                    n_spk=n_spk,
-                    aux_dim=n_spk,
+                    n_spk=(config.emb_spk_dim//config.n_weight_emb)*config.n_weight_emb,
+                    aux_dim=(config.emb_spk_dim//config.n_weight_emb)*config.n_weight_emb,
                     hidden_layers=config.hidden_layers_lf0,
                     hidden_units=config.hidden_units_lf0,
                     kernel_size=config.kernel_size_lf0,
@@ -243,49 +243,49 @@ def main():
                     right_size=config.right_size_lf0,
                     red_dim=config.mel_dim)
                 logging.info(model_decoder_excit)
-                if (config.spkidtr_dim > 0):
-                    model_spkidtr = SPKID_TRANSFORM_LAYER(
-                        n_spk=n_spk,
-                        spkidtr_dim=config.spkidtr_dim)
-                    logging.info(model_spkidtr)
-                model_spk = GRU_SPK(
+                model_spkidtr = SPKID_TRANSFORM_LAYER(
                     n_spk=n_spk,
+                    emb_dim=config.emb_spk_dim,
+                    n_weight_emb=config.n_weight_emb,
+                    conv_emb_flag=True,
+                    spkidtr_dim=config.spkidtr_dim)
+                logging.info(model_spkidtr)
+                model_spk = GRU_SPK(
+                    n_spk=(config.emb_spk_dim//config.n_weight_emb)*config.n_weight_emb,
                     feat_dim=config.lat_dim+config.lat_dim_e,
+                    hidden_units=32,
                     kernel_size=config.kernel_size_spk,
                     dilation_size=config.dilation_size_spk,
                     causal_conv=config.causal_conv_spk,
                     pad_first=True,
                     right_size=config.right_size_spk,
-                    hidden_units=32,
-                    red_dim=config.mel_dim)
+                    red_dim=config.mel_dim,
+                    n_weight_emb=config.n_weight_emb,
+                    weight_fact=1)
                 logging.info(model_spk)
                 model_encoder_melsp.load_state_dict(torch.load(args.model)["model_encoder_melsp"])
                 model_decoder_melsp.load_state_dict(torch.load(args.model)["model_decoder_melsp"])
                 model_encoder_excit.load_state_dict(torch.load(args.model)["model_encoder_excit"])
                 model_decoder_excit.load_state_dict(torch.load(args.model)["model_decoder_excit"])
-                if (config.spkidtr_dim > 0):
-                    model_spkidtr.load_state_dict(torch.load(args.model)["model_spkidtr"])
+                model_spkidtr.load_state_dict(torch.load(args.model)["model_spkidtr"])
                 model_spk.load_state_dict(torch.load(args.model)["model_spk"])
                 model_encoder_melsp.cuda()
                 model_decoder_melsp.cuda()
                 model_encoder_excit.cuda()
                 model_decoder_excit.cuda()
-                if (config.spkidtr_dim > 0):
-                    model_spkidtr.cuda()
+                model_spkidtr.cuda()
                 model_spk.cuda()
                 model_encoder_melsp.eval()
                 model_decoder_melsp.eval()
                 model_encoder_excit.eval()
                 model_decoder_excit.eval()
-                if (config.spkidtr_dim > 0):
-                    model_spkidtr.eval()
+                model_spkidtr.eval()
                 model_spk.eval()
                 model_encoder_melsp.remove_weight_norm()
                 model_decoder_melsp.remove_weight_norm()
                 model_encoder_excit.remove_weight_norm()
                 model_decoder_excit.remove_weight_norm()
-                if (config.spkidtr_dim > 0):
-                    model_spkidtr.remove_weight_norm()
+                model_spkidtr.remove_weight_norm()
                 model_spk.remove_weight_norm()
                 for param in model_encoder_melsp.parameters():
                     param.requires_grad = False
@@ -295,9 +295,8 @@ def main():
                     param.requires_grad = False
                 for param in model_decoder_excit.parameters():
                     param.requires_grad = False
-                if (config.spkidtr_dim > 0):
-                    for param in model_spkidtr.parameters():
-                        param.requires_grad = False
+                for param in model_spkidtr.parameters():
+                    param.requires_grad = False
                 for param in model_spk.parameters():
                     param.requires_grad = False
             # interpolated spk-code
@@ -347,6 +346,8 @@ def main():
             outpad_lefts[6] = outpad_lefts[5]-model_decoder_excit.pad_left
             outpad_rights[6] = outpad_rights[5]-model_decoder_excit.pad_right
             melfb_t = np.linalg.pinv(librosa.filters.mel(args.fs, args.fftl, n_mels=config.mel_dim))
+            temp = 0.675
+            logging.info(f'temp: {temp}')
             for feat_file in feat_list:
                 # convert melsp
                 spk_src = os.path.basename(os.path.dirname(feat_file))
@@ -391,14 +392,8 @@ def main():
                         logging.info(torch.mean(F.softmax(spk_trg_logits_e, dim=-1), 1))
 
                     if args.n_interp == 0: # if just reconstructed and conversion
-                        if config.spkidtr_dim > 0:
-                            src_code = model_spkidtr((torch.ones((1, lat_src_e.shape[1]))*src_idx).cuda().long())
-                        else:
-                            src_code = (torch.ones((1, lat_src_e.shape[1]))*src_idx).cuda().long()
-                        if config.spkidtr_dim > 0:
-                            trg_code = model_spkidtr((torch.ones((1, lat_src_e.shape[1]))*trg_idx).cuda().long())
-                        else:
-                            trg_code = (torch.ones((1, lat_src_e.shape[1]))*trg_idx).cuda().long()
+                        _, src_code = model_spkidtr((torch.ones((1, lat_src_e.shape[1]))*src_idx).cuda().long())
+                        _, trg_code = model_spkidtr((torch.ones((1, lat_src_e.shape[1]))*trg_idx).cuda().long())
                         lat_cat = torch.cat((lat_src_e, lat_src), 2)
                         trj_src_code, _ = model_spk(src_code, z=lat_cat)
                         trj_trg_code, _ = model_spk(trg_code, z=lat_cat)
@@ -432,8 +427,8 @@ def main():
                             trg_code = trg_code[:,model_decoder_excit.pad_left:]
                             trj_src_code = trj_src_code[:,model_decoder_excit.pad_left:]
                             trj_trg_code = trj_trg_code[:,model_decoder_excit.pad_left:]
-                        _, cvmelsp_src, _ = model_decoder_melsp(lat_cat, y=src_code, aux=trj_src_code, e=cvlf0_src[:,:,:config.excit_dim])
-                        _, cvmelsp, _ = model_decoder_melsp(lat_cat, y=trg_code, aux=trj_trg_code, e=cvlf0[:,:,:config.excit_dim])
+                        _, cvmelsp_src, _ = model_decoder_melsp(lat_cat, y=src_code, aux=trj_src_code, e=cvlf0_src[:,:,:config.excit_dim], temp=temp)
+                        _, cvmelsp, _ = model_decoder_melsp(lat_cat, y=trg_code, aux=trj_trg_code, e=cvlf0[:,:,:config.excit_dim], temp=temp)
                         #trg_trj_code_lat_cat = torch.cat((trg_code, trj_trg_code, lat_cat), 2)
                         #trj_lat_cat = lat_cat
 
@@ -463,10 +458,7 @@ def main():
                         else:
                             logging.info(torch.mean(F.softmax(spk_logits_e[:,outpad_lefts[4]:], dim=-1), 1))
 
-                        if config.spkidtr_dim > 0:
-                            src_code = model_spkidtr((torch.ones((1, lat_cv_e.shape[1]))*src_idx).cuda().long())
-                        else:
-                            src_code = (torch.ones((1, lat_cv_e.shape[1]))*src_idx).cuda().long()
+                        _, src_code = model_spkidtr((torch.ones((1, lat_cv_e.shape[1]))*src_idx).cuda().long())
                         lat_cat = torch.cat((lat_cv_e, lat_cv), 2)
                         trj_src_code, _ = model_spk(src_code, z=lat_cat)
     
@@ -490,7 +482,7 @@ def main():
                             lat_cat = lat_cat[:,model_decoder_excit.pad_left:]
                             src_code = src_code[:,model_decoder_excit.pad_left:]
                             trj_src_code = trj_src_code[:,model_decoder_excit.pad_left:]
-                        _, cvmelsp_cyc, _ = model_decoder_melsp(lat_cat, y=src_code, aux=trj_src_code, e=cvlf0_cyc[:,:,:config.excit_dim])
+                        _, cvmelsp_cyc, _ = model_decoder_melsp(lat_cat, y=src_code, aux=trj_src_code, e=cvlf0_cyc[:,:,:config.excit_dim], temp=temp)
                     #else: # if using interpolated spk-code
                     #    z_interpolate = []
                     #    z_e_interpolate = []

@@ -1034,7 +1034,7 @@ def main():
             if (not sparse_min_flag) and (iter_idx + 1 >= t_ends[idx_stage]):
                 sparse_check_flag = True
             if (not sparse_min_flag and sparse_check_flag) \
-                or ((round(float(round(Decimal(str(eval_loss_err_avg)),2))-0.16,2) <= float(round(Decimal(str(min_eval_loss_err_avg)),2))) and \
+                or ((round(float(round(Decimal(str(eval_loss_err_avg)),2))-0.12,2) <= float(round(Decimal(str(min_eval_loss_err_avg)),2))) and \
                     (round(float(round(Decimal(str(eval_loss_ce_avg+eval_loss_ce_avg_std)),2))-0.01,2) <= float(round(Decimal(str(min_eval_loss_ce_avg+min_eval_loss_ce_avg_std)),2)) \
                         or round(float(round(Decimal(str(eval_loss_ce_avg)),2))-0.01,2) <= float(round(Decimal(str(min_eval_loss_ce_avg)),2)))):
                 round_eval_loss_err_avg = float(round(Decimal(str(eval_loss_err_avg)),2))

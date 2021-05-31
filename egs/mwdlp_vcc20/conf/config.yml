@@ -39,20 +39,6 @@ hidden_layers_wave: 1
 kernel_size_wave: 7
 dilation_size_wave: 1
 
-right_size_spk: 0
-right_size_dec: 0
-right_size_lf0: 0
-
-## number of cycles :  n_half_cyc // 2
-n_half_cyc: 2
-#n_half_cyc: 4
-
-## spect. latent dim.
-lat_dim: 96
-
-## excit. latent dim.
-lat_dim_e: 32
-
 ## use causal input convolution
 ## if using skewed input convolution for encoder (right_size > 0), set causal_conv dec/lf0 to true
 ## always use non-causal input conv. for encoder/wave
@@ -66,6 +52,7 @@ lr: 1e-4
 do_prob: 0.5
 
 ## maximum step count
+#step_count_wave: 20
 step_count_wave: 4350000
 
 # number of workers (threads) for batch data handling
@@ -75,11 +62,15 @@ n_workers: 1
 mdl_name_wave: wavernn_dualgru_compact_lpc_mband_10bit_cf_stft_emb
 
 ## sparsification scheduling settings for wavernn
+#t_start: 1
 t_start: 20000
-t_end: 1070000
+#t_end: 20
+t_end: 1270000
+#interval: 1
 interval: 20
 densities: 0.09-0.09-0.12
 n_stage: 4
 
 ## number of data-driven linear predictive coefficients (LPC) in wavernn
+#lpc: 0
 lpc: 8

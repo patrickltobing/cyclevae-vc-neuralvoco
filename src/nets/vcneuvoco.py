@@ -321,6 +321,69 @@ class CausalDilConv1d(nn.Module):
             return self.conv(x)
 
 
+class DualFC_(nn.Module):
+    """Compact Dual Fully Connected layers based on LPCNet"""
+
+    def __init__(self, in_dim=32, out_dim=32, lpc=6, bias=True, n_bands=5, mid_out=32):
+        super(DualFC_, self).__init__()
+        self.in_dim = in_dim
+        self.out_dim = out_dim
+        self.lpc = lpc
+        self.n_bands = n_bands
+        self.lpc2 = self.lpc*2
+        self.bias = bias
+        self.lpc4bands = self.lpc2*2*self.n_bands
+        self.mid_out = mid_out
+
+        self.mid_out_bands = self.mid_out*self.n_bands
+        self.mid_out_bands2 = self.mid_out_bands*2
+        self.conv = nn.Conv1d(self.in_dim, self.mid_out_bands2+self.lpc4bands, 1, bias=self.bias)
+        self.fact = EmbeddingZero(1, self.mid_out_bands2+self.lpc4bands)
+        self.out = nn.Conv1d(self.lpc2+self.mid_out, self.lpc2+self.out_dim, 1, bias=self.bias)
+
+    def forward(self, x):
+        """Forward calculation
+
+        Arg:
+            x (Variable): float tensor variable with the shape  (B x C_in x T)
+
+        Return:
+            (Variable): float tensor variable with the shape (B x T x C_out)
+        """
+
+        # out = fact_1 o tanh(conv_1 * x) + fact_2 o tanh(conv_2 * x)
+        if self.n_bands > 1:
+            if self.lpc > 0:
+                conv_out = F.relu(self.conv(x)).transpose(1,2) # B x T x n_bands*(K*2+K*2+mid_dim*2)
+                fact_weight = 0.5*torch.exp(torch.clamp(self.fact.weight[0], min=MIN_CLAMP, max=MAX_CLAMP)) # K*2+K*2+mid_dim*2
+                B = x.shape[0]
+                T = x.shape[2]
+                # B x T x n_bands x (K+K+mid_dim)*2 --> B x (K+K+mid_dim) x (T x n_bands) --> B x T x n_bands x (K+K+out_dim)
+                out = torch.clamp(self.out(torch.sum((conv_out*fact_weight).reshape(B,T,self.n_bands,2,-1), 3).reshape(B,T*self.n_bands,-1).transpose(1,2)),
+                                        min=MIN_CLAMP, max=MAX_CLAMP).transpose(1,2).reshape(B,T,self.n_bands,-1)
+                return torch.tanh(out[:,:,:,:self.lpc]), torch.exp(out[:,:,:,self.lpc:-self.out_dim]), F.tanhshrink(out[:,:,:,-self.out_dim:])
+                # lpc_signs, lpc_mags, logits
+            else:
+                # B x T x n_bands x mid*2 --> B x (T x n_bands) x mid --> B x mid x (T x n_bands) --> B x T x n_bands x out_dim
+                B = x.shape[0]
+                T = x.shape[2]
+                return F.tanhshrink(torch.clamp(self.out(torch.sum((F.relu(self.conv(x).transpose(1,2))
+                            *(0.5*torch.exp(torch.clamp(self.fact.weight[0], min=MIN_CLAMP, max=MAX_CLAMP)))).reshape(B,T,self.n_bands,2,-1), 3).reshape(B,T*self.n_bands,-1).transpose(1,2)), min=MIN_CLAMP, max=MAX_CLAMP)).transpose(1,2).reshape(B,T,self.n_bands,-1)
+                # logits
+        else:
+            if self.lpc > 0:
+                conv = F.relu(self.conv(x)).transpose(1,2)
+                fact_weight = 0.5*torch.exp(torch.clamp(self.fact.weight[0], min=MIN_CLAMP, max=MAX_CLAMP))
+                # B x T x (K+K+mid_dim)*2 --> B x (K+K+mid_dim) x T --> B x T x (K+K+out_dim)
+                out = torch.clamp(self.out(torch.sum((out*fact_weight).reshape(x.shape[0],x.shape[2],2,-1), 2).transpose(1,2)), min=MIN_CLAMP, max=MAX_CLAMP).transpose(1,2)
+                return torch.tanh(out[:,:,:self.lpc]), torch.exp(out[:,:,self.lpc:-self.out_dim]), F.tanshrink(out[:,:,-self.out_dim:])
+                # lpc_signs, lpc_mags, logits
+            else:
+                # B x T x mid*2 --> B x T x mid --> B x mid x T --> B x T x out_dim
+                return F.tanhshrink(torch.clamp(self.out(torch.sum((F.relu(self.conv(x).transpose(1,2))*(0.5*torch.exp(torch.clamp(self.fact.weight[0], min=MIN_CLAMP, max=MAX_CLAMP)))).reshape(x.shape[0],x.shape[2],2,-1), 2).transpose(1,2)), min=MIN_CLAMP, max=MAX_CLAMP)).transpose(1,2)
+                # logits
+
+
 class DualFC(nn.Module):
     """Compact Dual Fully Connected layers based on LPCNet"""
 
@@ -603,9 +666,12 @@ def kl_laplace_param(mu_q, sigma_q):
 
 #FIXME: network generates exp(log(std))**2, use sqrt(exp(log_std)**2), not log(exp(log(std))**2),
 #       fix discrepancy in C impl. --> exp(log(std)) [log(std) is the output of last layer]
-def sampling_gauss(mu, var):
+def sampling_gauss(mu, var, temp=None):
     #return mu + torch.log(var)*torch.randn_like(mu)
-    return mu + torch.sqrt(var)*torch.randn_like(mu)
+    if temp is not None:
+        return mu + temp*torch.sqrt(var)*torch.randn_like(mu)
+    else:
+        return mu + torch.sqrt(var)*torch.randn_like(mu)
  
 
 def sampling_laplace(param, log_scale=None):
@@ -941,7 +1007,7 @@ class GRU_SPEC_DECODER(nn.Module):
         else:
             self.apply(initialize)
 
-    def forward(self, z, y=None, aux=None, h=None, do=False, e=None, outpad_right=0, sampling=True, scale_fact=None, ret_mid_feat=False, org_in=False, do_conv=False):
+    def forward(self, z, y=None, aux=None, h=None, do=False, e=None, outpad_right=0, sampling=True, scale_fact=None, ret_mid_feat=False, org_in=False, do_conv=False, temp=None):
         if aux is not None:
             if y is not None:
                 if len(y.shape) == 2:
@@ -1077,10 +1143,9 @@ class GRU_SPEC_DECODER(nn.Module):
             if sampling:
                 if do:
                     return torch.cat((mus, torch.clamp(var, min=1e-12)), 2), \
-                            sampling_gauss(mus, var), h.detach()
+                            sampling_gauss(mus, var, temp), h.detach()
                 else:
-                    return torch.cat((mus, var), 2), sampling_gauss(mus, var), \
-                            h.detach()
+                    return torch.cat((mus, var), 2), sampling_gauss(mus, var, temp), h.detach()
             else:
                 return torch.cat((mus, var), 2), mus, h.detach()
         else:
@@ -1330,9 +1395,10 @@ class GRU_POST_NET(nn.Module):
 
 class GRU_LAT_FEAT_CLASSIFIER(nn.Module):
     def __init__(self, lat_dim=None, feat_dim=50, n_spk=14, hidden_layers=1, hidden_units=32,
-            use_weight_norm=True, feat_aux_dim=None, do_prob=0):
+            use_weight_norm=True, feat_aux_dim=None, spk_aux_dim=None, do_prob=0):
         super(GRU_LAT_FEAT_CLASSIFIER, self).__init__()
         self.lat_dim = lat_dim
+        self.spk_aux_dim = spk_aux_dim
         self.feat_aux_dim = feat_aux_dim
         self.feat_dim = feat_dim
         self.n_spk = n_spk
@@ -1348,6 +1414,9 @@ class GRU_LAT_FEAT_CLASSIFIER(nn.Module):
         if self.feat_aux_dim is not None:
             conv_feat_aux = [nn.Conv1d(self.feat_aux_dim, self.hidden_units, 1), nn.ReLU()]
             self.conv_feat_aux = nn.Sequential(*conv_feat_aux)
+        if self.spk_aux_dim is not None:
+            conv_spk_aux = [nn.Conv1d(self.spk_aux_dim, self.hidden_units, 1), nn.ReLU()]
+            self.conv_spk_aux = nn.Sequential(*conv_spk_aux)
         conv_feat = [nn.Conv1d(self.feat_dim, self.hidden_units, 1), nn.ReLU()]
         self.conv_feat = nn.Sequential(*conv_feat)
 
@@ -1365,10 +1434,12 @@ class GRU_LAT_FEAT_CLASSIFIER(nn.Module):
         else:
             self.apply(initialize)
 
-    def forward(self, lat=None, feat=None, feat_aux=None, h=None, do=False):
+    def forward(self, lat=None, feat=None, feat_aux=None, spk_aux=None, h=None, do=False):
         # Input layers
         if lat is not None:
             c = self.conv_lat(lat.transpose(1,2)).transpose(1,2)
+        elif spk_aux is not None:
+            c = self.conv_spk_aux(spk_aux.transpose(1,2)).transpose(1,2)
         elif feat_aux is not None:
             c = self.conv_feat_aux(feat_aux.transpose(1,2)).transpose(1,2)
         else:
@@ -1407,8 +1478,8 @@ class GRU_LAT_FEAT_CLASSIFIER(nn.Module):
 
 
 class GRU_SPK(nn.Module):
-    def __init__(self, n_spk=14, feat_dim=64, hidden_layers=1, hidden_units=32, do_prob=0,
-            kernel_size=3, dilation_size=1,  use_weight_norm=True, scale_in_flag=False, red_dim=None,
+    def __init__(self, n_spk=14, feat_dim=64, hidden_layers=1, hidden_units=32, do_prob=0, n_weight_emb=None,
+            kernel_size=3, dilation_size=1,  use_weight_norm=True, scale_in_flag=False, red_dim=None, weight_fact=2,
                 cap_dim=None, right_size=0, pad_first=True, causal_conv=True):
         super(GRU_SPK, self).__init__()
         self.n_spk = n_spk
@@ -1428,6 +1499,8 @@ class GRU_SPK(nn.Module):
         self.pad_first = pad_first
         self.right_size = right_size
         self.red_dim = red_dim
+        self.n_weight_emb = n_weight_emb
+        self.weight_fact = weight_fact
 
         if self.scale_in_flag:
             self.scale_in = nn.Conv1d(self.feat_dim, self.feat_dim, 1)
@@ -1469,7 +1542,12 @@ class GRU_SPK(nn.Module):
             self.gru_drop = nn.Dropout(p=self.do_prob)
 
         # Output layers
-        self.out = nn.Conv1d(self.hidden_units, self.n_spk, 1)
+        if self.n_weight_emb is not None:
+            self.out = nn.Conv1d(self.hidden_units, self.n_weight_emb, 1)
+            self.dim_weight_emb = self.n_spk//(self.n_weight_emb//self.weight_fact)
+            self.embed_spk = nn.Embedding(self.n_weight_emb, self.dim_weight_emb)
+        else:
+            self.out = nn.Conv1d(self.hidden_units, self.n_spk, 1)
 
         # apply weight norm
         if self.use_weight_norm:
@@ -1514,7 +1592,15 @@ class GRU_SPK(nn.Module):
         else:
             e = self.out(e.transpose(1,2)).transpose(1,2) # B x T x C -> B x C x T -> B x T x C
 
-        return F.tanhshrink(torch.clamp(e, min=MIN_CLAMP, max=MAX_CLAMP)), h.detach()
+        if self.n_weight_emb is not None:
+            weight_emb = torch.tanh(torch.clamp(e, min=MIN_CLAMP, max=MAX_CLAMP)) # B x T x n_weight
+            out = self.embed_spk.weight[0].unsqueeze(0).unsqueeze(1)*weight_emb[:,:,:1] # 1 x 1 x emb_dim * B x T x 1
+            for i in range(1,self.n_weight_emb):
+                out = torch.cat((out, self.embed_spk.weight[i].unsqueeze(0).unsqueeze(1)*weight_emb[:,:,i:i+1]), 2) # 1 x 1 x emb_dim * B x T x 1
+            # B x T x emb_dim*n_weight
+            return out, h.detach()
+        else:
+            return F.tanhshrink(torch.clamp(e, min=MIN_CLAMP, max=MAX_CLAMP)), h.detach()
 
     def apply_weight_norm(self):
         """Apply weight normalization module from all of the layers."""
@@ -1539,16 +1625,55 @@ class GRU_SPK(nn.Module):
 
 
 class SPKID_TRANSFORM_LAYER(nn.Module):
-    def __init__(self, n_spk=14, spkidtr_dim=2, use_weight_norm=True):
+    def __init__(self, n_spk=14, spkidtr_dim=2, emb_dim=None, n_weight_emb=None, conv_emb_flag=False, use_weight_norm=True):
         super(SPKID_TRANSFORM_LAYER, self).__init__()
 
         self.n_spk = n_spk
         self.spkidtr_dim = spkidtr_dim
+        self.emb_dim = emb_dim
+        self.n_weight_emb = n_weight_emb
+        if self.n_weight_emb is not None:
+            if self.emb_dim is None:
+                self.emb_dim = self.n_spk
+            self.dim_weight_emb = self.emb_dim // self.n_weight_emb
+            self.emb_dim = self.dim_weight_emb * self.n_weight_emb
+        self.conv_emb_flag = conv_emb_flag
+        if self.conv_emb_flag and self.emb_dim is None:
+            self.emb_dim = self.n_spk
         self.use_weight_norm = use_weight_norm
 
-        self.conv = nn.Conv1d(self.n_spk, self.spkidtr_dim, 1)
-        deconv = [nn.Conv1d(self.spkidtr_dim, self.n_spk, 1), nn.ReLU()]
-        self.deconv = nn.Sequential(*deconv)
+        if self.spkidtr_dim is not None:
+            if self.conv_emb_flag:
+                conv_emb = [nn.Conv1d(self.n_spk, self.emb_dim, 1), nn.ReLU()]
+                self.conv_emb = nn.Sequential(*conv_emb)
+                self.conv = nn.Conv1d(self.emb_dim, self.spkidtr_dim, 1)
+            else:
+                self.conv = nn.Conv1d(self.n_spk, self.spkidtr_dim, 1)
+            if self.n_weight_emb is not None:
+                 self.deconv = nn.Conv1d(self.spkidtr_dim, self.n_weight_emb, 1)
+            else:
+                if self.emb_dim is not None:
+                    deconv = [nn.Conv1d(self.spkidtr_dim, self.emb_dim, 1), nn.ReLU()]
+                else:
+                    deconv = [nn.Conv1d(self.spkidtr_dim, self.n_spk, 1), nn.ReLU()]
+                self.deconv = nn.Sequential(*deconv)
+        else:
+            if self.n_weight_emb is not None:
+                if self.conv_emb_flag:
+                    conv_emb = [nn.Conv1d(self.n_spk, self.emb_dim, 1), nn.ReLU()]
+                    self.conv_emb = nn.Sequential(*conv_emb)
+                    self.conv = nn.Conv1d(self.emb_dim, self.n_weight_emb, 1)
+                else:
+                    self.conv = nn.Conv1d(self.n_spk, self.n_weight_emb, 1)
+            else:
+                if self.emb_dim is not None:
+                    conv = [nn.Conv1d(self.n_spk, self.emb_dim, 1), nn.ReLU()]
+                else:
+                    conv = [nn.Conv1d(self.n_spk, self.n_spk, 1), nn.ReLU()]
+                self.conv = nn.Sequential(*conv)
+
+        if self.n_weight_emb is not None:
+            self.embed_spk = nn.Embedding(self.n_weight_emb, self.dim_weight_emb)
 
         # apply weight norm
         if self.use_weight_norm:
@@ -1559,7 +1684,37 @@ class SPKID_TRANSFORM_LAYER(nn.Module):
     def forward(self, x):
         # in: B x T
         # out: B x T x C
-        return self.deconv(F.tanhshrink(torch.clamp(self.conv(F.one_hot(x, num_classes=self.n_spk).float().transpose(1,2)), min=MIN_CLAMP, max=MAX_CLAMP))).transpose(1,2)
+        if self.spkidtr_dim is not None:
+            if self.n_weight_emb is not None:
+                if self.conv_emb_flag:
+                    weight_emb = torch.tanh(torch.clamp(self.deconv(F.tanhshrink(torch.clamp(self.conv(self.conv_emb(F.one_hot(x, num_classes=self.n_spk).float().transpose(1,2))),
+                                                min=MIN_CLAMP, max=MAX_CLAMP))), min=MIN_CLAMP, max=MAX_CLAMP)).transpose(1,2) # B x T x n_weight
+                else:
+                    weight_emb = torch.tanh(torch.clamp(self.deconv(F.tanhshrink(torch.clamp(self.conv(F.one_hot(x, num_classes=self.n_spk).float().transpose(1,2)),
+                                                min=MIN_CLAMP, max=MAX_CLAMP))), min=MIN_CLAMP, max=MAX_CLAMP)).transpose(1,2) # B x T x n_weight
+                out = self.embed_spk.weight[0].unsqueeze(0).unsqueeze(1)*weight_emb[:,:,:1] # 1 x 1 x emb_dim * B x T x 1
+                for i in range(1,self.n_weight_emb):
+                    out = torch.cat((out, self.embed_spk.weight[i].unsqueeze(0).unsqueeze(1)*weight_emb[:,:,i:i+1]), 2) # 1 x 1 x emb_dim * B x T x 1
+                # B x T x emb_dim*n_weight
+                return weight_emb, out
+            else:
+                if self.conv_emb_flag:
+                    return self.deconv(F.tanhshrink(torch.clamp(self.conv(self.conv_emb(F.one_hot(x, num_classes=self.n_spk).float().transpose(1,2))), min=MIN_CLAMP, max=MAX_CLAMP))).transpose(1,2)
+                else:
+                    return self.deconv(F.tanhshrink(torch.clamp(self.conv(F.one_hot(x, num_classes=self.n_spk).float().transpose(1,2)), min=MIN_CLAMP, max=MAX_CLAMP))).transpose(1,2)
+        else:
+            if self.n_weight_emb is not None:
+                if self.conv_emb_flag:
+                    weight_emb = torch.tanh(torch.clamp(self.conv(self.conv_emb(F.one_hot(x, num_classes=self.n_spk).float().transpose(1,2))), min=MIN_CLAMP, max=MAX_CLAMP)).transpose(1,2) # B x T x n_weight
+                else:
+                    weight_emb = torch.tanh(torch.clamp(self.conv(F.one_hot(x, num_classes=self.n_spk).float().transpose(1,2)), min=MIN_CLAMP, max=MAX_CLAMP)).transpose(1,2) # B x T x n_weight
+                out = self.embed_spk.weight[0].unsqueeze(0).unsqueeze(1)*weight_emb[:,:,:1] # 1 x 1 x emb_dim * B x T x 1
+                for i in range(1,self.n_weight_emb):
+                    out = torch.cat((out, self.embed_spk.weight[i].unsqueeze(0).unsqueeze(1)*weight_emb[:,:,i:i+1]), 2) # 1 x 1 x emb_dim * B x T x 1
+                # B x T x emb_dim*n_weight
+                return weight_emb, out
+            else:
+                return self.conv(F.one_hot(x, num_classes=self.n_spk).float().transpose(1,2)).transpose(1,2)
 
     def apply_weight_norm(self):
         """Apply weight normalization module from all of the layers."""
@@ -1740,7 +1895,7 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
             kernel_size=7, dilation_size=1, do_prob=0, causal_conv=False, use_weight_norm=True, lpc=6, remove_scale_in_weight_norm=True,
                 right_size=2, n_bands=5, excit_dim=0, pad_first=False, mid_out_flag=True, red_dim=None, spk_dim=None, res_gru=None, frm_upd_flag=False,
                     scale_in_aux_dim=None, n_spk=None, scale_in_flag=True, mid_dim=None, aux_dim=None, res_flag=False, res_smpl_flag=False, conv_in_flag=False,
-                        emb_flag=False, lin_flag=False):
+                        emb_flag=False):
         super(GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF, self).__init__()
         self.feat_dim = feat_dim
         self.in_dim = self.feat_dim
@@ -1788,7 +1943,6 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
         self.frm_upd_flag = frm_upd_flag
         self.remove_scale_in_weight_norm = remove_scale_in_weight_norm
         self.emb_flag = emb_flag
-        self.lin_flag = lin_flag
 
         # Norm. layer
         if self.scale_in_flag:
@@ -1828,13 +1982,15 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
         self.gru_2 = nn.GRU(self.s_dim+self.hidden_units, self.hidden_units_2, 1, batch_first=True)
 
         # Output layers coarse
-        self.out = DualFC(self.hidden_units_2, self.cf_dim, self.lpc, n_bands=self.n_bands, mid_out=self.mid_out, lin_flag=self.lin_flag)
+        #self.out = DualFC(self.hidden_units_2, self.cf_dim, self.lpc, n_bands=self.n_bands, mid_out=self.mid_out, lin_flag=self.lin_flag)
+        self.out = DualFC_(self.hidden_units_2, self.cf_dim, self.lpc, n_bands=self.n_bands, mid_out=self.mid_out)
 
         # GRU layer(s) fine
         self.gru_f = nn.GRU(self.s_dim+self.wav_dim_bands+self.hidden_units_2, self.hidden_units_2, 1, batch_first=True)
 
         # Output layers fine
-        self.out_f = DualFC(self.hidden_units_2, self.cf_dim, self.lpc, n_bands=self.n_bands, mid_out=self.mid_out, lin_flag=self.lin_flag)
+        #self.out_f = DualFC(self.hidden_units_2, self.cf_dim, self.lpc, n_bands=self.n_bands, mid_out=self.mid_out, lin_flag=self.lin_flag)
+        self.out_f = DualFC_(self.hidden_units_2, self.cf_dim, self.lpc, n_bands=self.n_bands, mid_out=self.mid_out)
 
         # Prev logits if using data-driven lpc
         if self.lpc > 0:
@@ -1923,12 +2079,8 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
 
         # output
         if self.lpc > 0:
-            if self.lin_flag:
-                signs_c, scales_c, lin_c, logits_c = self.out(out_2.transpose(1,2))
-                signs_f, scales_f, lin_f, logits_f = self.out_f(out_f.transpose(1,2))
-            else:
-                signs_c, scales_c, logits_c = self.out(out_2.transpose(1,2))
-                signs_f, scales_f, logits_f = self.out_f(out_f.transpose(1,2))
+            signs_c, scales_c, logits_c = self.out(out_2.transpose(1,2))
+            signs_f, scales_f, logits_f = self.out_f(out_f.transpose(1,2))
             # B x T x x n_bands x K, B x T x n_bands x K and B x T x n_bands x 256
             # x_lpc B x T_lpc x n_bands --> B x T x n_bands x K --> B x T x n_bands x K x 256
             # unfold put new dimension on the last
@@ -1946,29 +2098,14 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
                         #lpc_logits_c = torch.sum(self.logits(x_c_lpc)*lpc_c*torch.tanh(self.logits_sgns_c(x_c_lpc))*torch.exp(self.logits_mags_c(x_c_lpc)), 3)
                         #lpc_logits_f = torch.sum(self.logits(x_f_lpc)*lpc_f*torch.tanh(self.logits_sgns_f(x_f_lpc))*torch.exp(self.logits_mags_f(x_f_lpc)), 3)
                         #return torch.clamp(logits_c + lpc_logits_c, min=MIN_CLAMP, max=MAX_CLAMP), torch.clamp(logits_f + lpc_logits_f, min=MIN_CLAMP, max=MAX_CLAMP), \
-                        if self.lin_flag:
-                            return torch.clamp(logits_c + torch.sum(self.logits(x_c_lpc)*(signs_c*scales_c*lin_c).flip(-1).unsqueeze(-1)*self.logits_c(x_c_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), \
-                                    torch.clamp(logits_f + torch.sum(self.logits(x_f_lpc)*(signs_f*scales_f*lin_f).flip(-1).unsqueeze(-1)*self.logits_f(x_f_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), \
-                                            h.detach(), h_2.detach(), h_f.detach()
-                        else:
-                            return torch.clamp(logits_c + torch.sum(self.logits(x_c_lpc)*(signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits_c(x_c_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), \
-                                    torch.clamp(logits_f + torch.sum(self.logits(x_f_lpc)*(signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits_f(x_f_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), \
-                                            h.detach(), h_2.detach(), h_f.detach()
+                        return torch.clamp(logits_c + torch.sum(self.logits(x_c_lpc)*(signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits_c(x_c_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), \
+                                torch.clamp(logits_f + torch.sum(self.logits(x_f_lpc)*(signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits_f(x_f_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), \
+                                        h.detach(), h_2.detach(), h_f.detach()
                                     #*torch.tanh(self.logits_sgns_c(x_c_lpc))*torch.exp(self.logits_mags_c(x_c_lpc)), 3), min=MIN_CLAMP, max=MAX_CLAMP), \
                                     #*torch.tanh(self.logits_sgns_f(x_f_lpc))*torch.exp(self.logits_mags_f(x_f_lpc)), 3), min=MIN_CLAMP, max=MAX_CLAMP), \
                     else:
-                        if self.lin_flag:
-                            #logging.info(signs_c.flip(-1).mean(2).mean(1).mean(0))
-                            #logging.info(scales_c.flip(-1).mean(2).mean(1).mean(0))
-                            #logging.info(lin_c.flip(-1).mean(2).mean(1).mean(0))
-                            #logging.info(signs_f.flip(-1).mean(2).mean(1).mean(0))
-                            #logging.info(scales_f.flip(-1).mean(2).mean(1).mean(0))
-                            #logging.info(lin_f.flip(-1).mean(2).mean(1).mean(0))
-                            return torch.clamp(logits_c + torch.sum((signs_c*scales_c*lin_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), \
-                                torch.clamp(logits_f + torch.sum((signs_f*scales_f*lin_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), h.detach(), h_2.detach(), h_f.detach()
-                        else:
-                            return torch.clamp(logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), \
-                                torch.clamp(logits_f + torch.sum((signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), h.detach(), h_2.detach(), h_f.detach()
+                        return torch.clamp(logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), \
+                            torch.clamp(logits_f + torch.sum((signs_f*scales_f).flip(-1).unsqueeze(-1)*self.logits(x_f_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), h.detach(), h_2.detach(), h_f.detach()
                 else:
                     if not ret_mid_smpl:
                         return torch.clamp(logits_c + torch.sum((signs_c*scales_c).flip(-1).unsqueeze(-1)*self.logits(x_c_lpc.unfold(1, self.lpc, 1)), 3), min=MIN_CLAMP, max=MAX_CLAMP), \
@@ -2130,22 +2267,13 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
         out, h_2 = self.gru_2(torch.cat((c_f,out), 2))
         if self.lpc > 0:
             # coarse part
-            if self.lin_flag:
-                signs_c, scales_c, lin_c, logits_c = self.out(out.transpose(1,2)) # B x 1 x n_bands x K or 32
-                if self.emb_flag:
-                    dist = OneHotCategorical(F.softmax(torch.clamp(logits_c + torch.sum(self.logits(x_c_lpc)*(signs_c*scales_c*lin_c).unsqueeze(-1)\
-                                *self.logits_c(x_c_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
-                                #*torch.tanh(self.logits_sgns_c(x_c_lpc))*torch.exp(self.logits_mags_c(x_c_lpc)), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
-                else:
-                    dist = OneHotCategorical(F.softmax(torch.clamp(logits_c + torch.sum((signs_c*scales_c*lin_c).unsqueeze(-1)*self.logits(x_c_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
+            signs_c, scales_c, logits_c = self.out(out.transpose(1,2)) # B x 1 x n_bands x K or 32
+            if self.emb_flag:
+                dist = OneHotCategorical(F.softmax(torch.clamp(logits_c + torch.sum(self.logits(x_c_lpc)*(signs_c*scales_c).unsqueeze(-1)\
+                            *self.logits_c(x_c_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
+                            #*torch.tanh(self.logits_sgns_c(x_c_lpc))*torch.exp(self.logits_mags_c(x_c_lpc)), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
             else:
-                signs_c, scales_c, logits_c = self.out(out.transpose(1,2)) # B x 1 x n_bands x K or 32
-                if self.emb_flag:
-                    dist = OneHotCategorical(F.softmax(torch.clamp(logits_c + torch.sum(self.logits(x_c_lpc)*(signs_c*scales_c).unsqueeze(-1)\
-                                *self.logits_c(x_c_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
-                                #*torch.tanh(self.logits_sgns_c(x_c_lpc))*torch.exp(self.logits_mags_c(x_c_lpc)), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
-                else:
-                    dist = OneHotCategorical(F.softmax(torch.clamp(logits_c + torch.sum((signs_c*scales_c).unsqueeze(-1)*self.logits(x_c_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
+                dist = OneHotCategorical(F.softmax(torch.clamp(logits_c + torch.sum((signs_c*scales_c).unsqueeze(-1)*self.logits(x_c_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
             # B x 1 x n_bands x 256, B x 1 x n_bands x K x 256 --> B x 1 x n_bands x 2 x 256
             x_c_out = x_c_wav = dist.sample().argmax(dim=-1) # B x 1 x n_bands
             x_c_lpc[:,:,:,1:] = x_c_lpc[:,:,:,:-1]
@@ -2153,22 +2281,13 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
             # fine part
             embed_x_c_wav = self.embed_c_wav(x_c_wav).reshape(B,1,-1)
             out, h_f = self.gru_f(torch.cat((c_f, embed_x_c_wav, out), 2))
-            if self.lin_flag:
-                signs_f, scales_f, lin_f, logits_f = self.out_f(out.transpose(1,2)) # B x 1 x n_bands x K or 32
-                if self.emb_flag:
-                    dist = OneHotCategorical(F.softmax(torch.clamp(logits_f + torch.sum(self.logits(x_f_lpc)*(signs_f*scales_f*lin_f).unsqueeze(-1)\
-                                *self.logits_f(x_f_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
-                                #*torch.tanh(self.logits_sgns_f(x_f_lpc))*torch.exp(self.logits_mags_f(x_f_lpc)), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
-                else:
-                    dist = OneHotCategorical(F.softmax(torch.clamp(logits_f + torch.sum((signs_f*scales_f*lin_f).unsqueeze(-1)*self.logits(x_f_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
+            signs_f, scales_f, logits_f = self.out_f(out.transpose(1,2)) # B x 1 x n_bands x K or 32
+            if self.emb_flag:
+                dist = OneHotCategorical(F.softmax(torch.clamp(logits_f + torch.sum(self.logits(x_f_lpc)*(signs_f*scales_f).unsqueeze(-1)\
+                            *self.logits_f(x_f_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
+                            #*torch.tanh(self.logits_sgns_f(x_f_lpc))*torch.exp(self.logits_mags_f(x_f_lpc)), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
             else:
-                signs_f, scales_f, logits_f = self.out_f(out.transpose(1,2)) # B x 1 x n_bands x K or 32
-                if self.emb_flag:
-                    dist = OneHotCategorical(F.softmax(torch.clamp(logits_f + torch.sum(self.logits(x_f_lpc)*(signs_f*scales_f).unsqueeze(-1)\
-                                *self.logits_f(x_f_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
-                                #*torch.tanh(self.logits_sgns_f(x_f_lpc))*torch.exp(self.logits_mags_f(x_f_lpc)), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
-                else:
-                    dist = OneHotCategorical(F.softmax(torch.clamp(logits_f + torch.sum((signs_f*scales_f).unsqueeze(-1)*self.logits(x_f_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
+                dist = OneHotCategorical(F.softmax(torch.clamp(logits_f + torch.sum((signs_f*scales_f).unsqueeze(-1)*self.logits(x_f_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
             x_f_out = x_f_wav = dist.sample().argmax(dim=-1) # B x 1 x n_bands
             x_f_lpc[:,:,:,1:] = x_f_lpc[:,:,:,:-1]
             x_f_lpc[:,:,:,0] = x_f_wav
@@ -2195,22 +2314,13 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
                 out, h_2 = self.gru_2(torch.cat((c_f,out), 2), h_2)
 
                 # coarse part
-                if self.lin_flag:
-                    signs_c, scales_c, lin_c, logits_c = self.out(out.transpose(1,2)) # B x 1 x n_bands x K or 32
-                    if self.emb_flag:
-                        dist = OneHotCategorical(F.softmax(torch.clamp(logits_c + torch.sum(self.logits(x_c_lpc)*(signs_c*scales_c*lin_c).unsqueeze(-1)\
-                                    *self.logits_c(x_c_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
-                                    #*torch.tanh(self.logits_sgns_c(x_c_lpc))*torch.exp(self.logits_mags_c(x_c_lpc)), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
-                    else:
-                        dist = OneHotCategorical(F.softmax(torch.clamp(logits_c + torch.sum((signs_c*scales_c*lin_c).unsqueeze(-1)*self.logits(x_c_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
+                signs_c, scales_c, logits_c = self.out(out.transpose(1,2)) # B x 1 x n_bands x K or 32
+                if self.emb_flag:
+                    dist = OneHotCategorical(F.softmax(torch.clamp(logits_c + torch.sum(self.logits(x_c_lpc)*(signs_c*scales_c).unsqueeze(-1)\
+                                *self.logits_c(x_c_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
+                                #*torch.tanh(self.logits_sgns_c(x_c_lpc))*torch.exp(self.logits_mags_c(x_c_lpc)), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
                 else:
-                    signs_c, scales_c, logits_c = self.out(out.transpose(1,2)) # B x 1 x n_bands x K or 32
-                    if self.emb_flag:
-                        dist = OneHotCategorical(F.softmax(torch.clamp(logits_c + torch.sum(self.logits(x_c_lpc)*(signs_c*scales_c).unsqueeze(-1)\
-                                    *self.logits_c(x_c_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
-                                    #*torch.tanh(self.logits_sgns_c(x_c_lpc))*torch.exp(self.logits_mags_c(x_c_lpc)), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
-                    else:
-                        dist = OneHotCategorical(F.softmax(torch.clamp(logits_c + torch.sum((signs_c*scales_c).unsqueeze(-1)*self.logits(x_c_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
+                    dist = OneHotCategorical(F.softmax(torch.clamp(logits_c + torch.sum((signs_c*scales_c).unsqueeze(-1)*self.logits(x_c_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
                 x_c_wav = dist.sample().argmax(dim=-1) # B x 1 x n_bands x 2
                 x_c_out = torch.cat((x_c_out, x_c_wav), 1) # B x t+1 x n_bands
                 x_c_lpc[:,:,:,1:] = x_c_lpc[:,:,:,:-1]
@@ -2219,22 +2329,13 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
                 # fine part
                 embed_x_c_wav = self.embed_c_wav(x_c_wav).reshape(B,1,-1)
                 out, h_f = self.gru_f(torch.cat((c_f, embed_x_c_wav, out), 2), h_f)
-                if self.lin_flag:
-                    signs_f, scales_f, lin_f, logits_f = self.out_f(out.transpose(1,2)) # B x 1 x n_bands x K or 32
-                    if self.emb_flag:
-                        dist = OneHotCategorical(F.softmax(torch.clamp(logits_f + torch.sum(self.logits(x_f_lpc)*(signs_f*scales_f*lin_f).unsqueeze(-1)\
-                                    *self.logits_f(x_f_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
-                                    #*torch.tanh(self.logits_sgns_f(x_f_lpc))*torch.exp(self.logits_mags_f(x_f_lpc)), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
-                    else:
-                        dist = OneHotCategorical(F.softmax(torch.clamp(logits_f + torch.sum((signs_f*scales_f*lin_f).unsqueeze(-1)*self.logits(x_f_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
+                signs_f, scales_f, logits_f = self.out_f(out.transpose(1,2)) # B x 1 x n_bands x K or 32
+                if self.emb_flag:
+                    dist = OneHotCategorical(F.softmax(torch.clamp(logits_f + torch.sum(self.logits(x_f_lpc)*(signs_f*scales_f).unsqueeze(-1)\
+                                *self.logits_f(x_f_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
+                                #*torch.tanh(self.logits_sgns_f(x_f_lpc))*torch.exp(self.logits_mags_f(x_f_lpc)), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
                 else:
-                    signs_f, scales_f, logits_f = self.out_f(out.transpose(1,2)) # B x 1 x n_bands x K or 32
-                    if self.emb_flag:
-                        dist = OneHotCategorical(F.softmax(torch.clamp(logits_f + torch.sum(self.logits(x_f_lpc)*(signs_f*scales_f).unsqueeze(-1)\
-                                    *self.logits_f(x_f_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
-                                    #*torch.tanh(self.logits_sgns_f(x_f_lpc))*torch.exp(self.logits_mags_f(x_f_lpc)), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
-                    else:
-                        dist = OneHotCategorical(F.softmax(torch.clamp(logits_f + torch.sum((signs_f*scales_f).unsqueeze(-1)*self.logits(x_f_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
+                    dist = OneHotCategorical(F.softmax(torch.clamp(logits_f + torch.sum((signs_f*scales_f).unsqueeze(-1)*self.logits(x_f_lpc), 3), min=MIN_CLAMP, max=MAX_CLAMP), dim=-1))
                 x_f_wav = dist.sample().argmax(dim=-1) # B x 1 x n_bands
                 x_f_out = torch.cat((x_f_out, x_f_wav), 1) # B x t+1 x n_bands
                 x_f_lpc[:,:,:,1:] = x_f_lpc[:,:,:,:-1]

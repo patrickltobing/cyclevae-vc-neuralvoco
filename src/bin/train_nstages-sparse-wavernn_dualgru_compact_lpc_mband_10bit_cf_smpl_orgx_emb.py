@@ -36,6 +36,8 @@ from utils import read_hdf5
 from utils import read_txt
 from vcneuvoco import GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF, encode_mu_law
 from vcneuvoco import decode_mu_law_torch, MultiResolutionSTFTLoss
+#from vcneuvoco_ import GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF, encode_mu_law
+#from vcneuvoco_ import decode_mu_law_torch, MultiResolutionSTFTLoss
 #from radam import RAdam
 import torch_optimizer as optim
 
@@ -1128,7 +1130,7 @@ def main():
             if (not sparse_min_flag) and (iter_idx + 1 >= t_ends[idx_stage]):
                 sparse_check_flag = True
             if (not sparse_min_flag and sparse_check_flag) \
-                or ((round(float(round(Decimal(str(eval_loss_err_avg)),2))-0.16,2) <= float(round(Decimal(str(min_eval_loss_err_avg)),2))) and \
+                or ((round(float(round(Decimal(str(eval_loss_err_avg)),2))-0.28,2) <= float(round(Decimal(str(min_eval_loss_err_avg)),2))) and \
                     (round(float(round(Decimal(str(eval_loss_l1_avg)),2))-0.06,2) <= float(round(Decimal(str(min_eval_loss_l1_avg)),2))) and \
                     (round(float(round(Decimal(str(eval_loss_l1_fb)),2))-0.09,2) <= float(round(Decimal(str(min_eval_loss_l1_fb)),2))) and \
                     (round(float(round(Decimal(str(eval_loss_ce_avg+eval_loss_ce_avg_std)),2))-0.01,2) <= float(round(Decimal(str(min_eval_loss_ce_avg+min_eval_loss_ce_avg_std)),2)) \
@@ -1566,6 +1568,9 @@ def main():
                         + batch_loss_ce_.mean(-1).sum() + batch_loss_ce_f_.mean(-1).sum() \
                             + batch_loss_fro_.sum() + batch_loss_l1_.sum() \
                                 + batch_loss_fro_fb_.sum() + batch_loss_l1_fb_.sum()
+
+        #logging.info(model_waveform.logits_c.weight[:,0])
+        #logging.info(model_waveform.logits_f.weight[:,0])
 
         optimizer.zero_grad()
         batch_loss.backward()

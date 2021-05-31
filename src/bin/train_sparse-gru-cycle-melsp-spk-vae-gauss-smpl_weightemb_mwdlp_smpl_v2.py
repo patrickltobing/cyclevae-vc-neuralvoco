@@ -291,13 +291,13 @@ def eval_generator(dataloader, device, batch_size, upsampling_factor, limit_coun
 
 
 def save_checkpoint(checkpoint_dir, model_encoder_melsp_fix, model_encoder_melsp, model_decoder_melsp,
-        model_encoder_excit_fix, model_encoder_excit, model_spk, model_classifier,
+        model_encoder_excit_fix, model_encoder_excit, model_spkidtr, model_spk, model_classifier,
         model_waveform, min_eval_loss_melsp_dB, min_eval_loss_melsp_dB_std, min_eval_loss_melsp_cv,
         min_eval_loss_melsp, min_eval_loss_gauss_cv, min_eval_loss_gauss,
         min_eval_loss_melsp_dB_src_trg, min_eval_loss_melsp_dB_src_trg_std, min_eval_loss_gv_src_trg,
         min_eval_loss_ce_avg, min_eval_loss_ce_avg_std, min_eval_loss_err_avg, min_eval_loss_err_avg_std,
         min_eval_loss_l1_avg, min_eval_loss_l1_fb, err_flag, err_flag_count,
-        iter_idx, min_idx, optimizer, numpy_random_state, torch_random_state, iterations, model_spkidtr=None):
+        iter_idx, min_idx, optimizer, numpy_random_state, torch_random_state, iterations):
     """FUNCTION TO SAVE CHECKPOINT
 
     Args:
@@ -311,10 +311,9 @@ def save_checkpoint(checkpoint_dir, model_encoder_melsp_fix, model_encoder_melsp
     model_decoder_melsp.cpu()
     model_encoder_excit_fix.cpu()
     model_encoder_excit.cpu()
+    model_spkidtr.cpu()
     model_spk.cpu()
     model_classifier.cpu()
-    if model_spkidtr is not None:
-        model_spkidtr.cpu()
     model_waveform.cpu()
     checkpoint = {
         "model_encoder_melsp_fix": model_encoder_melsp_fix.state_dict(),
@@ -322,6 +321,7 @@ def save_checkpoint(checkpoint_dir, model_encoder_melsp_fix, model_encoder_melsp
         "model_decoder_melsp": model_decoder_melsp.state_dict(),
         "model_encoder_excit_fix": model_encoder_excit_fix.state_dict(),
         "model_encoder_excit": model_encoder_excit.state_dict(),
+        "model_spkidtr": model_spkidtr.state_dict(),
         "model_spk": model_spk.state_dict(),
         "model_classifier": model_classifier.state_dict(),
         "model_waveform": model_waveform.state_dict(),
@@ -349,8 +349,6 @@ def save_checkpoint(checkpoint_dir, model_encoder_melsp_fix, model_encoder_melsp
         "numpy_random_state": numpy_random_state,
         "torch_random_state": torch_random_state,
         "iterations": iterations}
-    if model_spkidtr is not None:
-        checkpoint["model_spkidtr"] = model_spkidtr.state_dict()
     if not os.path.exists(checkpoint_dir):
         os.makedirs(checkpoint_dir)
     torch.save(checkpoint, checkpoint_dir + "/checkpoint-%d.pkl" % iterations)
@@ -360,10 +358,9 @@ def save_checkpoint(checkpoint_dir, model_encoder_melsp_fix, model_encoder_melsp
     model_decoder_melsp.cuda()
     model_encoder_excit_fix.cuda()
     model_encoder_excit.cuda()
+    model_spkidtr.cuda()
     model_spk.cuda()
     model_classifier.cuda()
-    if model_spkidtr is not None:
-        model_spkidtr.cuda()
     model_waveform.cuda()
     logging.info("%d-iter and last checkpoints created." % iterations)
 
@@ -481,6 +478,10 @@ def main():
                         type=int, help="kernel size of dilated causal convolution")
     parser.add_argument("--spkidtr_dim", default=0,
                         type=int, help="number of dimension of reduced one-hot spk-dim (if 0 not apply reduction)")
+    parser.add_argument("--emb_spk_dim", default=128,
+                        type=int, help="number of dimension of reduced one-hot spk-dim (if 0 not apply reduction)")
+    parser.add_argument("--n_weight_emb", default=4,
+                        type=int, help="number of dimension of reduced one-hot spk-dim (if 0 not apply reduction)")
     # network training setting
     parser.add_argument("--lr", default=1e-4,
                         type=float, help="learning rate")
@@ -520,7 +521,7 @@ def main():
                         type=int, help="iter idx to finish densitiy sparsify")
     parser.add_argument("--interval", default=10,
                         type=int, help="interval in finishing densitiy sparsify")
-    parser.add_argument("--densities", default="0.018-0.018-0.24",
+    parser.add_argument("--densities", default="0.685-0.685-0.88",
                         type=str, help="final densitiy of reset, update, new hidden gate matrices")
     parser.add_argument("--fftl", default=2048,
                         type=int, help="kernel size of dilated causal convolution")
@@ -607,7 +608,8 @@ def main():
     args.half_n_quantize = args.n_quantize // 2
     args.c_pad = args.half_n_quantize // args.cf_dim
     args.f_pad = args.half_n_quantize % args.cf_dim
-    args.t_end = 1070000
+    #args.t_end = 20
+    args.t_end = 1270000
     logging.info(f'{args.t_start} {args.t_end} {args.interval} {args.step_count}')
     args.n_half_cyc = 2
     args.t_start = args.t_start // args.n_half_cyc
@@ -615,11 +617,11 @@ def main():
     args.interval = args.interval // args.n_half_cyc
     args.step_count = args.step_count // args.n_half_cyc
     logging.info(f'{args.t_start} {args.t_end} {args.interval} {args.step_count}')
-    args.factor = 0.4
+    args.factor = 0.35
     args.t_start = max(math.ceil(args.t_start * args.factor),1)
     args.t_end = max(math.ceil(args.t_end * args.factor),1)
     args.interval = max(math.ceil(args.interval * args.factor),1)
-    args.step_count = max(math.ceil(args.t_end * 3.6),1)
+    args.step_count = max(math.ceil(args.t_end * 3.43),1)
     logging.info(f'{args.t_start} {args.t_end} {args.interval} {args.step_count}')
     torch.save(args, args.expdir + "/model.conf")
 
@@ -651,8 +653,8 @@ def main():
     model_decoder_melsp = GRU_SPEC_DECODER(
         feat_dim=args.lat_dim+args.lat_dim_e,
         out_dim=args.mel_dim,
-        n_spk=n_spk,
-        aux_dim=n_spk,
+        n_spk=(args.emb_spk_dim//args.n_weight_emb)*args.n_weight_emb,
+        aux_dim=(args.emb_spk_dim//args.n_weight_emb)*args.n_weight_emb,
         hidden_layers=args.hidden_layers_dec,
         hidden_units=args.hidden_units_dec,
         kernel_size=args.kernel_size_dec,
@@ -687,13 +689,13 @@ def main():
         pad_first=True,
         right_size=args.right_size_enc)
     logging.info(model_encoder_excit)
-    if args.spkidtr_dim > 0:
-        model_spkidtr = SPKID_TRANSFORM_LAYER(
-            n_spk=n_spk,
-            spkidtr_dim=args.spkidtr_dim)
-        logging.info(model_spkidtr)
-    else:
-        model_spkidtr = None
+    model_spkidtr = SPKID_TRANSFORM_LAYER(
+        n_spk=n_spk,
+        emb_dim=args.emb_spk_dim,
+        n_weight_emb=args.n_weight_emb,
+        conv_emb_flag=True,
+        spkidtr_dim=args.spkidtr_dim)
+    logging.info(model_spkidtr)
     model_classifier = GRU_LAT_FEAT_CLASSIFIER(
         lat_dim=args.lat_dim+args.lat_dim_e,
         feat_dim=args.mel_dim,
@@ -703,7 +705,7 @@ def main():
         hidden_layers=1)
     logging.info(model_classifier) 
     model_spk = GRU_SPK(
-        n_spk=n_spk,
+        n_spk=(args.emb_spk_dim//args.n_weight_emb)*args.n_weight_emb,
         feat_dim=args.lat_dim+args.lat_dim_e,
         hidden_units=32,
         kernel_size=args.kernel_size_spk,
@@ -711,7 +713,10 @@ def main():
         causal_conv=args.causal_conv_spk,
         pad_first=True,
         right_size=args.right_size_spk,
-        red_dim=args.mel_dim)
+        red_dim=args.mel_dim,
+        n_weight_emb=args.n_weight_emb,
+        weight_fact=1,
+        do_prob=args.do_prob)
     logging.info(model_spk)
     model_waveform = GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(
         feat_dim=args.mel_dim,
@@ -781,10 +786,9 @@ def main():
         model_decoder_melsp.cuda()
         model_encoder_excit_fix.cuda()
         model_encoder_excit.cuda()
+        model_spkidtr.cuda()
         model_spk.cuda()
         model_classifier.cuda()
-        if args.spkidtr_dim > 0:
-            model_spkidtr.cuda()
         model_waveform.cuda()
         pqmf.cuda()
         criterion_gauss.cuda()
@@ -818,10 +822,9 @@ def main():
     model_decoder_melsp.train()
     model_encoder_excit_fix.train()
     model_encoder_excit.train()
+    model_spkidtr.train()
     model_spk.train()
     model_classifier.train()
-    if args.spkidtr_dim > 0:
-        model_spkidtr.train()
     model_waveform.train()
 
     parameters = filter(lambda p: p.requires_grad, model_encoder_melsp_fix.parameters())
@@ -839,16 +842,15 @@ def main():
     parameters = filter(lambda p: p.requires_grad, model_encoder_excit.parameters())
     parameters = sum([np.prod(p.size()) for p in parameters]) / 1000000
     logging.info('Trainable Parameters (encoder_excit): %.3f million' % parameters)
+    parameters = filter(lambda p: p.requires_grad, model_spkidtr.parameters())
+    parameters = sum([np.prod(p.size()) for p in parameters]) / 1000000
+    logging.info('Trainable Parameters (spkidtr): %.3f million' % parameters)
     parameters = filter(lambda p: p.requires_grad, model_spk.parameters())
     parameters = sum([np.prod(p.size()) for p in parameters]) / 1000000
     logging.info('Trainable Parameters (spk): %.3f million' % parameters)
     parameters = filter(lambda p: p.requires_grad, model_classifier.parameters())
     parameters = sum([np.prod(p.size()) for p in parameters]) / 1000000
     logging.info('Trainable Parameters (classifier): %.3f million' % parameters)
-    if args.spkidtr_dim > 0:
-        parameters = filter(lambda p: p.requires_grad, model_spkidtr.parameters())
-        parameters = sum([np.prod(p.size()) for p in parameters]) / 1000000
-        logging.info('Trainable Parameters (spkidtr): %.3f million' % parameters)
     parameters = filter(lambda p: p.requires_grad, model_waveform.parameters())
     parameters = sum([np.prod(p.size()) for p in parameters]) / 1000000
     logging.info('Trainable Parameters (waveform): %.3f million' % parameters)
@@ -860,10 +862,9 @@ def main():
         model_decoder_melsp.load_state_dict(checkpoint["model_decoder_melsp"], strict=False)
         model_encoder_excit_fix.load_state_dict(checkpoint["model_encoder_excit"])
         model_encoder_excit.load_state_dict(checkpoint["model_encoder_excit"])
-        model_classifier.load_state_dict(checkpoint["model_classifier"], strict=False)
+        model_spkidtr.load_state_dict(checkpoint["model_spkidtr"])
         model_spk.load_state_dict(checkpoint["model_spk"])
-        if args.spkidtr_dim > 0:
-            model_spkidtr.load_state_dict(checkpoint["model_spkidtr"])
+        model_classifier.load_state_dict(checkpoint["model_classifier"], strict=False)
         epoch_idx = checkpoint["iterations"]
         logging.info("gen_model from %d-iter checkpoint." % epoch_idx)
         checkpoint = torch.load(args.gen_model_waveform)
@@ -891,11 +892,6 @@ def main():
         param.requires_grad = True
     for param in model_encoder_excit.scale_in.parameters():
         param.requires_grad = False
-    for param in model_spk.parameters():
-        param.requires_grad = True
-    if args.spkidtr_dim > 0:
-        for param in model_spkidtr.parameters():
-            param.requires_grad = True
     for param in model_waveform.parameters():
         param.requires_grad = False
 
@@ -908,15 +904,20 @@ def main():
     module_list += list(model_encoder_excit.conv.parameters())
     module_list += list(model_encoder_excit.gru.parameters()) + list(model_encoder_excit.out.parameters())
 
+    if (args.spkidtr_dim > 0):
+        module_list += list(model_spkidtr.conv_emb.parameters()) + list(model_spkidtr.conv.parameters()) \
+                        + list(model_spkidtr.deconv.parameters()) + list(model_spkidtr.embed_spk.parameters())
+    else:
+        module_list += list(model_spkidtr.conv_emb.parameters()) + list(model_spkidtr.conv.parameters()) \
+                        + list(model_spkidtr.embed_spk.parameters())
+
     module_list += list(model_spk.in_red.parameters()) + list(model_spk.conv.parameters())
     module_list += list(model_spk.gru.parameters()) + list(model_spk.out.parameters())
+    module_list += list(model_spk.embed_spk.parameters())
 
     module_list += list(model_classifier.conv_lat.parameters()) + list(model_classifier.conv_feat.parameters())
     module_list += list(model_classifier.conv_feat_aux.parameters())
     module_list += list(model_classifier.gru.parameters()) + list(model_classifier.out.parameters())
-
-    if args.spkidtr_dim > 0:
-        module_list += list(model_spkidtr.conv.parameters()) + list(model_spkidtr.deconv.parameters())
 
     # model = ...
     optimizer = optim.RAdam(
@@ -935,10 +936,9 @@ def main():
         model_decoder_melsp.load_state_dict(checkpoint["model_decoder_melsp"])
         model_encoder_excit_fix.load_state_dict(checkpoint["model_encoder_excit_fix"])
         model_encoder_excit.load_state_dict(checkpoint["model_encoder_excit"])
-        model_classifier.load_state_dict(checkpoint["model_classifier"])
+        model_spkidtr.load_state_dict(checkpoint["model_spkidtr"])
         model_spk.load_state_dict(checkpoint["model_spk"])
-        if args.spkidtr_dim > 0:
-            model_spkidtr.load_state_dict(checkpoint["model_spkidtr"])
+        model_classifier.load_state_dict(checkpoint["model_classifier"])
         if model_waveform.use_weight_norm:
             torch.nn.utils.remove_weight_norm(model_waveform.scale_in)
         model_waveform.load_state_dict(checkpoint["model_waveform"])
@@ -1744,9 +1744,8 @@ def main():
             model_encoder_excit_fix.eval()
             model_encoder_excit.eval()
             model_classifier.eval()
+            model_spkidtr.eval()
             model_spk.eval()
-            if args.spkidtr_dim > 0:
-                model_spkidtr.eval()
             model_waveform.eval()
             for param in model_encoder_melsp.parameters():
                 param.requires_grad = False
@@ -1754,13 +1753,12 @@ def main():
                 param.requires_grad = False
             for param in model_encoder_excit.parameters():
                 param.requires_grad = False
-            for param in model_classifier.parameters():
+            for param in model_spkidtr.parameters():
                 param.requires_grad = False
             for param in model_spk.parameters():
                 param.requires_grad = False
-            if args.spkidtr_dim > 0:
-                for param in model_spkidtr.parameters():
-                    param.requires_grad = False
+            for param in model_classifier.parameters():
+                param.requires_grad = False
             pair_exist = False
             logging.info("Evaluation data")
             while True:
@@ -1996,37 +1994,25 @@ def main():
                             qz_alpha_fix = qz_alpha_fix[:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
                             qz_alpha_e_fix = qz_alpha_e_fix[:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
                             idx_in += 1
-                            if args.spkidtr_dim > 0:
-                                spk_code_in = model_spkidtr(batch_sc_in[idx_in])
-                                spk_cv_code_in = model_spkidtr(batch_sc_cv_in[i_cv_in])
-                                batch_spk, h_spk[i] = model_spk(spk_code_in, z=z_cat, outpad_right=outpad_rights[idx_in], h=h_spk[i])
-                                batch_spk_cv, h_spk_cv[i_cv] = model_spk(spk_cv_code_in, z=z_cat, outpad_right=outpad_rights[idx_in], h=h_spk_cv[i_cv])
-                            else:
-                                batch_spk, h_spk[i] = model_spk(batch_sc_in[idx_in], z=z_cat, outpad_right=outpad_rights[idx_in], h=h_spk[i])
-                                batch_spk_cv, h_spk_cv[i_cv] = model_spk(batch_sc_cv_in[i_cv_in], z=z_cat, outpad_right=outpad_rights[idx_in], h=h_spk_cv[i_cv])
+                            weight_in, spk_code_in = model_spkidtr(batch_sc_in[idx_in])
+                            weight_cv_in, spk_cv_code_in = model_spkidtr(batch_sc_cv_in[i_cv_in])
+                            batch_spk, h_spk[i] = model_spk(spk_code_in, z=z_cat, outpad_right=outpad_rights[idx_in], h=h_spk[i])
+                            batch_spk_cv, h_spk_cv[i_cv] = model_spk(spk_cv_code_in, z=z_cat, outpad_right=outpad_rights[idx_in], h=h_spk_cv[i_cv])
                             ## melsp reconstruction & conversion
                             idx_in += 1
                             i_cv_in += 1
                             if spk_pad_right > 0:
                                 z_cat = z_cat[:,spk_pad_left:-spk_pad_right]
-                                if args.spkidtr_dim > 0:
-                                    spk_code_in = spk_code_in[:,spk_pad_left:-spk_pad_right]
-                                    spk_cv_code_in = spk_cv_code_in[:,spk_pad_left:-spk_pad_right]
+                                spk_code_in = spk_code_in[:,spk_pad_left:-spk_pad_right]
+                                spk_cv_code_in = spk_cv_code_in[:,spk_pad_left:-spk_pad_right]
                             else:
                                 z_cat = z_cat[:,spk_pad_left:]
-                                if args.spkidtr_dim > 0:
-                                    spk_code_in = spk_code_in[:,spk_pad_left:]
-                                    spk_cv_code_in = spk_cv_code_in[:,spk_pad_left:]
-                            if args.spkidtr_dim > 0:
-                                batch_pdf_rec[i], batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
-                                                    outpad_right=outpad_rights[idx_in], h=h_melsp[i])
-                                batch_pdf_cv[i_cv], batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=spk_cv_code_in, aux=batch_spk_cv,
-                                                    outpad_right=outpad_rights[idx_in], h=h_melsp_cv[i_cv])
-                            else:
-                                batch_pdf_rec[i], batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in], aux=batch_spk,
-                                                    outpad_right=outpad_rights[idx_in], h=h_melsp[i])
-                                batch_pdf_cv[i_cv], batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=batch_sc_cv_in[i_cv_in], aux=batch_spk_cv,
-                                                    outpad_right=outpad_rights[idx_in], h=h_melsp_cv[i_cv])
+                                spk_code_in = spk_code_in[:,spk_pad_left:]
+                                spk_cv_code_in = spk_cv_code_in[:,spk_pad_left:]
+                            batch_pdf_rec[i], batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
+                                                outpad_right=outpad_rights[idx_in], h=h_melsp[i])
+                            batch_pdf_cv[i_cv], batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=spk_cv_code_in, aux=batch_spk_cv,
+                                                outpad_right=outpad_rights[idx_in], h=h_melsp_cv[i_cv])
                             ## waveform reconstruction
                             idx_in += 1
                             batch_x_c_output_noclamp[i], batch_x_f_output_noclamp[i], batch_seg_conv[i], batch_conv_sc[i], \
@@ -2075,30 +2061,21 @@ def main():
                             qy_logits_e[j] = qy_logits_e[j][:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
                             qz_alpha_e[j] = qz_alpha_e[j][:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
                             idx_in += 1
-                            if args.spkidtr_dim > 0:
-                                if dec_enc_pad_right > 0:
-                                    spk_code_in = spk_code_in[:,dec_enc_pad_left:-dec_enc_pad_right]
-                                else:
-                                    spk_code_in = spk_code_in[:,dec_enc_pad_left:]
-                                batch_spk, h_spk[j] = model_spk(spk_code_in, z=z_cat, outpad_right=outpad_rights[idx_in], h=h_spk[j])
+                            if dec_enc_pad_right > 0:
+                                spk_code_in = spk_code_in[:,dec_enc_pad_left:-dec_enc_pad_right]
                             else:
-                                batch_spk, h_spk[j] = model_spk(batch_sc_in[idx_in], z=z_cat, outpad_right=outpad_rights[idx_in], h=h_spk[j])
+                                spk_code_in = spk_code_in[:,dec_enc_pad_left:]
+                            batch_spk, h_spk[j] = model_spk(spk_code_in, z=z_cat, outpad_right=outpad_rights[idx_in], h=h_spk[j])
                             ## melsp reconstruction
                             idx_in += 1
                             if spk_pad_right > 0:
                                 z_cat = z_cat[:,spk_pad_left:-spk_pad_right]
-                                if args.spkidtr_dim > 0:
-                                    spk_code_in = spk_code_in[:,spk_pad_left:-spk_pad_right]
+                                spk_code_in = spk_code_in[:,spk_pad_left:-spk_pad_right]
                             else:
                                 z_cat = z_cat[:,spk_pad_left:]
-                                if args.spkidtr_dim > 0:
-                                    spk_code_in = spk_code_in[:,spk_pad_left:]
-                            if args.spkidtr_dim > 0:
-                                batch_pdf_rec[j], batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
-                                                        outpad_right=outpad_rights[idx_in], h=h_melsp[j])
-                            else:
-                                batch_pdf_rec[j], batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in], aux=batch_spk,
-                                                        outpad_right=outpad_rights[idx_in], h=h_melsp[j])
+                                spk_code_in = spk_code_in[:,spk_pad_left:]
+                            batch_pdf_rec[j], batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
+                                                    outpad_right=outpad_rights[idx_in], h=h_melsp[j])
                             ## waveform reconstruction
                             idx_in += 1
                             batch_x_c_output_noclamp[j], batch_x_f_output_noclamp[j], batch_seg_conv[j], batch_conv_sc[j], \
@@ -2135,16 +2112,10 @@ def main():
                         batch_sc_data_full = F.pad(batch_sc_data_full.unsqueeze(1).float(), (first_pad_left_eval_utt_dec,first_pad_right_eval_utt_dec), "replicate").squeeze(1).long()
                         batch_sc_cv_data_full = F.pad(batch_sc_cv_data_full.unsqueeze(1).float(), (first_pad_left_eval_utt_dec,first_pad_right_eval_utt_dec), "replicate").squeeze(1).long()
                         z_cat = torch.cat((trj_lat_src_e, trj_lat_src), 2)
-                        if args.spkidtr_dim > 0:
-                            trj_spk_code = model_spkidtr(batch_sc_data_full)
-                            trj_spk_cv_code = model_spkidtr(batch_sc_cv_data_full)
-                            trj_spk, _ = model_spk(trj_spk_code, z=z_cat)
-                            trj_spk_cv, _ = model_spk(trj_spk_cv_code, z=z_cat)
-                        else:
-                            trj_spk_code = batch_sc_data_full
-                            trj_spk_cv_code = batch_sc_cv_data_full
-                            trj_spk, _ = model_spk(batch_sc_data_full, z=z_cat)
-                            trj_spk_cv, _ = model_spk(batch_sc_cv_data_full, z=z_cat)
+                        _, trj_spk_code = model_spkidtr(batch_sc_data_full)
+                        _, trj_spk_cv_code = model_spkidtr(batch_sc_cv_data_full)
+                        trj_spk, _ = model_spk(trj_spk_code, z=z_cat)
+                        trj_spk_cv, _ = model_spk(trj_spk_cv_code, z=z_cat)
                         if spk_pad_right > 0:
                             z_cat = z_cat[:,spk_pad_left:-spk_pad_right]
                             trj_spk_code = trj_spk_code[:,spk_pad_left:-spk_pad_right]
@@ -2243,37 +2214,25 @@ def main():
                             qz_alpha_fix = qz_alpha_fix[:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
                             qz_alpha_e_fix = qz_alpha_e_fix[:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
                             idx_in += 1
-                            if args.spkidtr_dim > 0:
-                                spk_code_in = model_spkidtr(batch_sc_in[idx_in])
-                                spk_cv_code_in = model_spkidtr(batch_sc_cv_in[i_cv_in])
-                                batch_spk, h_spk[i] = model_spk(spk_code_in, z=z_cat, outpad_right=outpad_rights[idx_in])
-                                batch_spk_cv, h_spk_cv[i_cv] = model_spk(spk_cv_code_in, z=z_cat, outpad_right=outpad_rights[idx_in])
-                            else:
-                                batch_spk, h_spk[i] = model_spk(batch_sc_in[idx_in], z=z_cat, outpad_right=outpad_rights[idx_in])
-                                batch_spk_cv, h_spk_cv[i_cv] = model_spk(batch_sc_cv_in[i_cv_in], z=z_cat, outpad_right=outpad_rights[idx_in])
+                            weight_in, spk_code_in = model_spkidtr(batch_sc_in[idx_in])
+                            weight_cv_in, spk_cv_code_in = model_spkidtr(batch_sc_cv_in[i_cv_in])
+                            batch_spk, h_spk[i] = model_spk(spk_code_in, z=z_cat, outpad_right=outpad_rights[idx_in])
+                            batch_spk_cv, h_spk_cv[i_cv] = model_spk(spk_cv_code_in, z=z_cat, outpad_right=outpad_rights[idx_in])
                             ## melsp reconstruction & conversion
                             idx_in += 1
                             i_cv_in += 1
                             if spk_pad_right > 0:
                                 z_cat = z_cat[:,spk_pad_left:-spk_pad_right]
-                                if args.spkidtr_dim > 0:
-                                    spk_code_in = spk_code_in[:,spk_pad_left:-spk_pad_right]
-                                    spk_cv_code_in = spk_cv_code_in[:,spk_pad_left:-spk_pad_right]
+                                spk_code_in = spk_code_in[:,spk_pad_left:-spk_pad_right]
+                                spk_cv_code_in = spk_cv_code_in[:,spk_pad_left:-spk_pad_right]
                             else:
                                 z_cat = z_cat[:,spk_pad_left:]
-                                if args.spkidtr_dim > 0:
-                                    spk_code_in = spk_code_in[:,spk_pad_left:]
-                                    spk_cv_code_in = spk_cv_code_in[:,spk_pad_left:]
-                            if args.spkidtr_dim > 0:
-                                batch_pdf_rec[i], batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
-                                                    outpad_right=outpad_rights[idx_in])
-                                batch_pdf_cv[i_cv], batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=spk_cv_code_in, aux=batch_spk_cv,
-                                                    outpad_right=outpad_rights[idx_in])
-                            else:
-                                batch_pdf_rec[i], batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in], aux=batch_spk,
-                                                    outpad_right=outpad_rights[idx_in])
-                                batch_pdf_cv[i_cv], batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=batch_sc_cv_in[i_cv_in], aux=batch_spk_cv,
-                                                    outpad_right=outpad_rights[idx_in])
+                                spk_code_in = spk_code_in[:,spk_pad_left:]
+                                spk_cv_code_in = spk_cv_code_in[:,spk_pad_left:]
+                            batch_pdf_rec[i], batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
+                                                outpad_right=outpad_rights[idx_in])
+                            batch_pdf_cv[i_cv], batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=spk_cv_code_in, aux=batch_spk_cv,
+                                                outpad_right=outpad_rights[idx_in])
                             ## waveform reconstruction
                             idx_in += 1
                             batch_x_c_output_noclamp[i], batch_x_f_output_noclamp[i], batch_seg_conv[i], batch_conv_sc[i], \
@@ -2322,30 +2281,21 @@ def main():
                             qy_logits_e[j] = qy_logits_e[j][:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
                             qz_alpha_e[j] = qz_alpha_e[j][:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
                             idx_in += 1
-                            if args.spkidtr_dim > 0:
-                                if dec_enc_pad_right > 0:
-                                    spk_code_in = spk_code_in[:,dec_enc_pad_left:-dec_enc_pad_right]
-                                else:
-                                    spk_code_in = spk_code_in[:,dec_enc_pad_left:]
-                                batch_spk, h_spk[j] = model_spk(spk_code_in, z=z_cat, outpad_right=outpad_rights[idx_in])
+                            if dec_enc_pad_right > 0:
+                                spk_code_in = spk_code_in[:,dec_enc_pad_left:-dec_enc_pad_right]
                             else:
-                                batch_spk, h_spk[j] = model_spk(batch_sc_in[idx_in], z=z_cat, outpad_right=outpad_rights[idx_in])
+                                spk_code_in = spk_code_in[:,dec_enc_pad_left:]
+                            batch_spk, h_spk[j] = model_spk(spk_code_in, z=z_cat, outpad_right=outpad_rights[idx_in])
                             ## melsp reconstruction
                             idx_in += 1
                             if spk_pad_right > 0:
                                 z_cat = z_cat[:,spk_pad_left:-spk_pad_right]
-                                if args.spkidtr_dim > 0:
-                                    spk_code_in = spk_code_in[:,spk_pad_left:-spk_pad_right]
+                                spk_code_in = spk_code_in[:,spk_pad_left:-spk_pad_right]
                             else:
                                 z_cat = z_cat[:,spk_pad_left:]
-                                if args.spkidtr_dim > 0:
-                                    spk_code_in = spk_code_in[:,spk_pad_left:]
-                            if args.spkidtr_dim > 0:
-                                batch_pdf_rec[j], batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
-                                                        outpad_right=outpad_rights[idx_in])
-                            else:
-                                batch_pdf_rec[j], batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in], aux=batch_spk,
-                                                        outpad_right=outpad_rights[idx_in])
+                                spk_code_in = spk_code_in[:,spk_pad_left:]
+                            batch_pdf_rec[j], batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
+                                                    outpad_right=outpad_rights[idx_in])
                             ## waveform reconstruction
                             idx_in += 1
                             batch_x_c_output_noclamp[j], batch_x_f_output_noclamp[j], batch_seg_conv[j], batch_conv_sc[j], \
@@ -2370,6 +2320,13 @@ def main():
                             batch_feat_rec_sc[j], h_feat_sc[j] = model_classifier(feat=batch_melsp_rec[j])
                             batch_feat_magsp_rec_sc[j], h_feat_magsp_sc[j] = model_classifier(feat_aux=batch_magsp_rec[j])
 
+                    # samples check
+                    i = np.random.randint(0, batch_melsp_rec[0].shape[0])
+                    logging.info("%d %s %d %d %d %d %s" % (i, \
+                        os.path.join(os.path.basename(os.path.dirname(featfile[i])),os.path.basename(featfile[i])), \
+                            f_ss, f_es, flens[i], max_flen, spk_cv[i]))
+                    logging.info(weight_in[i,0])
+                    logging.info(weight_cv_in[i,0])
 
                     # handle short ending
                     if len(idx_select) > 0:
@@ -3179,13 +3136,13 @@ def main():
             if (not sparse_min_flag) and (iter_idx + 1 >= t_ends[idx_stage]):
                 sparse_check_flag = True
             if (not sparse_min_flag and sparse_check_flag) \
-                or ((round(float(round(Decimal(str(eval_loss_err_avg[0])),2))-0.66,2) <= float(round(Decimal(str(min_eval_loss_err_avg[0])),2))) and \
+                or ((round(float(round(Decimal(str(eval_loss_err_avg[0])),2))-0.16,2) <= float(round(Decimal(str(min_eval_loss_err_avg[0])),2))) and \
                     (round(float(round(Decimal(str(eval_loss_l1_avg[0])),2))-0.09,2) <= float(round(Decimal(str(min_eval_loss_l1_avg[0])),2))) and \
                     (round(float(round(Decimal(str(eval_loss_l1_fb[0])),2))-0.09,2) <= float(round(Decimal(str(min_eval_loss_l1_fb[0])),2))) and \
-                    (float(round(Decimal(str(eval_loss_gauss_cv[0]-eval_loss_gauss[0])),2)) >= round(float(round(Decimal(str(min_eval_loss_gauss_cv[0]-min_eval_loss_gauss[0])),2))-0.67,2)) and \
-                    (round(float(round(Decimal(str(eval_loss_gauss[0])),2))-0.21,2) <= float(round(Decimal(str(min_eval_loss_gauss[0])),2))) and \
-                    (round(float(round(Decimal(str(eval_loss_ce_avg[0]+eval_loss_ce_avg_std[0])),2))-0.02,2) <= float(round(Decimal(str(min_eval_loss_ce_avg[0]+min_eval_loss_ce_avg_std[0])),2)) \
-                        or round(float(round(Decimal(str(eval_loss_ce_avg[0])),2))-0.02,2) <= float(round(Decimal(str(min_eval_loss_ce_avg[0])),2)))):
+                    (round(float(round(Decimal(str(eval_loss_gauss[0])),2))-1.95,2) <= float(round(Decimal(str(min_eval_loss_gauss[0])),2))) and \
+                    (round(float(round(Decimal(str(eval_loss_melsp_dB[0])),2))-0.15,2) <= float(round(Decimal(str(min_eval_loss_melsp_dB[0])),2))) and \
+                    (round(float(round(Decimal(str(eval_loss_ce_avg[0]+eval_loss_ce_avg_std[0])),2))-0.03,2) <= float(round(Decimal(str(min_eval_loss_ce_avg[0]+min_eval_loss_ce_avg_std[0])),2)) \
+                        or round(float(round(Decimal(str(eval_loss_ce_avg[0])),2))-0.03,2) <= float(round(Decimal(str(min_eval_loss_ce_avg[0])),2)))):
                 round_eval_loss_err_avg = float(round(Decimal(str(eval_loss_err_avg[0])),2))
                 round_min_eval_loss_err_avg = float(round(Decimal(str(min_eval_loss_err_avg[0])),2))
                 if (round_eval_loss_err_avg <= round_min_eval_loss_err_avg) or (not err_flag and round_eval_loss_err_avg > round_min_eval_loss_err_avg) \
@@ -3363,14 +3320,13 @@ def main():
                 if model_waveform.use_weight_norm:
                     torch.nn.utils.remove_weight_norm(model_waveform.scale_in)
                 save_checkpoint(args.expdir, model_encoder_melsp_fix, model_encoder_melsp, model_decoder_melsp,
-                    model_encoder_excit_fix, model_encoder_excit, model_spk, model_classifier,
+                    model_encoder_excit_fix, model_encoder_excit, model_spkidtr, model_spk, model_classifier,
                     model_waveform, min_eval_loss_melsp_dB[0], min_eval_loss_melsp_dB_std[0], min_eval_loss_melsp_cv[0],
                     min_eval_loss_melsp[0], min_eval_loss_gauss_cv[0], min_eval_loss_gauss[0],
                     min_eval_loss_melsp_dB_src_trg, min_eval_loss_melsp_dB_src_trg_std, min_eval_loss_gv_src_trg,
                     min_eval_loss_ce_avg[0], min_eval_loss_ce_avg_std[0], min_eval_loss_err_avg[0], min_eval_loss_err_avg_std[0],
                     min_eval_loss_l1_avg[0], min_eval_loss_l1_fb[0], err_flag, err_flag_count,
-                    iter_idx, min_idx, optimizer, numpy_random_state, torch_random_state, epoch_idx + 1,
-                    model_spkidtr=model_spkidtr)
+                    iter_idx, min_idx, optimizer, numpy_random_state, torch_random_state, epoch_idx + 1)
                 if model_waveform.use_weight_norm:
                     torch.nn.utils.weight_norm(model_waveform.scale_in)
                 for param in model_waveform.scale_in.parameters():
@@ -3432,10 +3388,9 @@ def main():
             model_decoder_melsp.train()
             model_encoder_excit_fix.train()
             model_encoder_excit.train()
-            model_classifier.train()
+            model_spkidtr.train()
             model_spk.train()
-            if args.spkidtr_dim > 0:
-                model_spkidtr.train()
+            model_classifier.train()
             model_waveform.train()
             for param in model_encoder_melsp.parameters():
                 param.requires_grad = True
@@ -3449,13 +3404,12 @@ def main():
                 param.requires_grad = True
             for param in model_encoder_excit.scale_in.parameters():
                 param.requires_grad = False
-            for param in model_classifier.parameters():
+            for param in model_spkidtr.parameters():
                 param.requires_grad = True
             for param in model_spk.parameters():
                 param.requires_grad = True
-            if args.spkidtr_dim > 0:
-                for param in model_spkidtr.parameters():
-                    param.requires_grad = True
+            for param in model_classifier.parameters():
+                param.requires_grad = True
             # start next epoch
             if iter_idx < args.step_count:
                 start = time.time()
@@ -3688,37 +3642,25 @@ def main():
                 qz_alpha_fix = qz_alpha_fix[:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
                 qz_alpha_e_fix = qz_alpha_e_fix[:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
                 idx_in += 1
-                if args.spkidtr_dim > 0:
-                    spk_code_in = model_spkidtr(batch_sc_in[idx_in])
-                    spk_cv_code_in = model_spkidtr(batch_sc_cv_in[i_cv_in])
-                    batch_spk, h_spk[i] = model_spk(spk_code_in, z=z_cat, outpad_right=outpad_rights[idx_in], h=h_spk[i])
-                    batch_spk_cv, h_spk_cv[i_cv] = model_spk(spk_cv_code_in, z=z_cat, outpad_right=outpad_rights[idx_in], h=h_spk_cv[i_cv])
-                else:
-                    batch_spk, h_spk[i] = model_spk(batch_sc_in[idx_in], z=z_cat, outpad_right=outpad_rights[idx_in], h=h_spk[i])
-                    batch_spk_cv, h_spk_cv[i_cv] = model_spk(batch_sc_cv_in[i_cv_in], z=z_cat, outpad_right=outpad_rights[idx_in], h=h_spk_cv[i_cv])
+                weight_in, spk_code_in = model_spkidtr(batch_sc_in[idx_in])
+                weight_cv_in, spk_cv_code_in = model_spkidtr(batch_sc_cv_in[i_cv_in])
+                batch_spk, h_spk[i] = model_spk(spk_code_in, z=z_cat, outpad_right=outpad_rights[idx_in], h=h_spk[i])
+                batch_spk_cv, h_spk_cv[i_cv] = model_spk(spk_cv_code_in, z=z_cat, outpad_right=outpad_rights[idx_in], h=h_spk_cv[i_cv])
                 ## melsp reconstruction & conversion
                 idx_in += 1
                 i_cv_in += 1
                 if spk_pad_right > 0:
                     z_cat = z_cat[:,spk_pad_left:-spk_pad_right]
-                    if args.spkidtr_dim > 0:
-                        spk_code_in = spk_code_in[:,spk_pad_left:-spk_pad_right]
-                        spk_cv_code_in = spk_cv_code_in[:,spk_pad_left:-spk_pad_right]
+                    spk_code_in = spk_code_in[:,spk_pad_left:-spk_pad_right]
+                    spk_cv_code_in = spk_cv_code_in[:,spk_pad_left:-spk_pad_right]
                 else:
                     z_cat = z_cat[:,spk_pad_left:]
-                    if args.spkidtr_dim > 0:
-                        spk_code_in = spk_code_in[:,spk_pad_left:]
-                        spk_cv_code_in = spk_cv_code_in[:,spk_pad_left:]
-                if args.spkidtr_dim > 0:
-                    batch_pdf_rec[i], batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
-                                        outpad_right=outpad_rights[idx_in], h=h_melsp[i])
-                    batch_pdf_cv[i_cv], batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=spk_cv_code_in, aux=batch_spk_cv,
-                                        outpad_right=outpad_rights[idx_in], h=h_melsp_cv[i_cv])
-                else:
-                    batch_pdf_rec[i], batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in], aux=batch_spk,
-                                        outpad_right=outpad_rights[idx_in], h=h_melsp[i])
-                    batch_pdf_cv[i_cv], batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=batch_sc_cv_in[i_cv_in], aux=batch_spk_cv,
-                                        outpad_right=outpad_rights[idx_in], h=h_melsp_cv[i_cv])
+                    spk_code_in = spk_code_in[:,spk_pad_left:]
+                    spk_cv_code_in = spk_cv_code_in[:,spk_pad_left:]
+                batch_pdf_rec[i], batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
+                                    outpad_right=outpad_rights[idx_in], h=h_melsp[i])
+                batch_pdf_cv[i_cv], batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=spk_cv_code_in, aux=batch_spk_cv,
+                                    outpad_right=outpad_rights[idx_in], h=h_melsp_cv[i_cv])
                 ## waveform reconstruction
                 idx_in += 1
                 batch_x_c_output_noclamp[i], batch_x_f_output_noclamp[i], batch_seg_conv[i], batch_conv_sc[i], \
@@ -3767,30 +3709,21 @@ def main():
                 qy_logits_e[j] = qy_logits_e[j][:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
                 qz_alpha_e[j] = qz_alpha_e[j][:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
                 idx_in += 1
-                if args.spkidtr_dim > 0:
-                    if dec_enc_pad_right > 0:
-                        spk_code_in = spk_code_in[:,dec_enc_pad_left:-dec_enc_pad_right]
-                    else:
-                        spk_code_in = spk_code_in[:,dec_enc_pad_left:]
-                    batch_spk, h_spk[j] = model_spk(spk_code_in, z=z_cat, outpad_right=outpad_rights[idx_in], h=h_spk[j])
+                if dec_enc_pad_right > 0:
+                    spk_code_in = spk_code_in[:,dec_enc_pad_left:-dec_enc_pad_right]
                 else:
-                    batch_spk, h_spk[j] = model_spk(batch_sc_in[idx_in], z=z_cat, outpad_right=outpad_rights[idx_in], h=h_spk[j])
+                    spk_code_in = spk_code_in[:,dec_enc_pad_left:]
+                batch_spk, h_spk[j] = model_spk(spk_code_in, z=z_cat, outpad_right=outpad_rights[idx_in], h=h_spk[j])
                 ## melsp reconstruction
                 idx_in += 1
                 if spk_pad_right > 0:
                     z_cat = z_cat[:,spk_pad_left:-spk_pad_right]
-                    if args.spkidtr_dim > 0:
-                        spk_code_in = spk_code_in[:,spk_pad_left:-spk_pad_right]
+                    spk_code_in = spk_code_in[:,spk_pad_left:-spk_pad_right]
                 else:
                     z_cat = z_cat[:,spk_pad_left:]
-                    if args.spkidtr_dim > 0:
-                        spk_code_in = spk_code_in[:,spk_pad_left:]
-                if args.spkidtr_dim > 0:
-                    batch_pdf_rec[j], batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
-                                            outpad_right=outpad_rights[idx_in], h=h_melsp[j])
-                else:
-                    batch_pdf_rec[j], batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in], aux=batch_spk,
-                                            outpad_right=outpad_rights[idx_in], h=h_melsp[j])
+                    spk_code_in = spk_code_in[:,spk_pad_left:]
+                batch_pdf_rec[j], batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
+                                        outpad_right=outpad_rights[idx_in], h=h_melsp[j])
                 ## waveform reconstruction
                 idx_in += 1
                 batch_x_c_output_noclamp[j], batch_x_f_output_noclamp[j], batch_seg_conv[j], batch_conv_sc[j], \
@@ -3841,37 +3774,25 @@ def main():
                 qz_alpha_fix = qz_alpha_fix[:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
                 qz_alpha_e_fix = qz_alpha_e_fix[:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
                 idx_in += 1
-                if args.spkidtr_dim > 0:
-                    spk_code_in = model_spkidtr(batch_sc_in[idx_in])
-                    spk_cv_code_in = model_spkidtr(batch_sc_cv_in[i_cv_in])
-                    batch_spk, h_spk[i] = model_spk(spk_code_in, z=z_cat, outpad_right=outpad_rights[idx_in])
-                    batch_spk_cv, h_spk_cv[i_cv] = model_spk(spk_cv_code_in, z=z_cat, outpad_right=outpad_rights[idx_in])
-                else:
-                    batch_spk, h_spk[i] = model_spk(batch_sc_in[idx_in], z=z_cat, outpad_right=outpad_rights[idx_in])
-                    batch_spk_cv, h_spk_cv[i_cv] = model_spk(batch_sc_cv_in[i_cv_in], z=z_cat, outpad_right=outpad_rights[idx_in])
+                weight_in, spk_code_in = model_spkidtr(batch_sc_in[idx_in])
+                weight_cv_in, spk_cv_code_in = model_spkidtr(batch_sc_cv_in[i_cv_in])
+                batch_spk, h_spk[i] = model_spk(spk_code_in, z=z_cat, outpad_right=outpad_rights[idx_in])
+                batch_spk_cv, h_spk_cv[i_cv] = model_spk(spk_cv_code_in, z=z_cat, outpad_right=outpad_rights[idx_in])
                 ## melsp reconstruction & conversion
                 idx_in += 1
                 i_cv_in += 1
                 if spk_pad_right > 0:
                     z_cat = z_cat[:,spk_pad_left:-spk_pad_right]
-                    if args.spkidtr_dim > 0:
-                        spk_code_in = spk_code_in[:,spk_pad_left:-spk_pad_right]
-                        spk_cv_code_in = spk_cv_code_in[:,spk_pad_left:-spk_pad_right]
+                    spk_code_in = spk_code_in[:,spk_pad_left:-spk_pad_right]
+                    spk_cv_code_in = spk_cv_code_in[:,spk_pad_left:-spk_pad_right]
                 else:
                     z_cat = z_cat[:,spk_pad_left:]
-                    if args.spkidtr_dim > 0:
-                        spk_code_in = spk_code_in[:,spk_pad_left:]
-                        spk_cv_code_in = spk_cv_code_in[:,spk_pad_left:]
-                if args.spkidtr_dim > 0:
-                    batch_pdf_rec[i], batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
-                                        outpad_right=outpad_rights[idx_in])
-                    batch_pdf_cv[i_cv], batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=spk_cv_code_in, aux=batch_spk_cv,
-                                        outpad_right=outpad_rights[idx_in])
-                else:
-                    batch_pdf_rec[i], batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in], aux=batch_spk,
-                                        outpad_right=outpad_rights[idx_in])
-                    batch_pdf_cv[i_cv], batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=batch_sc_cv_in[i_cv_in], aux=batch_spk_cv,
-                                        outpad_right=outpad_rights[idx_in])
+                    spk_code_in = spk_code_in[:,spk_pad_left:]
+                    spk_cv_code_in = spk_cv_code_in[:,spk_pad_left:]
+                batch_pdf_rec[i], batch_melsp_rec[i], h_melsp[i] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
+                                    outpad_right=outpad_rights[idx_in])
+                batch_pdf_cv[i_cv], batch_melsp_cv[i_cv], h_melsp_cv[i_cv] = model_decoder_melsp(z_cat, y=spk_cv_code_in, aux=batch_spk_cv,
+                                    outpad_right=outpad_rights[idx_in])
                 ## waveform reconstruction
                 idx_in += 1
                 batch_x_c_output_noclamp[i], batch_x_f_output_noclamp[i], batch_seg_conv[i], batch_conv_sc[i], \
@@ -3920,30 +3841,21 @@ def main():
                 qy_logits_e[j] = qy_logits_e[j][:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
                 qz_alpha_e[j] = qz_alpha_e[j][:,outpad_lefts[idx_in]:feat_len-outpad_rights[idx_in]]
                 idx_in += 1
-                if args.spkidtr_dim > 0:
-                    if dec_enc_pad_right > 0:
-                        spk_code_in = spk_code_in[:,dec_enc_pad_left:-dec_enc_pad_right]
-                    else:
-                        spk_code_in = spk_code_in[:,dec_enc_pad_left:]
-                    batch_spk, h_spk[j] = model_spk(spk_code_in, z=z_cat, outpad_right=outpad_rights[idx_in])
+                if dec_enc_pad_right > 0:
+                    spk_code_in = spk_code_in[:,dec_enc_pad_left:-dec_enc_pad_right]
                 else:
-                    batch_spk, h_spk[j] = model_spk(batch_sc_in[idx_in], z=z_cat, outpad_right=outpad_rights[idx_in])
+                    spk_code_in = spk_code_in[:,dec_enc_pad_left:]
+                batch_spk, h_spk[j] = model_spk(spk_code_in, z=z_cat, outpad_right=outpad_rights[idx_in])
                 ## melsp reconstruction
                 idx_in += 1
                 if spk_pad_right > 0:
                     z_cat = z_cat[:,spk_pad_left:-spk_pad_right]
-                    if args.spkidtr_dim > 0:
-                        spk_code_in = spk_code_in[:,spk_pad_left:-spk_pad_right]
+                    spk_code_in = spk_code_in[:,spk_pad_left:-spk_pad_right]
                 else:
                     z_cat = z_cat[:,spk_pad_left:]
-                    if args.spkidtr_dim > 0:
-                        spk_code_in = spk_code_in[:,spk_pad_left:]
-                if args.spkidtr_dim > 0:
-                    batch_pdf_rec[j], batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
-                                            outpad_right=outpad_rights[idx_in])
-                else:
-                    batch_pdf_rec[j], batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=batch_sc_in[idx_in], aux=batch_spk,
-                                            outpad_right=outpad_rights[idx_in])
+                    spk_code_in = spk_code_in[:,spk_pad_left:]
+                batch_pdf_rec[j], batch_melsp_rec[j], h_melsp[j] = model_decoder_melsp(z_cat, y=spk_code_in, aux=batch_spk,
+                                        outpad_right=outpad_rights[idx_in])
                 ## waveform reconstruction
                 idx_in += 1
                 batch_x_c_output_noclamp[j], batch_x_f_output_noclamp[j], batch_seg_conv[j], batch_conv_sc[j], \
@@ -3967,6 +3879,15 @@ def main():
                 batch_magsp_rec[j] = torch.matmul((torch.exp(batch_melsp_rec[j])-1)/10000, melfb_t)
                 batch_feat_rec_sc[j], h_feat_sc[j] = model_classifier(feat=batch_melsp_rec[j])
                 batch_feat_magsp_rec_sc[j], h_feat_magsp_sc[j] = model_classifier(feat_aux=batch_magsp_rec[j])
+
+        # samples check
+        with torch.no_grad():
+            i = np.random.randint(0, batch_melsp_rec[0].shape[0])
+            logging.info("%d %s %d %d %d %d %s" % (i, \
+                os.path.join(os.path.basename(os.path.dirname(featfile[i])),os.path.basename(featfile[i])), \
+                    f_ss, f_es, flens[i], max_flen, spk_cv[0][i]))
+            logging.info(weight_in[i,0])
+            logging.info(weight_cv_in[i,0])
 
         # Losses computation
         batch_loss = 0
@@ -4356,20 +4277,20 @@ def main():
                                 explode_model = "dec_melsp"
                                 break
                 if not flag:
-                    for name, param in model_spk.named_parameters():
-                        if param.requires_grad:
-                            grad_norm = param.grad.norm()
-                            if torch.isnan(grad_norm) or torch.isinf(grad_norm):
-                                flag = True
-                                explode_model = "spk"
-                                break
-                if not flag and args.spkidtr_dim > 0:
                     for name, param in model_spkidtr.named_parameters():
                         if param.requires_grad:
                             grad_norm = param.grad.norm()
                             if torch.isnan(grad_norm) or torch.isinf(grad_norm):
                                 flag = True
                                 explode_model = "spkidtr"
+                                break
+                if not flag:
+                    for name, param in model_spk.named_parameters():
+                        if param.requires_grad:
+                            grad_norm = param.grad.norm()
+                            if torch.isnan(grad_norm) or torch.isinf(grad_norm):
+                                flag = True
+                                explode_model = "spk"
                                 break
                 if flag:
                     logging.info("explode grad %s" % (explode_model))
@@ -4380,9 +4301,8 @@ def main():
                 torch.nn.utils.clip_grad_norm_(model_encoder_melsp.parameters(), 10)
                 torch.nn.utils.clip_grad_norm_(model_encoder_excit.parameters(), 10)
                 torch.nn.utils.clip_grad_norm_(model_decoder_melsp.parameters(), 10)
+                torch.nn.utils.clip_grad_norm_(model_spkidtr.parameters(), 10)
                 torch.nn.utils.clip_grad_norm_(model_spk.parameters(), 10)
-                if args.spkidtr_dim > 0:
-                    torch.nn.utils.clip_grad_norm_(model_spkidtr.parameters(), 10)
                 optimizer.step()
 
                 with torch.no_grad():
@@ -4740,20 +4660,20 @@ def main():
                         explode_model = "dec_melsp"
                         break
         if not flag:
-            for name, param in model_spk.named_parameters():
-                if param.requires_grad:
-                    grad_norm = param.grad.norm()
-                    if torch.isnan(grad_norm) or torch.isinf(grad_norm):
-                        flag = True
-                        explode_model = "spk"
-                        break
-        if not flag and args.spkidtr_dim > 0:
             for name, param in model_spkidtr.named_parameters():
                 if param.requires_grad:
                     grad_norm = param.grad.norm()
                     if torch.isnan(grad_norm) or torch.isinf(grad_norm):
                         flag = True
                         explode_model = "spkidtr"
+                        break
+        if not flag:
+            for name, param in model_spk.named_parameters():
+                if param.requires_grad:
+                    grad_norm = param.grad.norm()
+                    if torch.isnan(grad_norm) or torch.isinf(grad_norm):
+                        flag = True
+                        explode_model = "spk"
                         break
         if flag:
             logging.info("explode grad %s" % (explode_model))
@@ -4793,9 +4713,8 @@ def main():
         torch.nn.utils.clip_grad_norm_(model_encoder_melsp.parameters(), 10)
         torch.nn.utils.clip_grad_norm_(model_encoder_excit.parameters(), 10)
         torch.nn.utils.clip_grad_norm_(model_decoder_melsp.parameters(), 10)
+        torch.nn.utils.clip_grad_norm_(model_spkidtr.parameters(), 10)
         torch.nn.utils.clip_grad_norm_(model_spk.parameters(), 10)
-        if args.spkidtr_dim > 0:
-            torch.nn.utils.clip_grad_norm_(model_spkidtr.parameters(), 10)
         optimizer.step()
 
         with torch.no_grad():

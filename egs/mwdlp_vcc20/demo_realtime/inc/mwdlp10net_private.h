@@ -61,8 +61,11 @@ Because the number of points in kaiser window is 1+PQMF_ORDER, i.e, current_samp
 DLPC_ORDER is the number of coefficients for data-driven LPC,
 i.e., the number of previous samples considered in the LP computation.
 */
-#define MDENSE_OUT_DUALFC (DLPC_ORDER * 2 + MID_OUT) * N_MBANDS
-#define MDENSE_OUT MDENSE_OUT_DUALFC * 2
+#define MDENSE_OUT_DUALFC (DLPC_ORDER * 2 + MID_OUT)
+#define MDENSE_OUT_DUALFC_MBANDS MDENSE_OUT_DUALFC * N_MBANDS
+#define MDENSE_OUT_DUALFC_2_MBANDS MDENSE_OUT_DUALFC_MBANDS * 2
+#define MDENSE_OUT_FC (DLPC_ORDER * 2 + SQRT_QUANTIZE)
+#define MDENSE_OUT_FC_MBANDS MDENSE_OUT_FC * N_MBANDS
 #define SQRT_QUANTIZE_MBANDS SQRT_QUANTIZE * N_MBANDS
 
 #define INIT_LAST_SAMPLE SQRT_QUANTIZE / 2

@@ -377,7 +377,7 @@ static void vec_tanh_exp(float *y, const float *x, int N)
     //    Y = _mm256_mul_ps(_mm256_sub_ps(Y, one),  _mm256_rcp_ps(_mm256_add_ps(Y, one)));
     //    _mm256_storeu_ps(&y[i], Y);
     //}
-    float ex, rcp_ex;
+    float ex;
     //float ex2;
     //for (;i<N;i++)
     for (int i=0;i<N;i++)
@@ -398,8 +398,7 @@ static void vec_tanh_exp(float *y, const float *x, int N)
                 //ex2 = exp(2*x[i]);
                 //y[i] = (ex2-1)/(ex2+1);
                 ex = exp(x[i]);
-                rcp_ex = 1/ex;
-                y[i] = (ex-rcp_ex)/(ex+rcp_ex);
+                y[i] = (ex-1/ex)/(ex+1/ex);
             } else y[i] = 1;
         } else y[i] = -1;
         //if (x[i] < 32)
@@ -420,7 +419,7 @@ static void vec_tanhshrink(float *y, const float *x, int N)
     //    Y = _mm256_sub_ps(X, _mm256_mul_ps(_mm256_sub_ps(Y, one),  _mm256_rcp_ps(_mm256_add_ps(Y, one))));
     //    _mm256_storeu_ps(&y[i], Y);
     //}
-    float ex, rcp_ex;
+    float ex;
     //float ex2;
     //for (;i<N;i++)
     for (int i=0;i<N;i++)
@@ -450,8 +449,7 @@ static void vec_tanhshrink(float *y, const float *x, int N)
                 //ex2 = exp(2*x[i]);
                 //y[i] = x[i]-(ex2-1)/(ex2+1);
                 ex = exp(x[i]);
-                rcp_ex = 1/ex;
-                y[i] = x[i]-(ex-rcp_ex)/(ex+rcp_ex);
+                y[i] = x[i]-(ex-1/ex)/(ex+1/ex);
             } else y[i] = x[i]-1;
         } else y[i] = x[i]+1;
     }
@@ -580,6 +578,50 @@ static void sgemv_fclogits16(float *out, const float *weights, int rows, int col
          }
          _mm256_storeu_ps (&y[0], vy0);
          _mm256_storeu_ps (&y[8], vy8);
+      }
+      for (;i<rows;i++,row_bands++)
+      {
+         for (j=0;j<cols;j++)
+            out[row_bands] += weights[j*rows + i]*x[col_bands+j];
+      }
+   }
+   //for (n=0,row_bands=0;n<n_bands;n++)
+   //   for (i=0,col_bands=n*cols;i<rows;i++,row_bands++)
+   //      for (j=0;j<cols;j++)
+   //         out[row_bands] += weights[j*rows + i]*x[col_bands+j];
+}
+
+//PLT_Mar21
+//weights are shared between bands
+static void sgemv_fcout32(float *out, const float *weights, int rows, int cols, int n_bands, const float *x)
+{
+   //int i, j, n, row_bands, col_bands;
+   int i, j, k, n, row_bands, col_bands;
+   float * restrict y;
+   __m256 vy0, vy8, vy16, vy24, vxj;
+   for (n=0,row_bands=0;n<n_bands;n++)
+   {
+      for (i=0,col_bands=n*cols;i<(rows-(rows%32));i+=32,row_bands+=32)
+      {
+         y = &out[row_bands];
+         vy0 = _mm256_loadu_ps(&y[0]);
+         vy8 = _mm256_loadu_ps(&y[8]);
+         vy16 = _mm256_loadu_ps(&y[16]);
+         vy24 = _mm256_loadu_ps(&y[24]);
+         for (j=0;j<cols;j++)
+         {
+            vxj = _mm256_broadcast_ss(&x[col_bands+j]);
+
+            k = j*rows + i;
+            vy0 = _mm256_fmadd_ps(_mm256_loadu_ps(&weights[k]), vxj, vy0);
+            vy8 = _mm256_fmadd_ps(_mm256_loadu_ps(&weights[k + 8]), vxj, vy8);
+            vy16 = _mm256_fmadd_ps(_mm256_loadu_ps(&weights[k + 16]), vxj, vy16);
+            vy24 = _mm256_fmadd_ps(_mm256_loadu_ps(&weights[k + 24]), vxj, vy24);
+         }
+         _mm256_storeu_ps (&y[0], vy0);
+         _mm256_storeu_ps (&y[8], vy8);
+         _mm256_storeu_ps (&y[16], vy16);
+         _mm256_storeu_ps (&y[24], vy24);
       }
       for (;i<rows;i++,row_bands++)
       {

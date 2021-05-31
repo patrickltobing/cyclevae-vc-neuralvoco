@@ -54,17 +54,15 @@ typedef struct {
   int n_dim;
 } NormStats;
 
-//PLT_Mar21
+//PLT_May21
 typedef struct {
   const float *bias;
   const float *input_weights;
-  //const float *factor_signs;
-  //const float *factor_mags;
-  //const float *factor_mids;
   const float *factors;
+  int activation;
   int activation_signs;
   int activation_mags;
-  int activation_mids;
+  int activation_logits;
 } MDenseLayerMWDLP10;
 
 typedef struct {
