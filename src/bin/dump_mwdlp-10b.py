@@ -49,12 +49,12 @@ from librosa import filters
 
 import numpy as np
 
-FS = 8000
+#FS = 8000
 #FS = 16000
 #FS = 22050
-#FS = 24000
-FFTL = 1024
-#FFTL = 2048
+FS = 24000
+#FFTL = 1024
+FFTL = 2048
 #SHIFTMS = 5
 #SHIFTMS = 4.9886621315192743764172335600907
 SHIFTMS = 10

@@ -664,8 +664,6 @@ def kl_laplace_param(mu_q, sigma_q):
     return torch.mean(torch.sum(-torch.log(scale_q) + mu_q_abs + scale_q*torch.exp(-mu_q_abs/scale_q) - 1, -1), -1) # B / 1
 
 
-#FIXME: network generates exp(log(std))**2, use sqrt(exp(log_std)**2), not log(exp(log(std))**2),
-#       fix discrepancy in C impl. --> exp(log(std)) [log(std) is the output of last layer]
 def sampling_gauss(mu, var, temp=None):
     #return mu + torch.log(var)*torch.randn_like(mu)
     if temp is not None:
@@ -1137,8 +1135,6 @@ class GRU_SPEC_DECODER(nn.Module):
                 mus = self.scale_out(F.tanhshrink(e[:,:,:self.spec_dim]).transpose(1,2)).transpose(1,2)
             else:
                 mus = F.tanhshrink(e[:,:,:self.spec_dim])
-            #FIXME: make network outputs log(std) instead of log(var), i.e., exp(log(std))**2 instead of exp(log(var))
-            #var = torch.exp(e[:,:,self.spec_dim:])
             var = torch.sigmoid(e[:,:,self.spec_dim:])**2
             if sampling:
                 if do:

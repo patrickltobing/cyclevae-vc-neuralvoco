@@ -30,6 +30,8 @@ hidden_units_dec: 640
 hidden_units_lf0: 128
 
 ## GRU hidden units wavernn
+#hidden_units_wave: 704
+#hidden_units_wave: 832
 hidden_units_wave: 1184
 
 hidden_units_wave_2: 32
@@ -49,10 +51,6 @@ hidden_layers_wave: 1
 kernel_size_enc: 5
 dilation_size_enc: 1
 
-## kernel-size input spk-net
-kernel_size_spk: 5
-dilation_size_spk: 1
-
 ## kernel-size input conv decoder spec
 kernel_size_dec: 5
 dilation_size_dec: 1
@@ -65,7 +63,6 @@ dilation_size_lf0: 1
 kernel_size_wave: 7
 dilation_size_wave: 1
 
-right_size_spk: 0
 right_size_dec: 0
 right_size_lf0: 0
 
@@ -94,8 +91,8 @@ spkidtr_dim: 2
 ## to freely interpolate between 2-dim cont. spk-space
 
 ## dimension of each of data-driven time-invariant and time-variant speaker-embeddings
-#emb_spk_dim: 256
-emb_spk_dim: 512
+#emb_spk_dim: 512
+emb_spk_dim: 1024
 n_weight_emb: 4
 
 ## learning rate
@@ -108,15 +105,15 @@ do_prob: 0.5
 #step_count: 20
 step_count: 1035000
 #step_count_wave: 20
-step_count_wave: 4350000
+step_count_wave: 4260000
 
 # number of workers (threads) for batch data handling
 n_workers: 1
 #n_workers: 2
 
-mdl_name_vc: cycmelspxlf0capspkvae-gauss-smpl_sparse_weightemb_v2
-mdl_name_ft: cycmelspspkvae-gauss-smpl_sparse_weightemb_mwdlp_smpl_v2
-mdl_name_sp: cycmelspspkvae-ftdec-gauss-smpl_sparse_wemb_mwdlp_smpl_v2
+mdl_name_vc: cycmelspxlf0capspkvae-gauss-smpl_sparse_noct_weightemb_v2
+mdl_name_ft: cycmelspspkvae-gauss-smpl_sparse_noct_weightemb_mwdlp_smpl_v2
+mdl_name_sp: cycmelspspkvae-ftdec-gauss-smpl_sparse_noct_wemb_mwdlp_smpl_v2
 
 mdl_name_wave: wavernn_dualgru_compact_lpc_mband_10bit_cf_stft_emb
 

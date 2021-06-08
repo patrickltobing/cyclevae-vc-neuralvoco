@@ -591,6 +591,7 @@ static void sgemv_fclogits16(float *out, const float *weights, int rows, int col
    //         out[row_bands] += weights[j*rows + i]*x[col_bands+j];
 }
 
+
 //PLT_Mar21
 //weights are shared between bands
 static void sgemv_fcout32(float *out, const float *weights, int rows, int cols, int n_bands, const float *x)
@@ -634,6 +635,7 @@ static void sgemv_fcout32(float *out, const float *weights, int rows, int cols, 
    //      for (j=0;j<cols;j++)
    //         out[row_bands] += weights[j*rows + i]*x[col_bands+j];
 }
+
 
 //PLT_Mar21
 static void sparse_sgemv_accum16(float *out, const float *weights, int rows, const int *idx, const float *x)

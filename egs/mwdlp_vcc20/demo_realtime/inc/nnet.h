@@ -123,8 +123,8 @@ void compute_gru3(const GRULayer *gru, float *state, const float *input);
 
 void compute_sparse_gru(const SparseGRULayer *gru, float *state, const float *input);
 
-//PLT_Dec20
-void compute_conv1d_linear(const Conv1DLayer *layer, float *output, float *mem, const float *input);
+//PLT_Jun21
+void compute_conv1d_linear_frame_in(const Conv1DLayer *layer, float *output, float *mem, const float *input);
 
 //PLT_Sep20
 int sample_from_pdf_mwdlp(const float *pdf, int N);

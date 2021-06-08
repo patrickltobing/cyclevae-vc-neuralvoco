@@ -314,30 +314,24 @@ void compute_sparse_gru(const SparseGRULayer *gru, float *state, const float *in
       state[i] = r[i]*state[i] + (1-r[i])*h[i];
 }
 
-//PLT_Sep20
-void compute_conv1d_linear(const Conv1DLayer *layer, float *output, float *mem, const float *input)
+//PLT_Jun21
+void compute_conv1d_linear_frame_in(const Conv1DLayer* layer, float* output, float* mem, const float* input)
 {
-   int i;
-   int N, M, state_size;
-   //int stride;
-   M = layer->nb_inputs*layer->kernel_size;
-   N = layer->nb_neurons;
-   state_size = layer->nb_inputs*(layer->kernel_size-1);
-   float tmp[M]; //set to input_size*kernel_size
-   //celt_assert(input != output);
-   RNN_COPY(tmp, mem, state_size); //get state_size of last frame (in*(kernel_size-1))
-   RNN_COPY(&tmp[state_size], input, layer->nb_inputs); //append current input frame
-   //for (int j=0;j<layer->kernel_size;j++) {
-   //    for (i=0;i<layer->nb_inputs;i++) {
-   //        printf("tmp [%d][%d] %f\n", j, i, tmp[j*layer->nb_inputs+i]);
-   //    }
-   //}
-   // compute conv
-   for (i=0;i<N;i++)
-      output[i] = layer->bias[i];
-   sgemv_accum16(output, layer->input_weights, N, M, N, tmp);
-   //no activation (linear)
-   RNN_COPY(mem, &tmp[layer->nb_inputs], state_size); //set state size for next frame
+    float tmp[FEATURE_CONV_OUT_SIZE]; //set to input_size*kernel_size
+    //celt_assert(input != output);
+    RNN_COPY(tmp, mem, FEATURE_CONV_STATE_SIZE); //get state_size of last frame (in*(kernel_size-1))
+    RNN_COPY(&tmp[FEATURE_CONV_STATE_SIZE], input, FEATURES_DIM); //append current input frame
+    //for (int j=0;j<layer->kernel_size;j++) {
+    //    for (i=0;i<layer->nb_inputs;i++) {
+    //        printf("tmp [%d][%d] %f\n", j, i, tmp[j*layer->nb_inputs+i]);
+    //    }
+    //}
+    // compute conv
+    for (int i = 0; i < FEATURE_CONV_OUT_SIZE; i++)
+        output[i] = layer->bias[i];
+    sgemv_accum16(output, layer->input_weights, FEATURE_CONV_OUT_SIZE, FEATURE_CONV_OUT_SIZE, FEATURE_CONV_OUT_SIZE, tmp);
+    //no activation (linear)
+    RNN_COPY(mem, &tmp[FEATURES_DIM], FEATURE_CONV_STATE_SIZE); //set state size for next frame
 }
 
 //PLT_Sep20

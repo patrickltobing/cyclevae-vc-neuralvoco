@@ -51,7 +51,9 @@ stage=0init123
 #stage=123
 #stage=23
 #stage=3
+#stage=4567
 #stage=4
+#stage=567
 #stage=5
 #stage=6
 #stage=7
@@ -205,12 +207,12 @@ tst=ts_${data_name}
 
 GPU_device=0
 GPU_device=1
-#GPU_device=2
+GPU_device=2
 #GPU_device=3
 #GPU_device=4
-#GPU_device=5
+GPU_device=5
 #GPU_device=6
-GPU_device=7
+#GPU_device=7
 GPU_device=8
 #GPU_device=9
 
@@ -236,8 +238,6 @@ hidden_units_lf0=`awk '{if ($1 == "hidden_units_lf0:") print $2}' conf/config.ym
 hidden_layers_lf0=`awk '{if ($1 == "hidden_layers_lf0:") print $2}' conf/config.yml`
 kernel_size_enc=`awk '{if ($1 == "kernel_size_enc:") print $2}' conf/config.yml`
 dilation_size_enc=`awk '{if ($1 == "dilation_size_enc:") print $2}' conf/config.yml`
-kernel_size_spk=`awk '{if ($1 == "kernel_size_spk:") print $2}' conf/config.yml`
-dilation_size_spk=`awk '{if ($1 == "dilation_size_spk:") print $2}' conf/config.yml`
 kernel_size_dec=`awk '{if ($1 == "kernel_size_dec:") print $2}' conf/config.yml`
 dilation_size_dec=`awk '{if ($1 == "dilation_size_dec:") print $2}' conf/config.yml`
 kernel_size_lf0=`awk '{if ($1 == "kernel_size_lf0:") print $2}' conf/config.yml`
@@ -248,7 +248,6 @@ causal_conv_lf0=`awk '{if ($1 == "causal_conv_lf0:") print $2}' conf/config.yml`
 spkidtr_dim=`awk '{if ($1 == "spkidtr_dim:") print $2}' conf/config.yml`
 emb_spk_dim=`awk '{if ($1 == "emb_spk_dim:") print $2}' conf/config.yml`
 n_weight_emb=`awk '{if ($1 == "n_weight_emb:") print $2}' conf/config.yml`
-right_size_spk=`awk '{if ($1 == "right_size_spk:") print $2}' conf/config.yml`
 right_size_dec=`awk '{if ($1 == "right_size_dec:") print $2}' conf/config.yml`
 right_size_lf0=`awk '{if ($1 == "right_size_lf0:") print $2}' conf/config.yml`
 t_start_cycvae=`awk '{if ($1 == "t_start_cycvae:") print $2}' conf/config.yml`
@@ -291,6 +290,7 @@ GPU_device_str="0,5,2,7,6"
 GPU_device_str="4,8,2,1,0"
 GPU_device_str="4,5,0,7,6"
 GPU_device_str="4,5,6,8,9"
+GPU_device_str="0,1,2,4,5"
 #GPU_device_str="0,1,2,3,7"
 #GPU_device_str="9,7,6,5,3"
 #GPU_device_str="4,5,6"
@@ -1052,8 +1052,8 @@ else
 fi
 
 
-if [ $mdl_name_vc == "cycmelspxlf0capspkvae-gauss-smpl_sparse_weightemb_v2" ]; then
-    setting_vc=${mdl_name_vc}_${data_name}_lr${lr}_bs${batch_size}_lat${lat_dim}_late${lat_dim_e}_hue${hidden_units_enc}_hud${hidden_units_dec}_huf${hidden_units_lf0}_kse${kernel_size_enc}_kss${kernel_size_spk}_ksd${kernel_size_dec}_ksf${kernel_size_lf0}_rse${right_size_enc}_rss${right_size_spk}_rsd${right_size_dec}_rsf${right_size_lf0}_do${do_prob}_st${step_count}_mel${mel_dim}_nhcyc${n_half_cyc}_s${spkidtr_dim}_e${emb_spk_dim}_w${n_weight_emb}_ts${t_start_cycvae}_te${t_end_cycvae}_i${interval_cycvae}_d${densities_cycvae}_ns${n_stage_cycvae}
+if [ $mdl_name_vc == "cycmelspxlf0capspkvae-gauss-smpl_sparse_noct_weightemb_v2" ]; then
+    setting_vc=${mdl_name_vc}_${data_name}_lr${lr}_bs${batch_size}_lat${lat_dim}_late${lat_dim_e}_hue${hidden_units_enc}_hud${hidden_units_dec}_huf${hidden_units_lf0}_kse${kernel_size_enc}_ksd${kernel_size_dec}_ksf${kernel_size_lf0}_rse${right_size_enc}_rsd${right_size_dec}_rsf${right_size_lf0}_do${do_prob}_st${step_count}_mel${mel_dim}_nhcyc${n_half_cyc}_s${spkidtr_dim}_e${emb_spk_dim}_w${n_weight_emb}_ts${t_start_cycvae}_te${t_end_cycvae}_i${interval_cycvae}_d${densities_cycvae}_ns${n_stage_cycvae}
 fi
 
 
@@ -1094,7 +1094,7 @@ if [ `echo ${stage} | grep 4` ];then
         idx_resume_cycvae=0
     fi
 
-    if [ $mdl_name_vc == "cycmelspxlf0capspkvae-gauss-smpl_sparse_weightemb_v2" ];then
+    if [ $mdl_name_vc == "cycmelspxlf0capspkvae-gauss-smpl_sparse_noct_weightemb_v2" ];then
         feats=data/${trn}/feats.scp
         if [ $idx_resume_cycvae -gt 0 ]; then
             echo ""
@@ -1102,7 +1102,7 @@ if [ `echo ${stage} | grep 4` ];then
             echo ""
             echo "while opening the log file, please use phrase 'sme' or 'average' to quickly search for the summary on each epoch"
             ${cuda_cmd} ${expdir_vc}/log/train_resume-${idx_resume_cycvae}.log \
-                train_sparse-gru-cycle-melsp-x-lf0cap-spk-vae-gauss-smpl_weightemb_v2.py \
+                train_sparse-gru-cycle-melsp-x-lf0cap-spk-vae-gauss-smpl_noct_weightemb_v2.py \
                     --feats ${feats} \
                     --feats_eval_list $feats_list_eval_list \
                     --stats data/${trn}/stats_jnt.h5 \
@@ -1117,8 +1117,6 @@ if [ `echo ${stage} | grep 4` ];then
                     --spk_list ${spk_list} \
                     --hidden_units_enc ${hidden_units_enc} \
                     --hidden_layers_enc ${hidden_layers_enc} \
-                    --kernel_size_spk ${kernel_size_spk} \
-                    --dilation_size_spk ${dilation_size_spk} \
                     --hidden_units_dec ${hidden_units_dec} \
                     --hidden_layers_dec ${hidden_layers_dec} \
                     --hidden_units_lf0 ${hidden_units_lf0} \
@@ -1140,7 +1138,6 @@ if [ `echo ${stage} | grep 4` ];then
                     --emb_spk_dim ${emb_spk_dim} \
                     --n_weight_emb ${n_weight_emb} \
                     --right_size_enc ${right_size_enc} \
-                    --right_size_spk ${right_size_spk} \
                     --right_size_dec ${right_size_dec} \
                     --right_size_lf0 ${right_size_lf0} \
                     --full_excit_dim ${full_excit_dim} \
@@ -1157,7 +1154,7 @@ if [ `echo ${stage} | grep 4` ];then
             echo ""
             echo "while opening the log file, please use phrase 'sme' or 'average' to quickly search for the summary on each epoch"
             ${cuda_cmd} ${expdir_vc}/log/train.log \
-                train_sparse-gru-cycle-melsp-x-lf0cap-spk-vae-gauss-smpl_weightemb_v2.py \
+                train_sparse-gru-cycle-melsp-x-lf0cap-spk-vae-gauss-smpl_noct_weightemb_v2.py \
                     --feats ${feats} \
                     --feats_eval_list $feats_list_eval_list \
                     --stats data/${trn}/stats_jnt.h5 \
@@ -1178,8 +1175,6 @@ if [ `echo ${stage} | grep 4` ];then
                     --hidden_layers_lf0 ${hidden_layers_lf0} \
                     --kernel_size_enc ${kernel_size_enc} \
                     --dilation_size_enc ${dilation_size_enc} \
-                    --kernel_size_spk ${kernel_size_spk} \
-                    --dilation_size_spk ${dilation_size_spk} \
                     --kernel_size_dec ${kernel_size_dec} \
                     --dilation_size_dec ${dilation_size_dec} \
                     --kernel_size_lf0 ${kernel_size_lf0} \
@@ -1195,7 +1190,6 @@ if [ `echo ${stage} | grep 4` ];then
                     --emb_spk_dim ${emb_spk_dim} \
                     --n_weight_emb ${n_weight_emb} \
                     --right_size_enc ${right_size_enc} \
-                    --right_size_spk ${right_size_spk} \
                     --right_size_dec ${right_size_dec} \
                     --right_size_lf0 ${right_size_lf0} \
                     --t_start ${t_start_cycvae} \
@@ -1392,8 +1386,8 @@ elif [ `echo ${stage} | grep a` ]; then
 fi
 
 
-if [ $mdl_name_ft == "cycmelspspkvae-gauss-smpl_sparse_weightemb_mwdlp_smpl_v2" ]; then
-    setting_ft=${mdl_name_ft}_${data_name}_lr${lr}_bs${batch_size_wave}_lat${lat_dim}_late${lat_dim_e}_hue${hidden_units_enc}_hud${hidden_units_dec}_huw${hidden_units_wave}_kse${kernel_size_enc}_kss${kernel_size_spk}_ksd${kernel_size_dec}_ksw${kernel_size_wave}_rse${right_size_enc}_rss${right_size_spk}_rsd${right_size_dec}_rsw${right_size_wave}_st${step_count_wave}_nhcyc${n_half_cyc}_s${spkidtr_dim}_e${emb_spk_dim}_w${n_weight_emb}_ts${t_start}_te${t_end}_i${interval}_d${densities_cycvae}_ns${n_stage}_${min_idx_cycvae}-${min_idx_wave}
+if [ $mdl_name_ft == "cycmelspspkvae-gauss-smpl_sparse_noct_weightemb_mwdlp_smpl_v2" ]; then
+    setting_ft=${mdl_name_ft}_${data_name}_lr${lr}_bs${batch_size_wave}_lat${lat_dim}_late${lat_dim_e}_hue${hidden_units_enc}_hud${hidden_units_dec}_huw${hidden_units_wave}_kse${kernel_size_enc}_ksd${kernel_size_dec}_ksw${kernel_size_wave}_rse${right_size_enc}_rsd${right_size_dec}_rsw${right_size_wave}_st${step_count_wave}_nhcyc${n_half_cyc}_s${spkidtr_dim}_e${emb_spk_dim}_w${n_weight_emb}_ts${t_start}_te${t_end}_i${interval}_d${densities_cycvae}_ns${n_stage}_${min_idx_cycvae}-${min_idx_wave}
 fi
 
 
@@ -1485,14 +1479,14 @@ if [ `echo ${stage} | grep 6` ];then
         wavs_list_eval_list="$(IFS="@"; echo "${wavs_eval_list[*]}")"
     fi
 
-    if [ $mdl_name_ft == "cycmelspspkvae-gauss-smpl_sparse_weightemb_mwdlp_smpl_v2" ];then
+    if [ $mdl_name_ft == "cycmelspspkvae-gauss-smpl_sparse_noct_weightemb_mwdlp_smpl_v2" ];then
         if [ $idx_resume_ft -gt 0 ]; then
             echo ""
             echo "vc fine-tuning is in training, please use less/vim to monitor the training log: ${expdir_ft}/log/train_resume-${idx_resume_ft}.log"
             echo ""
             echo "while opening the log file, please use phrase 'sme' or 'average' to quickly search for the summary on each epoch"
             ${cuda_cmd} ${expdir_ft}/log/train_resume-${idx_resume_ft}.log \
-                train_sparse-gru-cycle-melsp-spk-vae-gauss-smpl_weightemb_mwdlp_smpl_v2.py \
+                train_sparse-gru-cycle-melsp-spk-vae-gauss-smpl_noct_weightemb_mwdlp_smpl_v2.py \
                     --feats ${feats} \
                     --feats_eval_list $feats_list_eval_list \
                     --waveforms ${waveforms} \
@@ -1509,8 +1503,6 @@ if [ `echo ${stage} | grep 6` ];then
                     --spk_list ${spk_list} \
                     --hidden_units_enc ${hidden_units_enc} \
                     --hidden_layers_enc ${hidden_layers_enc} \
-                    --kernel_size_spk ${kernel_size_spk} \
-                    --dilation_size_spk ${dilation_size_spk} \
                     --hidden_units_dec ${hidden_units_dec} \
                     --hidden_layers_dec ${hidden_layers_dec} \
                     --kernel_size_enc ${kernel_size_enc} \
@@ -1526,7 +1518,6 @@ if [ `echo ${stage} | grep 6` ];then
                     --emb_spk_dim ${emb_spk_dim} \
                     --n_weight_emb ${n_weight_emb} \
                     --right_size_enc ${right_size_enc} \
-                    --right_size_spk ${right_size_spk} \
                     --right_size_dec ${right_size_dec} \
                     --t_start ${t_start} \
                     --t_end ${t_end} \
@@ -1555,7 +1546,7 @@ if [ `echo ${stage} | grep 6` ];then
             echo ""
             echo "while opening the log file, please use phrase 'sme' or 'average' to quickly search for the summary on each epoch"
             ${cuda_cmd} ${expdir_ft}/log/train.log \
-                train_sparse-gru-cycle-melsp-spk-vae-gauss-smpl_weightemb_mwdlp_smpl_v2.py \
+                train_sparse-gru-cycle-melsp-spk-vae-gauss-smpl_noct_weightemb_mwdlp_smpl_v2.py \
                     --feats ${feats} \
                     --feats_eval_list $feats_list_eval_list \
                     --waveforms ${waveforms} \
@@ -1572,8 +1563,6 @@ if [ `echo ${stage} | grep 6` ];then
                     --spk_list ${spk_list} \
                     --hidden_units_enc ${hidden_units_enc} \
                     --hidden_layers_enc ${hidden_layers_enc} \
-                    --kernel_size_spk ${kernel_size_spk} \
-                    --dilation_size_spk ${dilation_size_spk} \
                     --hidden_units_dec ${hidden_units_dec} \
                     --hidden_layers_dec ${hidden_layers_dec} \
                     --kernel_size_enc ${kernel_size_enc} \
@@ -1589,7 +1578,6 @@ if [ `echo ${stage} | grep 6` ];then
                     --emb_spk_dim ${emb_spk_dim} \
                     --n_weight_emb ${n_weight_emb} \
                     --right_size_enc ${right_size_enc} \
-                    --right_size_spk ${right_size_spk} \
                     --right_size_dec ${right_size_dec} \
                     --t_start ${t_start} \
                     --t_end ${t_end} \
@@ -1651,8 +1639,8 @@ fi
 #exit
 
 
-if [ $mdl_name_sp == "cycmelspspkvae-ftdec-gauss-smpl_sparse_wemb_mwdlp_smpl_v2" ]; then
-    setting_sp=${mdl_name_sp}_${data_name}_lr${lr}_bs${batch_size_wave}_lat${lat_dim}_late${lat_dim_e}_hue${hidden_units_enc}_hud${hidden_units_dec}_huw${hidden_units_wave}_kse${kernel_size_enc}_kss${kernel_size_spk}_ksd${kernel_size_dec}_ksw${kernel_size_wave}_rse${right_size_enc}_rss${right_size_spk}_rsd${right_size_dec}_rsw${right_size_wave}_st${step_count_wave}_nhcyc${n_half_cyc}_s${spkidtr_dim}_e${emb_spk_dim}_w${n_weight_emb}_ts${t_start}_te${t_end}_i${interval}_d${densities_cycvae}_ns${n_stage}_${min_idx_cycvae}-${min_idx_wave}-${min_idx_ft}
+if [ $mdl_name_sp == "cycmelspspkvae-ftdec-gauss-smpl_sparse_noct_wemb_mwdlp_smpl_v2" ]; then
+    setting_sp=${mdl_name_sp}_${data_name}_lr${lr}_bs${batch_size_wave}_lat${lat_dim}_late${lat_dim_e}_hue${hidden_units_enc}_hud${hidden_units_dec}_huw${hidden_units_wave}_kse${kernel_size_enc}_ksd${kernel_size_dec}_ksw${kernel_size_wave}_rse${right_size_enc}_rsd${right_size_dec}_rsw${right_size_wave}_st${step_count_wave}_nhcyc${n_half_cyc}_s${spkidtr_dim}_e${emb_spk_dim}_w${n_weight_emb}_ts${t_start}_te${t_end}_i${interval}_d${densities_cycvae}_ns${n_stage}_${min_idx_cycvae}-${min_idx_wave}-${min_idx_ft}
 fi
 
 
@@ -1744,14 +1732,14 @@ if [ `echo ${stage} | grep 7` ];then
         wavs_list_eval_list="$(IFS="@"; echo "${wavs_eval_list[*]}")"
     fi
 
-    if [ $mdl_name_sp == "cycmelspspkvae-ftdec-gauss-smpl_sparse_wemb_mwdlp_smpl_v2" ]; then
+    if [ $mdl_name_sp == "cycmelspspkvae-ftdec-gauss-smpl_sparse_noct_wemb_mwdlp_smpl_v2" ]; then
         if [ $idx_resume_sp -gt 0 ]; then
             echo ""
             echo "vc fine-tuning is in training, please use less/vim to monitor the training log: ${expdir_sp}/log/train_resume-${idx_resume_sp}.log"
             echo ""
             echo "while opening the log file, please use phrase 'sme' or 'average' to quickly search for the summary on each epoch"
             ${cuda_cmd} ${expdir_sp}/log/train_resume-${idx_resume_sp}.log \
-                train_sparse-gru-cycle-melsp-spk-vae-ftdec-gauss-smpl_weightemb_mwdlp_smpl_v2.py \
+                train_sparse-gru-cycle-melsp-spk-vae-ftdec-gauss-smpl_noct_weightemb_mwdlp_smpl_v2.py \
                     --feats ${feats} \
                     --feats_eval_list $feats_list_eval_list \
                     --waveforms ${waveforms} \
@@ -1768,8 +1756,6 @@ if [ `echo ${stage} | grep 7` ];then
                     --spk_list ${spk_list} \
                     --hidden_units_enc ${hidden_units_enc} \
                     --hidden_layers_enc ${hidden_layers_enc} \
-                    --kernel_size_spk ${kernel_size_spk} \
-                    --dilation_size_spk ${dilation_size_spk} \
                     --hidden_units_dec ${hidden_units_dec} \
                     --hidden_layers_dec ${hidden_layers_dec} \
                     --kernel_size_enc ${kernel_size_enc} \
@@ -1785,7 +1771,6 @@ if [ `echo ${stage} | grep 7` ];then
                     --emb_spk_dim ${emb_spk_dim} \
                     --n_weight_emb ${n_weight_emb} \
                     --right_size_enc ${right_size_enc} \
-                    --right_size_spk ${right_size_spk} \
                     --right_size_dec ${right_size_dec} \
                     --t_start ${t_start} \
                     --t_end ${t_end} \
@@ -1813,7 +1798,7 @@ if [ `echo ${stage} | grep 7` ];then
             echo ""
             echo "while opening the log file, please use phrase 'sme' or 'average' to quickly search for the summary on each epoch"
             ${cuda_cmd} ${expdir_sp}/log/train.log \
-                train_sparse-gru-cycle-melsp-spk-vae-ftdec-gauss-smpl_weightemb_mwdlp_smpl_v2.py \
+                train_sparse-gru-cycle-melsp-spk-vae-ftdec-gauss-smpl_noct_weightemb_mwdlp_smpl_v2.py \
                     --feats ${feats} \
                     --feats_eval_list $feats_list_eval_list \
                     --waveforms ${waveforms} \
@@ -1830,8 +1815,6 @@ if [ `echo ${stage} | grep 7` ];then
                     --spk_list ${spk_list} \
                     --hidden_units_enc ${hidden_units_enc} \
                     --hidden_layers_enc ${hidden_layers_enc} \
-                    --kernel_size_spk ${kernel_size_spk} \
-                    --dilation_size_spk ${dilation_size_spk} \
                     --hidden_units_dec ${hidden_units_dec} \
                     --hidden_layers_dec ${hidden_layers_dec} \
                     --kernel_size_enc ${kernel_size_enc} \
@@ -1847,7 +1830,6 @@ if [ `echo ${stage} | grep 7` ];then
                     --emb_spk_dim ${emb_spk_dim} \
                     --n_weight_emb ${n_weight_emb} \
                     --right_size_enc ${right_size_enc} \
-                    --right_size_spk ${right_size_spk} \
                     --right_size_dec ${right_size_dec} \
                     --t_start ${t_start} \
                     --t_end ${t_end} \
@@ -1986,7 +1968,7 @@ if [ $spkr != $spk_trg ]; then
     mkdir -p ${outdir}
     feats_scp=${outdir}/feats.scp
     cat data/${dev}/feats.scp | grep "\/${spkr}\/" | head -n ${n_wav_decode} > ${feats_scp}
-    if [ $mdl_name_vc == "cycmelspxlf0capspkvae-gauss-smpl_sparse_weightemb_v2" ]; then
+    if [ $mdl_name_vc == "cycmelspxlf0capspkvae-gauss-smpl_sparse_noct_weightemb_v2" ]; then
         echo ""
         echo "now decoding vc ${spkr}-to-${spk_trg}..., log here: ${expdir_vc}/log/decode_dev_${min_idx_cycvae}_${spkr}-${spk_trg}.log"
         ${cuda_cmd} ${expdir_vc}/log/decode_dev_${min_idx_cycvae}_${spkr}-${spk_trg}.log \
@@ -2022,7 +2004,7 @@ if [ $spkr != $spk_trg ]; then
     #mkdir -p ${outdir}
     #feats_scp=${outdir}/feats.scp
     #cat data/${tst}/feats.scp | grep "\/${spkr}\/" | head -n ${n_wav_decode} > ${feats_scp}
-    #if [ $mdl_name_vc == "cycmelspxlf0capspkvae-gauss-smpl_sparse_weightemb_v2" ]; then
+    #if [ $mdl_name_vc == "cycmelspxlf0capspkvae-gauss-smpl_sparse_noct_weightemb_v2" ]; then
     #    echo ""
     #    echo "now decoding vc ${spkr}-to-${spk_trg}..., log here: ${expdir_vc}/log/decode_tst_${min_idx_cycvae}_${spkr}-${spk_trg}.log"
     #    $densities_cycvae{cuda_cmd} ${expdir_vc}/log/decode_tst_${min_idx_cycvae}_${spkr}-${spk_trg}.log \
@@ -2153,7 +2135,7 @@ if [ $spkr != $spk_trg ]; then
     mkdir -p ${outdir}
     feats_scp=${outdir}/feats.scp
     cat data/${dev}/feats.scp | grep "\/${spkr}\/" | head -n ${n_wav_decode} > ${feats_scp}
-    if [ $mdl_name_ft == "cycmelspspkvae-gauss-smpl_sparse_weightemb_mwdlp_smpl_v2" ]; then
+    if [ $mdl_name_ft == "cycmelspspkvae-gauss-smpl_sparse_noct_weightemb_mwdlp_smpl_v2" ]; then
         echo ""
         echo "now decoding fine-tuned vc ${spkr}-to-${spk_trg}..., log here: ${expdir_ft}/log/decode_dev_${min_idx_cycvae}-${min_idx_wave}-${min_idx_ft}_${spkr}-${spk_trg}.log"
         ${cuda_cmd} ${expdir_ft}/log/decode_dev_${min_idx_cycvae}-${min_idx_wave}-${min_idx_ft}_${spkr}-${spk_trg}.log \
@@ -2189,7 +2171,7 @@ if [ $spkr != $spk_trg ]; then
     #mkdir -p ${outdir}
     #feats_scp=${outdir}/feats.scp
     #cat data/${tst}/feats.scp | grep "\/${spkr}\/" | head -n ${n_wav_decode} > ${feats_scp}
-    #if [ $mdl_name_ft == "cycmelspspkvae-gauss-smpl_sparse_weightemb_mwdlp_smpl_v2" ]; then
+    #if [ $mdl_name_ft == "cycmelspspkvae-gauss-smpl_sparse_noct_weightemb_mwdlp_smpl_v2" ]; then
     #    echo ""
     #    echo "now decoding fine-tuned vc ${spkr}-to-${spk_trg}..., log here: ${expdir_ft}/log/decode_tst_${min_idx_cycvae}-${min_idx_wave}-${min_idx_ft}_${spkr}-${spk_trg}.log"
     #    ${cuda_cmd} ${expdir_ft}/log/decode_tst_${min_idx_cycvae}-${min_idx_wave}-${min_idx_ft}_${spkr}-${spk_trg}.log \
@@ -2337,7 +2319,7 @@ if [ $spkr != $spk_trg ]; then
     mkdir -p ${outdir}
     feats_scp=${outdir}/feats.scp
     cat data/${dev}/feats.scp | grep "\/${spkr}\/" | head -n ${n_wav_decode} > ${feats_scp}
-    if [ $mdl_name_sp == "cycmelspspkvae-ftdec-gauss-smpl_sparse_wemb_mwdlp_smpl_v2" ]; then
+    if [ $mdl_name_sp == "cycmelspspkvae-ftdec-gauss-smpl_sparse_noct_wemb_mwdlp_smpl_v2" ]; then
         echo ""
         echo "now decoding fine-tuned vc decoder ${spkr}-to-${spk_trg}..., log here: ${expdir_sp}/log/decode_dev_${min_idx_cycvae}-${min_idx_wave}-${min_idx_ft}-${min_idx_sp}_${spkr}-${spk_trg}.log"
         ${cuda_cmd} ${expdir_sp}/log/decode_dev_${min_idx_cycvae}-${min_idx_wave}-${min_idx_ft}-${min_idx_sp}_${spkr}-${spk_trg}.log \
@@ -2373,7 +2355,7 @@ if [ $spkr != $spk_trg ]; then
     #mkdir -p ${outdir}
     #feats_scp=${outdir}/feats.scp
     #cat data/${tst}/feats.scp | grep "\/${spkr}\/" | head -n ${n_wav_decode} > ${feats_scp}
-    #if [ $mdl_name_sp == "cycmelspspkvae-ftdec-gauss-smpl_sparse_wemb_mwdlp_smpl_v2" ]; then
+    #if [ $mdl_name_sp == "cycmelspspkvae-ftdec-gauss-smpl_sparse_noct_wemb_mwdlp_smpl_v2" ]; then
     #    echo ""
     #    echo "now decoding fine-tuned vc decoder ${spkr}-to-${spk_trg}..., log here: ${expdir_sp}/log/decode_tst_${min_idx_cycvae}-${min_idx_wave}-${min_idx_ft}-${min_idx_sp}_${spkr}-${spk_trg}.log"
     #    ${cuda_cmd} ${expdir_sp}/log/decode_tst_${min_idx_cycvae}-${min_idx_wave}-${min_idx_ft}-${min_idx_sp}_${spkr}-${spk_trg}.log \

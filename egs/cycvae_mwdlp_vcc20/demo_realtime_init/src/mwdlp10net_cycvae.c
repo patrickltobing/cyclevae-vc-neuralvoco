@@ -61,7 +61,7 @@ static void run_frame_network_cyclevae_melsp_excit_spk(CycleVAEMelspExcitSpkNNet
     //const float *melsp_in, float *spk_code_aux, float *melsp_cv, short first_frame_flag, float *lat_tmp, float *spk_tmp, float *conv_tmp, float *gru_tmp, float *f0_tmp)
         //MWDLP16CycleVAEMelspExcitSpkNetState *net_st)
 {
-    int i, j, k;
+    //int i, j, k;
     float melsp_scale[FEATURE_DIM_MELSP];
     float out_buffer[FEATURE_DIM_MELSP_2];
     float red_buffer[FEATURE_RED_DIM];
@@ -70,19 +70,19 @@ static void run_frame_network_cyclevae_melsp_excit_spk(CycleVAEMelspExcitSpkNNet
     float lat_melsp[FEATURE_LAT_DIM_MELSP];
     float lat_excit[FEATURE_LAT_DIM_EXCIT];
     float lat_excit_melsp[FEATURE_LAT_DIM_EXCIT_MELSP];
-    float spk_code_lat_excit_melsp[FEATURE_SPK_LAT_DIM_EXCIT_MELSP];
-    float spk_input[FEATURE_CONV_SPK_OUT_SIZE];
-    float time_varying_spk_code_weight[FEATURE_N_WEIGHT_EMBED_SPK];
-    float code_weight;
-    float time_varying_spk_code[FEATURE_SPK_DIM];
-    float spk_code_aux_lat_excit[FEATURE_SPK_DIM_2_LAT_DIM_EXCIT];
+    //float spk_code_lat_excit_melsp[FEATURE_SPK_LAT_DIM_EXCIT_MELSP];
+    //float spk_input[FEATURE_CONV_SPK_OUT_SIZE];
+    //float time_varying_spk_code_weight[FEATURE_N_WEIGHT_EMBED_SPK];
+    //float code_weight;
+    //float time_varying_spk_code[FEATURE_SPK_DIM];
+    float spk_code_aux_lat_excit[FEATURE_SPK_LAT_DIM_EXCIT];
     float dec_melsp_input[FEATURE_CONV_DEC_MELSP_OUT_SIZE];
     float dec_excit_input[FEATURE_CONV_DEC_EXCIT_OUT_SIZE];
     float dec_excit_out[2];
     float uvf0, f0;
     float uvf0_f0[2];
-    float spk_code_aux_f0_lat_excit_melsp[FEATURE_SPK_DIM_2_2_LAT_DIM_EXCIT_MELSP];
-    const EmbeddingLayer *spk_embedding = &embed_spk_tv;
+    float spk_code_aux_f0_lat_excit_melsp[FEATURE_SPK_DIM_2_LAT_DIM_EXCIT_MELSP];
+    //const EmbeddingLayer *spk_embedding = &embed_spk_tv;
     //clock_t t;
     //double time_taken;
 
@@ -94,10 +94,10 @@ static void run_frame_network_cyclevae_melsp_excit_spk(CycleVAEMelspExcitSpkNNet
     //RNN_COPY(in, melsp_in, FEATURE_DIM_MELSP);
     compute_normalize(&melsp_norm, melsp);
     //t = clock();
-    compute_conv1d_linear(&feature_conv_enc_melsp, enc_melsp_input, net->feature_conv_enc_melsp_state, melsp);
+    compute_conv1d_linear_enc_melsp(&feature_conv_enc_melsp, enc_melsp_input, net->feature_conv_enc_melsp_state, melsp);
     //printf("conv_enc_melsp %f sec.\n", ((double)(clock()-t))/CLOCKS_PER_SEC);
     //t = clock();
-    compute_conv1d_linear(&feature_conv_enc_excit, enc_excit_input, net->feature_conv_enc_excit_state, melsp);
+    compute_conv1d_linear_enc_excit(&feature_conv_enc_excit, enc_excit_input, net->feature_conv_enc_excit_state, melsp);
     //printf("conv_enc_excit %f sec.\n", ((double)(clock()-t))/CLOCKS_PER_SEC);
     //printf("exc_conv");
     //for (k = 0; k < FEATURE_CONV_ENC_EXCIT_OUT_SIZE; k++) {
@@ -151,48 +151,11 @@ static void run_frame_network_cyclevae_melsp_excit_spk(CycleVAEMelspExcitSpkNNet
     //}
     //printf("\n");
 
-    //compute spk input here [concate spk-code,lat_excit,lat_melsp]
-    //printf("spk_net %d %d\n", net_st->frame_count, net_st->cv_frame_count);
-    RNN_COPY(spk_code_lat_excit_melsp, spk_code_aux, FEATURE_SPK_DIM); //spk_code_aux=[1-hot-spk-code,time-vary-spk-code]
-    RNN_COPY(&spk_code_lat_excit_melsp[FEATURE_SPK_DIM], lat_excit_melsp, FEATURE_LAT_DIM_EXCIT_MELSP);
-    //t = clock();
-    compute_dense(&fc_red_spk, red_buffer, spk_code_lat_excit_melsp);
-    //printf("red_spk %f sec.\n", ((double)(clock()-t))/CLOCKS_PER_SEC);
-    if (first_frame_flag) { //pad_first
-        float *mem_spk = net->feature_conv_spk_state; //mem of stored input frames
-        for (i=0;i<SPK_CONV_KERNEL_1;i++) //store first input with replicate padding kernel_size-1
-            RNN_COPY(&mem_spk[i*FEATURE_RED_DIM], red_buffer, FEATURE_RED_DIM);
-    }
-    //t = clock();
-    compute_conv1d_linear(&feature_conv_spk, spk_input, net->feature_conv_spk_state, red_buffer);
-    //printf("conv_spk %f sec.\n", ((double)(clock()-t))/CLOCKS_PER_SEC);
-    //t = clock();
-    compute_gru_spk(&gru_spk, net->gru_spk_state, spk_input);
-    //printf("gru_spk %f sec.\n", ((double)(clock()-t))/CLOCKS_PER_SEC);
-    //t = clock();
-    compute_dense(&fc_out_spk, time_varying_spk_code_weight, net->gru_spk_state);
-    //printf("out_spk %f sec.\n", ((double)(clock()-t))/CLOCKS_PER_SEC);
-    for (j=0, i=0; j<FEATURE_N_WEIGHT_EMBED_SPK; j++) {
-        for (k=0, code_weight=time_varying_spk_code_weight[j]; k<FEATURE_DIM_EMBED_SPK; k++, i++) {
-            time_varying_spk_code[i] = code_weight*spk_embedding->embedding_weights[i];
-        }
-    }
-    RNN_COPY(&spk_code_aux[FEATURE_SPK_DIM], time_varying_spk_code, FEATURE_SPK_DIM);
-    //RNN_COPY(&spk_code_aux[FEATURE_N_SPK], time_varying_spk_code, FEATURE_N_SPK);
-    //t = clock() - t;
-    //time_taken = ((double)t)/CLOCKS_PER_SEC;
-    //printf("spk %f sec.\n", time_taken);
-    //for (k = 0; k < FEATURE_N_SPK; k++) {
-    ////    printf("spk [%d] %f ", k, spk_code_aux[FEATURE_N_SPK+k]);
-    //    spk_tmp[FEATURE_N_SPK+k] = spk_code_aux[FEATURE_N_SPK+k];
-    //}
-    //printf("\n");
-
     //compute excit input here [concate spk-code,spk-code-aux,lat_excit]
     //printf("dec_excit %d %d\n", net_st->frame_count, net_st->cv_frame_count);
     //printf("dec_excit a0 %d %d\n", net_st->frame_count, net_st->cv_frame_count);
-    RNN_COPY(spk_code_aux_lat_excit, spk_code_aux, FEATURE_SPK_DIM_2);
-    RNN_COPY(&spk_code_aux_lat_excit[FEATURE_SPK_DIM_2], lat_excit, FEATURE_LAT_DIM_EXCIT);
+    RNN_COPY(spk_code_aux_lat_excit, spk_code_aux, FEATURE_SPK_DIM);
+    RNN_COPY(&spk_code_aux_lat_excit[FEATURE_SPK_DIM], lat_excit, FEATURE_LAT_DIM_EXCIT);
     //printf("dec_excit a1 %d %d\n", net_st->frame_count, net_st->cv_frame_count);
     //t = clock();
     compute_dense(&fc_red_dec_excit, red_buffer, spk_code_aux_lat_excit);
@@ -200,13 +163,13 @@ static void run_frame_network_cyclevae_melsp_excit_spk(CycleVAEMelspExcitSpkNNet
     if (first_frame_flag) { //pad_first
         float *mem_dec_excit = net->feature_conv_dec_excit_state; //mem of stored input frames
     //    printf("dec_excit a2 %d %d\n", net_st->frame_count, net_st->cv_frame_count);
-        for (i=0;i<DEC_EXCIT_CONV_KERNEL_1;i++) //store first input with replicate padding kernel_size-1
+        for (int i=0;i<DEC_EXCIT_CONV_KERNEL_1;i++) //store first input with replicate padding kernel_size-1
             RNN_COPY(&mem_dec_excit[i*FEATURE_RED_DIM], red_buffer, FEATURE_RED_DIM);
     //    printf("dec_excit a3 %d %d\n", net_st->frame_count, net_st->cv_frame_count);
     }
     //printf("dec_excit a %d %d\n", net_st->frame_count, net_st->cv_frame_count);
     //t = clock();
-    compute_conv1d_linear(&feature_conv_dec_excit, dec_excit_input, net->feature_conv_dec_excit_state, red_buffer);
+    compute_conv1d_linear_dec_excit(&feature_conv_dec_excit, dec_excit_input, net->feature_conv_dec_excit_state, red_buffer);
     //printf("conv_excit %f sec.\n", ((double)(clock()-t))/CLOCKS_PER_SEC);
     //t = clock();
     compute_gru_dec_excit(&gru_dec_excit, net->gru_dec_excit_state, dec_excit_input);
@@ -241,17 +204,17 @@ static void run_frame_network_cyclevae_melsp_excit_spk(CycleVAEMelspExcitSpkNNet
 
     //compute melsp input here [concate spk-code,spk-code-aux,uv-f0,lat_excit,lat_melsp]
     //printf("dec_melsp %d %d\n", net_st->frame_count, net_st->cv_frame_count);
-    RNN_COPY(spk_code_aux_f0_lat_excit_melsp, spk_code_aux, FEATURE_SPK_DIM_2);
-    RNN_COPY(&spk_code_aux_f0_lat_excit_melsp[FEATURE_SPK_DIM_2], uvf0_f0, 2);
-    RNN_COPY(&spk_code_aux_f0_lat_excit_melsp[FEATURE_SPK_DIM_2_2], lat_excit_melsp, FEATURE_LAT_DIM_EXCIT_MELSP);
+    RNN_COPY(spk_code_aux_f0_lat_excit_melsp, spk_code_aux, FEATURE_SPK_DIM);
+    RNN_COPY(&spk_code_aux_f0_lat_excit_melsp[FEATURE_SPK_DIM], uvf0_f0, 2);
+    RNN_COPY(&spk_code_aux_f0_lat_excit_melsp[FEATURE_SPK_DIM_2], lat_excit_melsp, FEATURE_LAT_DIM_EXCIT_MELSP);
     compute_dense(&fc_red_dec_melsp, red_buffer, spk_code_aux_f0_lat_excit_melsp);
     if (first_frame_flag) { //pad_first
         float *mem_dec_melsp = net->feature_conv_dec_melsp_state; //mem of stored input frames
-        for (i=0;i<DEC_MELSP_CONV_KERNEL_1;i++) //store first input with replicate padding kernel_size-1
+        for (int i=0;i<DEC_MELSP_CONV_KERNEL_1;i++) //store first input with replicate padding kernel_size-1
             RNN_COPY(&mem_dec_melsp[i*FEATURE_RED_DIM], red_buffer, FEATURE_RED_DIM);
     }
     //t = clock();
-    compute_conv1d_linear(&feature_conv_dec_melsp, dec_melsp_input, net->feature_conv_dec_melsp_state, red_buffer);
+    compute_conv1d_linear_dec_melsp(&feature_conv_dec_melsp, dec_melsp_input, net->feature_conv_dec_melsp_state, red_buffer);
     //printf("conv_melsp %f sec.\n", ((double)(clock()-t))/CLOCKS_PER_SEC);
     //compute_gru_dec_melsp(&gru_dec_melsp, net->gru_dec_melsp_state, dec_melsp_input);
     //t = clock();
@@ -262,8 +225,6 @@ static void run_frame_network_cyclevae_melsp_excit_spk(CycleVAEMelspExcitSpkNNet
     compute_dense_linear(&fc_out_dec_melsp, out_buffer, net->gru_dec_melsp_state);
     compute_activation(melsp, out_buffer, FEATURE_DIM_MELSP, ACTIVATION_TANHSHRINK);
     //compute_activation(melsp_scale, &out_buffer[FEATURE_DIM_MELSP], FEATURE_DIM_MELSP, ACTIVATION_SIGMOID_EXP);
-    //FIXME: fix discrepancy in pytorch training for std/var, network generates log(std), instead of log(var)
-    //       and fix sampling in pytorch training
     //compute_activation(melsp_scale, &out_buffer[FEATURE_DIM_MELSP], FEATURE_DIM_MELSP, ACTIVATION_EXP);
     compute_activation(melsp_scale, &out_buffer[FEATURE_DIM_MELSP], FEATURE_DIM_MELSP, ACTIVATION_SIGMOID_EXP);
     //RNN_COPY(melsp_scale, &out_buffer[FEATURE_DIM_MELSP], FEATURE_DIM_MELSP);
@@ -307,10 +268,10 @@ static void run_frame_network_mwdlp10(MWDLP10NNetState *net, float *gru_a_condit
         //compute_conv1d_linear(&feature_conv, conv_out, net->feature_conv_state, conv_in);
         //compute_conv1d_linear(&feature_conv, conv_out, net->feature_conv_state, conv_in_out);
         compute_normalize(&feature_norm, features);
-        compute_conv1d_linear(&feature_conv, conv_out, net->feature_conv_state, features);
+        compute_conv1d_linear_frame_in(&feature_conv, conv_out, net->feature_conv_state, features);
         compute_denormalize(&feature_norm, features);
     } else {
-        compute_conv1d_linear(&feature_conv, conv_out, net->feature_conv_state, features);
+        compute_conv1d_linear_frame_in(&feature_conv, conv_out, net->feature_conv_state, features);
     }
     //segmental input conv. and fc layer with relu
     //t = clock();

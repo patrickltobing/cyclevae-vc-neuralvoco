@@ -29,7 +29,7 @@ from utils import write_hdf5
 
 import soundfile as sf
 
-from vcneuvoco import GRU_VAE_ENCODER, GRU_SPEC_DECODER, GRU_SPK
+from vcneuvoco import GRU_VAE_ENCODER, GRU_SPEC_DECODER
 from vcneuvoco import GRU_EXCIT_DECODER, SPKID_TRANSFORM_LAYER
 from feature_extract import convert_f0
 from dtw_c import dtw_c as dtw
@@ -206,7 +206,6 @@ def main():
                     excit_dim=config.excit_dim,
                     out_dim=config.mel_dim,
                     n_spk=(config.emb_spk_dim//config.n_weight_emb)*config.n_weight_emb,
-                    aux_dim=(config.emb_spk_dim//config.n_weight_emb)*config.n_weight_emb,
                     hidden_layers=config.hidden_layers_dec,
                     hidden_units=config.hidden_units_dec,
                     kernel_size=config.kernel_size_dec,
@@ -233,7 +232,6 @@ def main():
                     feat_dim=config.lat_dim_e,
                     cap_dim=config.cap_dim,
                     n_spk=(config.emb_spk_dim//config.n_weight_emb)*config.n_weight_emb,
-                    aux_dim=(config.emb_spk_dim//config.n_weight_emb)*config.n_weight_emb,
                     hidden_layers=config.hidden_layers_lf0,
                     hidden_units=config.hidden_units_lf0,
                     kernel_size=config.kernel_size_lf0,
@@ -250,43 +248,26 @@ def main():
                     conv_emb_flag=True,
                     spkidtr_dim=config.spkidtr_dim)
                 logging.info(model_spkidtr)
-                model_spk = GRU_SPK(
-                    n_spk=(config.emb_spk_dim//config.n_weight_emb)*config.n_weight_emb,
-                    feat_dim=config.lat_dim+config.lat_dim_e,
-                    hidden_units=32,
-                    kernel_size=config.kernel_size_spk,
-                    dilation_size=config.dilation_size_spk,
-                    causal_conv=config.causal_conv_spk,
-                    pad_first=True,
-                    right_size=config.right_size_spk,
-                    red_dim=config.mel_dim,
-                    n_weight_emb=config.n_weight_emb,
-                    weight_fact=1)
-                logging.info(model_spk)
                 model_encoder_melsp.load_state_dict(torch.load(args.model)["model_encoder_melsp"])
                 model_decoder_melsp.load_state_dict(torch.load(args.model)["model_decoder_melsp"])
                 model_encoder_excit.load_state_dict(torch.load(args.model)["model_encoder_excit"])
                 model_decoder_excit.load_state_dict(torch.load(args.model)["model_decoder_excit"])
                 model_spkidtr.load_state_dict(torch.load(args.model)["model_spkidtr"])
-                model_spk.load_state_dict(torch.load(args.model)["model_spk"])
                 model_encoder_melsp.cuda()
                 model_decoder_melsp.cuda()
                 model_encoder_excit.cuda()
                 model_decoder_excit.cuda()
                 model_spkidtr.cuda()
-                model_spk.cuda()
                 model_encoder_melsp.eval()
                 model_decoder_melsp.eval()
                 model_encoder_excit.eval()
                 model_decoder_excit.eval()
                 model_spkidtr.eval()
-                model_spk.eval()
                 model_encoder_melsp.remove_weight_norm()
                 model_decoder_melsp.remove_weight_norm()
                 model_encoder_excit.remove_weight_norm()
                 model_decoder_excit.remove_weight_norm()
                 model_spkidtr.remove_weight_norm()
-                model_spk.remove_weight_norm()
                 for param in model_encoder_melsp.parameters():
                     param.requires_grad = False
                 for param in model_decoder_melsp.parameters():
@@ -296,8 +277,6 @@ def main():
                 for param in model_decoder_excit.parameters():
                     param.requires_grad = False
                 for param in model_spkidtr.parameters():
-                    param.requires_grad = False
-                for param in model_spk.parameters():
                     param.requires_grad = False
             # interpolated spk-code
             #if args.n_interp > 0:
@@ -327,24 +306,20 @@ def main():
             #    logging.info(delta_z)
             #    logging.info(delta_z_e)
             count = 0
-            pad_left = (model_encoder_melsp.pad_left + model_spk.pad_left + model_decoder_excit.pad_left + model_decoder_melsp.pad_left)*2
-            pad_right = (model_encoder_melsp.pad_right + model_spk.pad_right + model_decoder_excit.pad_right + model_decoder_melsp.pad_right)*2
-            outpad_lefts = [None]*7
-            outpad_rights = [None]*7
+            pad_left = (model_encoder_melsp.pad_left + model_decoder_excit.pad_left + model_decoder_melsp.pad_left)*2
+            pad_right = (model_encoder_melsp.pad_right + model_decoder_excit.pad_right + model_decoder_melsp.pad_right)*2
+            outpad_lefts = [None]*5
+            outpad_rights = [None]*5
             outpad_lefts[0] = pad_left-model_encoder_melsp.pad_left
             outpad_rights[0] = pad_right-model_encoder_melsp.pad_right
-            outpad_lefts[1] = outpad_lefts[0]-model_spk.pad_left
-            outpad_rights[1] = outpad_rights[0]-model_spk.pad_right
-            outpad_lefts[2] = outpad_lefts[1]-model_decoder_excit.pad_left
-            outpad_rights[2] = outpad_rights[1]-model_decoder_excit.pad_right
-            outpad_lefts[3] = outpad_lefts[2]-model_decoder_melsp.pad_left
-            outpad_rights[3] = outpad_rights[2]-model_decoder_melsp.pad_right
-            outpad_lefts[4] = outpad_lefts[3]-model_encoder_melsp.pad_left
-            outpad_rights[4] = outpad_rights[3]-model_encoder_melsp.pad_right
-            outpad_lefts[5] = outpad_lefts[4]-model_spk.pad_left
-            outpad_rights[5] = outpad_rights[4]-model_spk.pad_right
-            outpad_lefts[6] = outpad_lefts[5]-model_decoder_excit.pad_left
-            outpad_rights[6] = outpad_rights[5]-model_decoder_excit.pad_right
+            outpad_lefts[1] = outpad_lefts[0]-model_decoder_excit.pad_left
+            outpad_rights[1] = outpad_rights[0]-model_decoder_excit.pad_right
+            outpad_lefts[2] = outpad_lefts[1]-model_decoder_melsp.pad_left
+            outpad_rights[2] = outpad_rights[1]-model_decoder_melsp.pad_right
+            outpad_lefts[3] = outpad_lefts[2]-model_encoder_melsp.pad_left
+            outpad_rights[3] = outpad_rights[2]-model_encoder_melsp.pad_right
+            outpad_lefts[4] = outpad_lefts[3]-model_decoder_excit.pad_left
+            outpad_rights[4] = outpad_rights[3]-model_decoder_excit.pad_right
             melfb_t = np.linalg.pinv(librosa.filters.mel(args.fs, args.fftl, n_mels=config.mel_dim))
             temp = 0.675
             logging.info(f'temp: {temp}')
@@ -395,94 +370,60 @@ def main():
                         _, src_code = model_spkidtr((torch.ones((1, lat_src_e.shape[1]))*src_idx).cuda().long())
                         _, trg_code = model_spkidtr((torch.ones((1, lat_src_e.shape[1]))*trg_idx).cuda().long())
                         lat_cat = torch.cat((lat_src_e, lat_src), 2)
-                        trj_src_code, _ = model_spk(src_code, z=lat_cat)
-                        trj_trg_code, _ = model_spk(trg_code, z=lat_cat)
                         
-                        if model_spk.pad_right > 0:
-                            lat_cat = lat_cat[:,model_spk.pad_left:-model_spk.pad_right]
-                            if trg_exist:
-                                lat_src = lat_src[:,model_spk.pad_left:-model_spk.pad_right]
-                            lat_src_e = lat_src_e[:,model_spk.pad_left:-model_spk.pad_right]
-                            src_code = src_code[:,model_spk.pad_left:-model_spk.pad_right]
-                            trg_code = trg_code[:,model_spk.pad_left:-model_spk.pad_right]
-                        else:
-                            lat_cat = lat_cat[:,model_spk.pad_left:]
-                            if trg_exist:
-                                lat_src = lat_src[:,model_spk.pad_left:]
-                            lat_src_e = lat_src_e[:,model_spk.pad_left:]
-                            src_code = src_code[:,model_spk.pad_left:]
-                            trg_code = trg_code[:,model_spk.pad_left:]
-                        cvlf0_src, _ = model_decoder_excit(lat_src_e, y=src_code, aux=trj_src_code)
-                        cvlf0, _ = model_decoder_excit(lat_src_e, y=trg_code, aux=trj_trg_code)
+                        cvlf0_src, _ = model_decoder_excit(lat_src_e, y=src_code)
+                        cvlf0, _ = model_decoder_excit(lat_src_e, y=trg_code)
 
                         if model_decoder_excit.pad_right > 0:
                             lat_cat = lat_cat[:,model_decoder_excit.pad_left:-model_decoder_excit.pad_right]
                             src_code = src_code[:,model_decoder_excit.pad_left:-model_decoder_excit.pad_right]
                             trg_code = trg_code[:,model_decoder_excit.pad_left:-model_decoder_excit.pad_right]
-                            trj_src_code = trj_src_code[:,model_decoder_excit.pad_left:-model_decoder_excit.pad_right]
-                            trj_trg_code = trj_trg_code[:,model_decoder_excit.pad_left:-model_decoder_excit.pad_right]
                         else:
                             lat_cat = lat_cat[:,model_decoder_excit.pad_left:]
                             src_code = src_code[:,model_decoder_excit.pad_left:]
                             trg_code = trg_code[:,model_decoder_excit.pad_left:]
-                            trj_src_code = trj_src_code[:,model_decoder_excit.pad_left:]
-                            trj_trg_code = trj_trg_code[:,model_decoder_excit.pad_left:]
-                        _, cvmelsp_src, _ = model_decoder_melsp(lat_cat, y=src_code, aux=trj_src_code, e=cvlf0_src[:,:,:config.excit_dim], temp=temp)
-                        _, cvmelsp, _ = model_decoder_melsp(lat_cat, y=trg_code, aux=trj_trg_code, e=cvlf0[:,:,:config.excit_dim], temp=temp)
-                        #trg_trj_code_lat_cat = torch.cat((trg_code, trj_trg_code, lat_cat), 2)
+                        _, cvmelsp_src, _ = model_decoder_melsp(lat_cat, y=src_code, e=cvlf0_src[:,:,:config.excit_dim], temp=temp)
+                        _, cvmelsp, _ = model_decoder_melsp(lat_cat, y=trg_code, e=cvlf0[:,:,:config.excit_dim], temp=temp)
                         #trj_lat_cat = lat_cat
 
                         spk_logits, _, lat_rec, _ = model_encoder_melsp(cvmelsp_src, sampling=False)
                         spk_logits_e, _, lat_rec_e, _ = model_encoder_excit(cvmelsp_src, sampling=False)
                         logging.info('rec spkpost')
-                        if outpad_rights[4] > 0:
-                            logging.info(torch.mean(F.softmax(spk_logits[:,outpad_lefts[4]:-outpad_rights[4]], dim=-1), 1))
+                        if outpad_rights[3] > 0:
+                            logging.info(torch.mean(F.softmax(spk_logits[:,outpad_lefts[3]:-outpad_rights[3]], dim=-1), 1))
                         else:
-                            logging.info(torch.mean(F.softmax(spk_logits[:,outpad_lefts[4]:], dim=-1), 1))
+                            logging.info(torch.mean(F.softmax(spk_logits[:,outpad_lefts[3]:], dim=-1), 1))
                         logging.info('rec spkpost_e')
-                        if outpad_rights[4] > 0:
-                            logging.info(torch.mean(F.softmax(spk_logits_e[:,outpad_lefts[4]:-outpad_rights[4]], dim=-1), 1))
+                        if outpad_rights[3] > 0:
+                            logging.info(torch.mean(F.softmax(spk_logits_e[:,outpad_lefts[3]:-outpad_rights[3]], dim=-1), 1))
                         else:
-                            logging.info(torch.mean(F.softmax(spk_logits_e[:,outpad_lefts[4]:], dim=-1), 1))
+                            logging.info(torch.mean(F.softmax(spk_logits_e[:,outpad_lefts[3]:], dim=-1), 1))
 
                         spk_logits, _, lat_cv, _ = model_encoder_melsp(cvmelsp, sampling=False)
                         spk_logits_e, _, lat_cv_e, _ = model_encoder_excit(cvmelsp, sampling=False)
                         logging.info('cv spkpost')
-                        if outpad_rights[4] > 0:
-                            logging.info(torch.mean(F.softmax(spk_logits[:,outpad_lefts[4]:-outpad_rights[4]], dim=-1), 1))
+                        if outpad_rights[3] > 0:
+                            logging.info(torch.mean(F.softmax(spk_logits[:,outpad_lefts[3]:-outpad_rights[3]], dim=-1), 1))
                         else:
-                            logging.info(torch.mean(F.softmax(spk_logits[:,outpad_lefts[4]:], dim=-1), 1))
+                            logging.info(torch.mean(F.softmax(spk_logits[:,outpad_lefts[3]:], dim=-1), 1))
                         logging.info('cv spkpost_e')
-                        if outpad_rights[4] > 0:
-                            logging.info(torch.mean(F.softmax(spk_logits_e[:,outpad_lefts[4]:-outpad_rights[4]], dim=-1), 1))
+                        if outpad_rights[3] > 0:
+                            logging.info(torch.mean(F.softmax(spk_logits_e[:,outpad_lefts[3]:-outpad_rights[3]], dim=-1), 1))
                         else:
-                            logging.info(torch.mean(F.softmax(spk_logits_e[:,outpad_lefts[4]:], dim=-1), 1))
+                            logging.info(torch.mean(F.softmax(spk_logits_e[:,outpad_lefts[3]:], dim=-1), 1))
 
                         _, src_code = model_spkidtr((torch.ones((1, lat_cv_e.shape[1]))*src_idx).cuda().long())
                         lat_cat = torch.cat((lat_cv_e, lat_cv), 2)
-                        trj_src_code, _ = model_spk(src_code, z=lat_cat)
     
-                        if model_spk.pad_right > 0:
-                            lat_cat = lat_cat[:,model_spk.pad_left:-model_spk.pad_right]
-                            lat_cv_e = lat_cv_e[:,model_spk.pad_left:-model_spk.pad_right]
-                            src_code = src_code[:,model_spk.pad_left:-model_spk.pad_right]
-                            trg_code = trg_code[:,model_spk.pad_left:-model_spk.pad_right]
-                        else:
-                            lat_cat = lat_cat[:,model_spk.pad_left:]
-                            lat_cv_e = lat_cv_e[:,model_spk.pad_left:]
-                            src_code = src_code[:,model_spk.pad_left:]
-                            trg_code = trg_code[:,model_spk.pad_left:]
-                        cvlf0_cyc, _ = model_decoder_excit(lat_cv_e, y=src_code, aux=trj_src_code)
+                        cvlf0_cyc, _ = model_decoder_excit(lat_cv_e, y=src_code)
 
                         if model_decoder_excit.pad_right > 0:
                             lat_cat = lat_cat[:,model_decoder_excit.pad_left:-model_decoder_excit.pad_right]
                             src_code = src_code[:,model_decoder_excit.pad_left:-model_decoder_excit.pad_right]
-                            trj_src_code = trj_src_code[:,model_decoder_excit.pad_left:-model_decoder_excit.pad_right]
                         else:
                             lat_cat = lat_cat[:,model_decoder_excit.pad_left:]
                             src_code = src_code[:,model_decoder_excit.pad_left:]
-                            trj_src_code = trj_src_code[:,model_decoder_excit.pad_left:]
-                        _, cvmelsp_cyc, _ = model_decoder_melsp(lat_cat, y=src_code, aux=trj_src_code, e=cvlf0_cyc[:,:,:config.excit_dim], temp=temp)
+                        _, cvmelsp_cyc, _ = model_decoder_melsp(lat_cat, y=src_code, e=cvlf0_cyc[:,:,:config.excit_dim], temp=temp)
                     #else: # if using interpolated spk-code
                     #    z_interpolate = []
                     #    z_e_interpolate = []
@@ -610,29 +551,26 @@ def main():
                     #    src_code = torch.repeat_interleave(z_e_src, lat_cv_e.shape[1], dim=1)
                     #    cvlf0_cyc, _ = model_decoder_excit(src_code, lat_cv_e)
 
+                    if outpad_rights[1] > 0:
+                        cvlf0_src = cvlf0_src[:,outpad_lefts[1]:-outpad_rights[1]]
+                        cvlf0 = cvlf0[:,outpad_lefts[1]:-outpad_rights[1]]
+                    #    trj_lat_cat = trj_lat_cat[:,outpad_lefts[1]:-outpad_rights[1]]
+                    else:
+                        cvlf0_src = cvlf0_src[:,outpad_lefts[1]:]
+                        cvlf0 = cvlf0[:,outpad_lefts[1]:]
+                    #    trj_lat_cat = trj_lat_cat[:,outpad_lefts[1]:-outpad_rights[1]]
                     if outpad_rights[2] > 0:
-                        cvlf0_src = cvlf0_src[:,outpad_lefts[2]:-outpad_rights[2]]
-                        cvlf0 = cvlf0[:,outpad_lefts[2]:-outpad_rights[2]]
-                        #trg_trj_code_lat_cat = trg_trj_code_lat_cat[:,outpad_lefts[2]:-outpad_rights[2]]
-                    #    trj_lat_cat = trj_lat_cat[:,outpad_lefts[2]:-outpad_rights[2]]
+                        cvmelsp_src = cvmelsp_src[:,outpad_lefts[2]:-outpad_rights[2]]
+                        cvmelsp = cvmelsp[:,outpad_lefts[2]:-outpad_rights[2]]
                     else:
-                        cvlf0_src = cvlf0_src[:,outpad_lefts[2]:]
-                        cvlf0 = cvlf0[:,outpad_lefts[2]:]
-                        #trg_trj_code_lat_cat = trg_trj_code_lat_cat[:,outpad_lefts[2]:-outpad_rights[2]]
-                    #    trj_lat_cat = trj_lat_cat[:,outpad_lefts[2]:-outpad_rights[2]]
-                    if outpad_rights[3] > 0:
-                        cvmelsp_src = cvmelsp_src[:,outpad_lefts[3]:-outpad_rights[3]]
-                        cvmelsp = cvmelsp[:,outpad_lefts[3]:-outpad_rights[3]]
+                        cvmelsp_src = cvmelsp_src[:,outpad_lefts[2]:]
+                        cvmelsp = cvmelsp[:,outpad_lefts[2]:]
+                    if outpad_rights[4] > 0:
+                        cvlf0_cyc = cvlf0_cyc[:,outpad_lefts[4]:-outpad_rights[4]]
                     else:
-                        cvmelsp_src = cvmelsp_src[:,outpad_lefts[3]:]
-                        cvmelsp = cvmelsp[:,outpad_lefts[3]:]
-                    if outpad_rights[6] > 0:
-                        cvlf0_cyc = cvlf0_cyc[:,outpad_lefts[6]:-outpad_rights[6]]
-                    else:
-                        cvlf0_cyc = cvlf0_cyc[:,outpad_lefts[6]:]
+                        cvlf0_cyc = cvlf0_cyc[:,outpad_lefts[4]:]
 
                     feat_cv = cvmelsp[0].cpu().data.numpy()
-                    #feat_spk_lat = trg_trj_code_lat_cat[0].cpu().data.numpy()
                     #feat_lat = trj_lat_cat[0].cpu().data.numpy()
 
                     cvmelsp_src = np.array(cvmelsp_src[0].cpu().data.numpy(), dtype=np.float64)
@@ -646,9 +584,9 @@ def main():
 
                     if trg_exist:
                         if outpad_rights[1] > 0:
-                            lat_src = torch.cat((lat_src_e, lat_src), 2)[:,outpad_lefts[1]:-outpad_rights[1]]
+                            lat_src = torch.cat((lat_src_e, lat_src), 2)[:,outpad_lefts[0]:-outpad_rights[0]]
                         else:
-                            lat_src = torch.cat((lat_src_e, lat_src), 2)[:,outpad_lefts[1]:]
+                            lat_src = torch.cat((lat_src_e, lat_src), 2)[:,outpad_lefts[0]:]
                         lat_trg = torch.cat((lat_trg_e, lat_trg), 2)
 
                 logging.info(cvlf0_src.shape)

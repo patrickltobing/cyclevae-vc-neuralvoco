@@ -58,9 +58,10 @@ static void print_vector(float *x, int N)
 static void run_frame_network_mwdlp10(MWDLP10NNetState *net, float *gru_a_condition, float *gru_b_condition, 
     float *gru_c_condition, const float *features, int flag_last_frame)
 {
+    //clock_t t;
+    //t = clock();
     float conv_out[FEATURE_CONV_OUT_SIZE];
     float condition[FEATURE_DENSE_OUT_SIZE];
-    //clock_t t;
     //double time_taken;
     //feature normalization if not last frame, just replicate if last frame
     if (!flag_last_frame) {
@@ -70,24 +71,26 @@ static void run_frame_network_mwdlp10(MWDLP10NNetState *net, float *gru_a_condit
         //float conv_in_out[FEATURES_DIM];
         RNN_COPY(in, features, FEATURES_DIM);
         compute_normalize(&feature_norm, in);
-        compute_conv1d_linear(&feature_conv, conv_out, net->feature_conv_state, in);
+        compute_conv1d_linear_frame_in(&feature_conv, conv_out, net->feature_conv_state, in);
         //compute_dense(&feature_conv_in, conv_in, in);
         //compute_dense(&feature_conv_in_in, conv_in_in, in);
         //compute_dense(&feature_conv_in_out, conv_in_out, conv_in_in);
         //compute_conv1d_linear(&feature_conv, conv_out, net->feature_conv_state, conv_in);
         //compute_conv1d_linear(&feature_conv, conv_out, net->feature_conv_state, conv_in_out);
     } else {
-        compute_conv1d_linear(&feature_conv, conv_out, net->feature_conv_state, features);
+        compute_conv1d_linear_frame_in(&feature_conv, conv_out, net->feature_conv_state, features);
     }
     //segmental input conv. and fc layer with relu
     //t = clock();
-    //time_taken = ((double)(clock()-t))/CLOCKS_PER_SEC;
-    //printf("conv_mwdlp %f sec.\n", time_taken);
+    //time_taken = (((double)(clock()-t))/CLOCKS_PER_SEC)*1000;
+    //printf("conv_mwdlp %f ms\n", time_taken);
     compute_dense(&feature_dense, condition, conv_out);
     //compute condition (input_vector_cond*input_matrix_cond+input_bias) for each gru_a, b, and c; fixed for one frame
     compute_dense_linear(&gru_a_dense_feature, gru_a_condition, condition);
     compute_dense_linear(&gru_b_dense_feature, gru_b_condition, condition);
     compute_dense_linear(&gru_c_dense_feature, gru_c_condition, condition);
+    //time_taken = (((double)(clock()-t))/CLOCKS_PER_SEC)*1000;
+    //printf("frame_mwdlp %f ms\n", time_taken);
 }
 
 

@@ -154,7 +154,7 @@ void compute_dense_linear(const DenseLayer *layer, float *output, const float *i
    sgemv_accum16(output, layer->input_weights, N, layer->nb_inputs, N, input);
 }
 
-//PLT_Mar21
+//PLT_Jun21
 void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *fc_layer,
     const float *prev_logits, float *output, const float *input, const int *last_output)
 {
@@ -224,7 +224,7 @@ void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *f
     }
 }
 
-//PLT_Mar21
+//PLT_Jun21
 void compute_mdense_mwdlp10_nodlpc(const MDenseLayerMWDLP10 *layer, const DenseLayer *fc_layer, float *output,
     const float *input)
 {
@@ -323,30 +323,84 @@ void compute_sparse_gru(const SparseGRULayer *gru, float *state, const float *in
       state[i] = r[i]*state[i] + (1-r[i])*h[i];
 }
 
-//PLT_Sep20
-void compute_conv1d_linear(const Conv1DLayer *layer, float *output, float *mem, const float *input)
+//PLT_Jun21
+void compute_conv1d_linear_enc_melsp(const Conv1DLayer *layer, float *output, float *mem, const float *input)
 {
-   int i;
-   int N, M, state_size;
-   //int stride;
-   M = layer->nb_inputs*layer->kernel_size;
-   N = layer->nb_neurons;
-   state_size = layer->nb_inputs*(layer->kernel_size-1);
-   float tmp[M]; //set to input_size*kernel_size
+   float tmp[FEATURE_CONV_ENC_MELSP_OUT_SIZE]; //set to input_size*kernel_size
    //celt_assert(input != output);
-   RNN_COPY(tmp, mem, state_size); //get state_size of last frame (in*(kernel_size-1))
-   RNN_COPY(&tmp[state_size], input, layer->nb_inputs); //append current input frame
+   RNN_COPY(tmp, mem, FEATURE_CONV_ENC_MELSP_STATE_SIZE); //get state_size of last frame (in*(kernel_size-1))
+   RNN_COPY(&tmp[FEATURE_CONV_ENC_MELSP_STATE_SIZE], input, FEATURE_DIM_MELSP); //append current input frame
    //for (int j=0;j<layer->kernel_size;j++) {
    //    for (i=0;i<layer->nb_inputs;i++) {
    //        printf("tmp [%d][%d] %f\n", j, i, tmp[j*layer->nb_inputs+i]);
    //    }
    //}
    // compute conv
-   for (i=0;i<N;i++)
+   for (int i=0;i< FEATURE_CONV_ENC_MELSP_OUT_SIZE;i++)
       output[i] = layer->bias[i];
-   sgemv_accum16(output, layer->input_weights, N, M, N, tmp);
+   sgemv_accum16(output, layer->input_weights, FEATURE_CONV_ENC_MELSP_OUT_SIZE, FEATURE_CONV_ENC_MELSP_OUT_SIZE, FEATURE_CONV_ENC_MELSP_OUT_SIZE, tmp);
    //no activation (linear)
-   RNN_COPY(mem, &tmp[layer->nb_inputs], state_size); //set state size for next frame
+   RNN_COPY(mem, &tmp[FEATURE_DIM_MELSP], FEATURE_CONV_ENC_MELSP_STATE_SIZE); //set state size for next frame
+}
+
+//PLT_Jun21
+void compute_conv1d_linear_enc_excit(const Conv1DLayer* layer, float* output, float* mem, const float* input)
+{
+    float tmp[FEATURE_CONV_ENC_EXCIT_OUT_SIZE]; //set to input_size*kernel_size
+    //celt_assert(input != output);
+    RNN_COPY(tmp, mem, FEATURE_CONV_ENC_EXCIT_STATE_SIZE); //get state_size of last frame (in*(kernel_size-1))
+    RNN_COPY(&tmp[FEATURE_CONV_ENC_EXCIT_STATE_SIZE], input, FEATURE_DIM_MELSP); //append current input frame
+    //for (int j=0;j<layer->kernel_size;j++) {
+    //    for (i=0;i<layer->nb_inputs;i++) {
+    //        printf("tmp [%d][%d] %f\n", j, i, tmp[j*layer->nb_inputs+i]);
+    //    }
+    //}
+    // compute conv
+    for (int i = 0; i < FEATURE_CONV_ENC_EXCIT_OUT_SIZE; i++)
+        output[i] = layer->bias[i];
+    sgemv_accum16(output, layer->input_weights, FEATURE_CONV_ENC_EXCIT_OUT_SIZE, FEATURE_CONV_ENC_EXCIT_OUT_SIZE, FEATURE_CONV_ENC_EXCIT_OUT_SIZE, tmp);
+    //no activation (linear)
+    RNN_COPY(mem, &tmp[FEATURE_DIM_MELSP], FEATURE_CONV_ENC_EXCIT_STATE_SIZE); //set state size for next frame
+}
+
+//PLT_Jun21
+void compute_conv1d_linear_dec_melsp(const Conv1DLayer* layer, float* output, float* mem, const float* input)
+{
+    float tmp[FEATURE_CONV_DEC_MELSP_OUT_SIZE]; //set to input_size*kernel_size
+    //celt_assert(input != output);
+    RNN_COPY(tmp, mem, FEATURE_CONV_DEC_MELSP_STATE_SIZE); //get state_size of last frame (in*(kernel_size-1))
+    RNN_COPY(&tmp[FEATURE_CONV_DEC_MELSP_STATE_SIZE], input, FEATURE_RED_DIM); //append current input frame
+    //for (int j=0;j<layer->kernel_size;j++) {
+    //    for (i=0;i<layer->nb_inputs;i++) {
+    //        printf("tmp [%d][%d] %f\n", j, i, tmp[j*layer->nb_inputs+i]);
+    //    }
+    //}
+    // compute conv
+    for (int i = 0; i < FEATURE_CONV_DEC_MELSP_OUT_SIZE; i++)
+        output[i] = layer->bias[i];
+    sgemv_accum16(output, layer->input_weights, FEATURE_CONV_DEC_MELSP_OUT_SIZE, FEATURE_CONV_DEC_MELSP_OUT_SIZE, FEATURE_CONV_DEC_MELSP_OUT_SIZE, tmp);
+    //no activation (linear)
+    RNN_COPY(mem, &tmp[FEATURE_RED_DIM], FEATURE_CONV_DEC_MELSP_STATE_SIZE); //set state size for next frame
+}
+
+//PLT_Jun21
+void compute_conv1d_linear_frame_in(const Conv1DLayer* layer, float* output, float* mem, const float* input)
+{
+    float tmp[FEATURE_CONV_OUT_SIZE]; //set to input_size*kernel_size
+    //celt_assert(input != output);
+    RNN_COPY(tmp, mem, FEATURE_CONV_STATE_SIZE); //get state_size of last frame (in*(kernel_size-1))
+    RNN_COPY(&tmp[FEATURE_CONV_STATE_SIZE], input, FEATURE_RED_DIM); //append current input frame
+    //for (int j=0;j<layer->kernel_size;j++) {
+    //    for (i=0;i<layer->nb_inputs;i++) {
+    //        printf("tmp [%d][%d] %f\n", j, i, tmp[j*layer->nb_inputs+i]);
+    //    }
+    //}
+    // compute conv
+    for (int i = 0; i < FEATURE_CONV_OUT_SIZE; i++)
+        output[i] = layer->bias[i];
+    sgemv_accum16(output, layer->input_weights, FEATURE_CONV_OUT_SIZE, FEATURE_CONV_OUT_SIZE, FEATURE_CONV_OUT_SIZE, tmp);
+    //no activation (linear)
+    RNN_COPY(mem, &tmp[FEATURE_RED_DIM], FEATURE_CONV_STATE_SIZE); //set state size for next frame
 }
 
 //PLT_Sep20
@@ -462,43 +516,6 @@ void compute_sparse_gru_enc_excit(const SparseFrameGRULayer *gru, float *state, 
       state[i] = r[i]*state[i] + (1-r[i])*h[i]; //h_t = z_t o h_{t-1} + (1-z_t) o n_t
 }
 
-//PLT_Dec20
-void compute_gru_spk(const FrameGRULayer *gru, float *state, const float *input)
-{
-   int i;
-   float zrh[RNN_SPK_NEURONS_3];
-   float recur[RNN_SPK_NEURONS_3];
-   float *z;
-   float *r;
-   float *h;
-
-   z = zrh; //swap with r, pytorch rzh, keras zrh
-   r = &zrh[RNN_SPK_NEURONS];
-   h = &zrh[RNN_SPK_NEURONS_2];
-
-   RNN_COPY(zrh, input, RNN_SPK_NEURONS_3);
-
-   for (i=0;i<RNN_SPK_NEURONS_3;i++) {
-      recur[i] = gru->recurrent_bias[i];
-      zrh[i] = gru->input_bias[i];
-   }
-   sgemv_accum16(recur, gru->recurrent_weights, RNN_SPK_NEURONS_3, RNN_SPK_NEURONS, RNN_SPK_NEURONS_3, state);
-   sgemv_accum16(zrh, gru->input_weights, RNN_SPK_NEURONS_3, FEATURE_SPK_LAT_DIM_EXCIT_MELSP, RNN_SPK_NEURONS_3, input);
-
-   for (i=0;i<RNN_SPK_NEURONS_2;i++)
-      zrh[i] += recur[i]; //z_t and r_t computed in a similar way : sigmoid(in_t + W_z*h_{t-1})
-   //compute_activation(zrh, zrh, RNN_SPK_NEURONS_2, ACTIVATION_SIGMOID);
-   compute_activation(zrh, zrh, RNN_SPK_NEURONS_2, ACTIVATION_SIGMOID_EXP);
-
-   for (i=0;i<RNN_SPK_NEURONS;i++)
-      h[i] += recur[RNN_SPK_NEURONS_2+i]*z[i]; //n_t = tanh(in_t + r_t o W_n*h_{t-1})
-   //compute_activation(h, h, RNN_SPK_NEURONS, ACTIVATION_TANH);
-   compute_activation(h, h, RNN_SPK_NEURONS, gru->activation);
-
-   for (i=0;i<RNN_SPK_NEURONS;i++)
-      state[i] = r[i]*state[i] + (1-r[i])*h[i]; //h_t = z_t o h_{t-1} + (1-z_t) o n_t
-}
-
 //PLT_Jan21
 void compute_sparse_gru_dec_melsp(const SparseFrameGRULayer *gru, float *state, const float *input)
 {
@@ -568,64 +585,58 @@ void compute_sampling_gauss(float *mu, const float *std, int dim)
     }
 }
 
-//PLT_Dec20
+//PLT_Jun21
 void compute_spkidtr(const DenseLayer *in_emb_layer, const DenseLayer *in_layer, const DenseLayer *out_layer,
         float *output, float *coeff, const float *input)
 {
-   int i, N, j, k;
+   int i, j, k;
 
    //transform to N-dim
-   N = in_emb_layer->nb_neurons;
-   float tmp_in[N];
+   float tmp_in[FC_IN_SPK_CODE_OUT_SIZE];
    //printf("\n");
-   for (i=0;i<N;i++) {
+   for (i=0;i< FC_IN_SPK_CODE_OUT_SIZE;i++) {
       tmp_in[i] = in_emb_layer->bias[i];
    //   printf("[%d] %f ", i, tmp_in[i]);
    }
    //printf("\n");
-   sgemv_accum16(tmp_in, in_emb_layer->input_weights, N, in_emb_layer->nb_inputs, N, input);
+   sgemv_accum16(tmp_in, in_emb_layer->input_weights, FC_IN_SPK_CODE_OUT_SIZE, FEATURE_N_SPK, FC_IN_SPK_CODE_OUT_SIZE, input);
    //for (i=0;i<N;i++) {
    //   printf("[%d] %f ", i, tmp_in[i]);
    //}
    //printf("\n");
-   compute_activation(tmp_in, tmp_in, N, in_emb_layer->activation);
+   compute_activation(tmp_in, tmp_in, FC_IN_SPK_CODE_OUT_SIZE, in_emb_layer->activation);
    //for (i=0;i<N;i++) {
    //   printf("[%d] %f ", i, tmp_in[i]);
    //}
    //printf("\n");
 
    //transform to 2-dim
-   N = in_layer->nb_neurons;
-   float tmp[N];
-   for (i=0;i<N;i++) {
+   float tmp[FC_IN_SPK_CODE_TRANSFORM_OUT_SIZE];
+   for (i=0;i< FC_IN_SPK_CODE_TRANSFORM_OUT_SIZE;i++) {
       tmp[i] = in_layer->bias[i];
    //   printf("[%d] %f ", i, tmp[i]);
    }
    //printf("\n");
-   sgemv_accum16(tmp, in_layer->input_weights, N, in_layer->nb_inputs, N, tmp_in);
+   sgemv_accum16(tmp, in_layer->input_weights, FC_IN_SPK_CODE_TRANSFORM_OUT_SIZE, in_layer->nb_inputs, FC_IN_SPK_CODE_TRANSFORM_OUT_SIZE, tmp_in);
    //printf("2-dim %f %f\n", tmp[0], tmp[1]);
-   compute_activation(tmp, tmp, N, in_layer->activation);
+   compute_activation(tmp, tmp, FC_IN_SPK_CODE_TRANSFORM_OUT_SIZE, in_layer->activation);
    //printf("2-dim tanh %f %f\n", tmp[0], tmp[1]);
    printf("2-dim spk-coord: %f %f\n", tmp[0], tmp[1]);
 
    //transform to n-coeff
-   N = out_layer->nb_neurons;
-   for (i=0;i<N;i++) {
+   for (i=0;i< FC_OUT_SPK_CODE_TRANSFORM_OUT_SIZE;i++) {
       coeff[i] = out_layer->bias[i];
    //   printf("[%d] %f ", i, output[i]);
    }
    //printf("\n");
-   sgemv_accum16(coeff, out_layer->input_weights, N, out_layer->nb_inputs, N, tmp);
-   compute_activation(coeff, coeff, N, out_layer->activation);
+   sgemv_accum16(coeff, out_layer->input_weights, FC_OUT_SPK_CODE_TRANSFORM_OUT_SIZE, FC_IN_SPK_CODE_TRANSFORM_OUT_SIZE, FC_OUT_SPK_CODE_TRANSFORM_OUT_SIZE, tmp);
+   compute_activation(coeff, coeff, FC_OUT_SPK_CODE_TRANSFORM_OUT_SIZE, out_layer->activation);
 
-   printf("%d-dim spk-embed-coeff:", FEATURE_N_WEIGHT_EMBED_SPK);
    //multiply with coeff
    for (i=0,k=0;i<FEATURE_N_WEIGHT_EMBED_SPK;i++) {
-      printf(" %f", coeff[i]);
       for (j=0;j<FEATURE_DIM_EMBED_SPK;j++,k++)
          output[k] *= coeff[i];
    }
-   printf("\n");
 }
 
 //PLT_Dec20
@@ -639,12 +650,9 @@ void compute_spkidtr_coord(const DenseLayer *layer, float *output, float *coeff,
    sgemv_accum16(coeff, layer->input_weights, N, layer->nb_inputs, N, input);
    compute_activation(coeff, coeff, N, layer->activation);
 
-   printf("%d-dim spk-embed-coeff:", FEATURE_N_WEIGHT_EMBED_SPK);
-   //multiply with coeff
+    //multiply with coeff
    for (i=0,k=0;i<FEATURE_N_WEIGHT_EMBED_SPK;i++) {
-      printf(" %f", coeff[i]);
       for (j=0;j<FEATURE_DIM_EMBED_SPK;j++,k++)
          output[k] *= coeff[i];
    }
-   printf("\n");
 }

@@ -180,7 +180,6 @@ def main():
         excit_dim=config_cycvae.excit_dim,
         out_dim=config_cycvae.mel_dim,
         n_spk=(config_cycvae.emb_spk_dim//config_cycvae.n_weight_emb)*config_cycvae.n_weight_emb,
-        aux_dim=(config_cycvae.emb_spk_dim//config_cycvae.n_weight_emb)*config_cycvae.n_weight_emb,
         hidden_layers=config_cycvae.hidden_layers_dec,
         hidden_units=config_cycvae.hidden_units_dec,
         kernel_size=config_cycvae.kernel_size_dec,
@@ -207,7 +206,6 @@ def main():
         feat_dim=config_cycvae.lat_dim_e,
         cap_dim=config_cycvae.cap_dim,
         n_spk=(config_cycvae.emb_spk_dim//config_cycvae.n_weight_emb)*config_cycvae.n_weight_emb,
-        aux_dim=(config_cycvae.emb_spk_dim//config_cycvae.n_weight_emb)*config_cycvae.n_weight_emb,
         hidden_layers=config_cycvae.hidden_layers_lf0,
         hidden_units=config_cycvae.hidden_units_lf0,
         kernel_size=config_cycvae.kernel_size_lf0,
@@ -224,19 +222,6 @@ def main():
         conv_emb_flag=True,
         spkidtr_dim=config_cycvae.spkidtr_dim)
     print(model_spkidtr)
-    model_spk = GRU_SPK(
-        n_spk=(config_cycvae.emb_spk_dim//config_cycvae.n_weight_emb)*config_cycvae.n_weight_emb,
-        feat_dim=config_cycvae.lat_dim+config_cycvae.lat_dim_e,
-        hidden_units=32,
-        kernel_size=config_cycvae.kernel_size_spk,
-        dilation_size=config_cycvae.dilation_size_spk,
-        causal_conv=config_cycvae.causal_conv_spk,
-        pad_first=True,
-        right_size=config_cycvae.right_size_spk,
-        red_dim=config_cycvae.mel_dim,
-        n_weight_emb=config_cycvae.n_weight_emb,
-        weight_fact=1)
-    print(model_spk)
     model = GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(
         feat_dim=config_cycvae.mel_dim,
         upsampling_factor=config.upsampling_factor,
@@ -259,21 +244,18 @@ def main():
     model_encoder_excit.load_state_dict(torch.load(args.model_cycvae, map_location=device)["model_encoder_excit"])
     model_decoder_excit.load_state_dict(torch.load(args.model_cycvae, map_location=device)["model_decoder_excit"])
     model_spkidtr.load_state_dict(torch.load(args.model_cycvae, map_location=device)["model_spkidtr"])
-    model_spk.load_state_dict(torch.load(args.model_cycvae, map_location=device)["model_spk"])
     model.load_state_dict(torch.load(args.model, map_location=device)["model_waveform"])
     model_encoder_melsp.remove_weight_norm()
     model_decoder_melsp.remove_weight_norm()
     model_encoder_excit.remove_weight_norm()
     model_decoder_excit.remove_weight_norm()
     model_spkidtr.remove_weight_norm()
-    model_spk.remove_weight_norm()
     model.remove_weight_norm()
     model_encoder_melsp.eval()
     model_decoder_melsp.eval()
     model_encoder_excit.eval()
     model_decoder_excit.eval()
     model_spkidtr.eval()
-    model_spk.eval()
     model.eval()
     for param in model_encoder_melsp.parameters():
         param.requires_grad = False
@@ -284,8 +266,6 @@ def main():
     for param in model_decoder_excit.parameters():
         param.requires_grad = False
     for param in model_spkidtr.parameters():
-        param.requires_grad = False
-    for param in model_spk.parameters():
         param.requires_grad = False
     for name, param in model.named_parameters():
         param.requires_grad = False
@@ -647,7 +627,7 @@ def main():
     bias = model.out.out.bias.data.numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
-    f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_TANHSHRINK\n}};\n\n'
+    f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_LINEAR\n}};\n\n'
             .format(name, name, name, weights.shape[0], weights.shape[1]))
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
     hf.write('extern const DenseLayer {};\n\n'.format(name))
@@ -770,7 +750,7 @@ def main():
     bias = model.out_f.out.bias.data.numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
-    f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_TANHSHRINK\n}};\n\n'
+    f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_LINEAR\n}};\n\n'
             .format(name, name, name, weights.shape[0], weights.shape[1]))
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
     hf.write('extern const DenseLayer {};\n\n'.format(name))
@@ -885,19 +865,6 @@ def main():
             .format(name, name, name, mean.shape[0]))
     hf.write('extern const NormStats {};\n\n'.format(name))
 
-    ## Dump in_red spk
-    name = 'fc_red_spk'
-    print("printing layer " + name)
-    #defined as sequential with relu activation
-    weights = model_spk.in_red[0].weight.permute(2,1,0)[0].data.numpy() #it's defined as conv1d with ks=1 on the model
-    bias = model_spk.in_red[0].bias.data.numpy()
-    printVector(f, weights, name + '_weights')
-    printVector(f, bias, name + '_bias')
-    f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_RELU\n}};\n\n'
-            .format(name, name, name, weights.shape[0], weights.shape[1]))
-    hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
-    hf.write('extern const DenseLayer {};\n\n'.format(name))
-
     ## Dump in_red dec_excit
     name = 'fc_red_dec_excit'
     print("printing layer " + name)
@@ -973,27 +940,6 @@ def main():
 
     ## Same conv out size for melsp and excit encoders
     assert(enc_melsp_state_size == enc_excit_state_size)
-
-    ## Dump conv_in spk
-    name = "feature_conv_spk"
-    #FIXME: make model format without sequential for two-sided/causal conv
-    if model_spk.right_size <= 0:
-        print("printing layer " + name + " of type " + model_spk.conv.conv[0].__class__.__name__)
-        weights = model_spk.conv.conv[0].weight.permute(2,1,0).data.numpy()
-        bias = model_spk.conv.conv[0].bias.data.numpy()
-    else:
-        print("printing layer " + name + " of type " + model_spk.conv.conv.__class__.__name__)
-        weights = model_spk.conv.conv.weight.permute(2,1,0).data.numpy()
-        bias = model_spk.conv.conv.bias.data.numpy()
-    printVector(f, weights, name + '_weights')
-    printVector(f, bias, name + '_bias')
-    f.write('const Conv1DLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, {}, ACTIVATION_LINEAR\n}};\n\n'
-            .format(name, name, name, weights.shape[1], weights.shape[0], weights.shape[2]))
-    hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[2]))
-    hf.write('#define {}_STATE_SIZE ({}*{})\n'.format(name.upper(), weights.shape[1],
-        model_spk.pad_left+1+model_spk.pad_right-1))
-    hf.write('#define {}_DELAY {}\n'.format(name.upper(), model_spk.pad_right))
-    hf.write('extern const Conv1DLayer {};\n\n'.format(name))
 
     ## Dump conv_in dec_excit
     name = "feature_conv_dec_excit"
@@ -1085,29 +1031,6 @@ def main():
     hf.write('#define {}_STATE_SIZE {}\n'.format(name.upper(), weights_hh.shape[1]//3))
     hf.write('extern const SparseFrameGRULayer {};\n\n'.format(name))
 
-    #dump dense_gru_spk
-    name = "gru_spk"
-    print("printing layer " + name + " of type " + model_spk.gru.__class__.__name__)
-    weights_ih = model_spk.gru.weight_ih_l0.transpose(0,1).data.numpy()
-    weights_hh = model_spk.gru.weight_hh_l0.transpose(0,1).data.numpy()
-    bias_ih = model_spk.gru.bias_ih_l0
-    bias_hh = model_spk.gru.bias_hh_l0
-    printVector(f, weights_ih, name + '_input_weights')
-    printVector(f, weights_hh, name + '_recurrent_weights')
-    printVector(f, bias_ih, name + '_input_bias')
-    printVector(f, bias_hh, name + '_recurrent_bias')
-    #activation = 'TANH'
-    activation = 'TANH_EXP'
-    reset_after = 1
-    neurons = weights_hh.shape[1]//3
-    max_rnn_neurons = max(max_rnn_neurons, neurons)
-    f.write('const FrameGRULayer {} = {{\n   {}_input_bias,\n   {}_recurrent_bias,\n   {}_input_weights,\n   {}_recurrent_weights,\n   {}, {}, ACTIVATION_{}, '\
-        '{}\n}};\n\n'.format(name, name, name, name, name, weights_ih.shape[0], weights_hh.shape[1]//3,
-            activation, reset_after))
-    hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights_hh.shape[1]//3))
-    hf.write('#define {}_STATE_SIZE {}\n'.format(name.upper(), weights_hh.shape[1]//3))
-    hf.write('extern const FrameGRULayer {};\n\n'.format(name))
-
     #dump dense_gru_dec_excit
     name = "gru_dec_excit"
     print("printing layer " + name + " of type " + model_decoder_excit.gru.__class__.__name__)
@@ -1185,41 +1108,16 @@ def main():
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
     hf.write('extern const DenseLayer {};\n\n'.format(name))
 
-    #dump fc_out_spk
-    name = 'fc_out_spk'
-    print("printing layer " + name)
-    weights = model_spk.out.weight.permute(2,1,0)[0].data.numpy() #it's defined as conv1d with ks=1 on the model
-    bias = model_spk.out.bias.data.numpy()
-    printVector(f, weights, name + '_weights')
-    printVector(f, bias, name + '_bias')
-    #f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_TANHSHRINK\n}};\n\n'
-    f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_TANH_EXP\n}};\n\n'
-            .format(name, name, name, weights.shape[0], weights.shape[1]))
-    hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
-    hf.write('extern const DenseLayer {};\n\n'.format(name))
+    #embed_spk
+    embed_spk = model_spkidtr.embed_spk.weight.data.numpy()
 
-    #embed_spk_tv
-    embed_spk_tv = model_spk.embed_spk.weight.data.numpy()
-
-    #dump embed_spk_tv
-    name = 'embed_spk_tv'
+    #dump embed_spk
+    name = 'embed_spk'
     print("printing layer " + name)
-    printVector(f, embed_spk_tv, name + '_weights')
+    printVector(f, embed_spk, name + '_weights')
     f.write('const EmbeddingLayer {} = {{\n   {}_weights,\n   {}, {}\n}};\n\n'
-            .format(name, name, embed_spk_tv.shape[0], embed_spk_tv.shape[1]))
-    hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), embed_spk_tv.shape[1]))
-    hf.write('extern const EmbeddingLayer {};\n\n'.format(name))
-
-    #embed_spk_ti
-    embed_spk_ti = model_spkidtr.embed_spk.weight.data.numpy()
-
-    #dump embed_spk_ti
-    name = 'embed_spk_ti'
-    print("printing layer " + name)
-    printVector(f, embed_spk_ti, name + '_weights')
-    f.write('const EmbeddingLayer {} = {{\n   {}_weights,\n   {}, {}\n}};\n\n'
-            .format(name, name, embed_spk_ti.shape[0], embed_spk_ti.shape[1]))
-    hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), embed_spk_ti.shape[1]))
+            .format(name, name, embed_spk.shape[0], embed_spk.shape[1]))
+    hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), embed_spk.shape[1]))
     hf.write('extern const EmbeddingLayer {};\n\n'.format(name))
 
     #dump fc_out_dec_excit
@@ -1284,7 +1182,6 @@ def main():
 
     hf.write('#define RNN_ENC_MELSP_NEURONS {}\n\n'.format(model_encoder_melsp.hidden_units))
     hf.write('#define RNN_ENC_EXCIT_NEURONS {}\n\n'.format(model_encoder_excit.hidden_units))
-    hf.write('#define RNN_SPK_NEURONS {}\n\n'.format(model_spk.hidden_units))
     hf.write('#define RNN_DEC_MELSP_NEURONS {}\n\n'.format(model_decoder_melsp.hidden_units))
     hf.write('#define RNN_DEC_EXCIT_NEURONS {}\n\n'.format(model_decoder_excit.hidden_units))
     hf.write('#define FEATURE_DIM_MELSP {}\n\n'.format(model_decoder_melsp.spec_dim))
@@ -1296,21 +1193,18 @@ def main():
     hf.write('#define FEATURE_DIM_EMBED_SPK {}\n\n'.format(model_spkidtr.dim_weight_emb))
     hf.write('#define FEATURE_RED_DIM {}\n\n'.format(model_decoder_melsp.red_dim))
     hf.write('#define FEATURE_CONV_ENC_STATE_SIZE {}\n\n'.format(enc_melsp_state_size))
-    hf.write('#define FEATURE_CONV_VC_DELAY {}\n\n'.format(model_encoder_melsp.pad_right+model_spk.pad_right+model_decoder_excit.pad_right+model_decoder_melsp.pad_right))
+    hf.write('#define FEATURE_CONV_VC_DELAY {}\n\n'.format(model_encoder_melsp.pad_right+model_decoder_excit.pad_right+model_decoder_melsp.pad_right))
     hf.write('#define ENC_CONV_KERNEL_1 {}\n\n'.format(model_encoder_melsp.kernel_size-1))
-    hf.write('#define SPK_CONV_KERNEL_1 {}\n\n'.format(model_spk.kernel_size-1))
     hf.write('#define DEC_EXCIT_CONV_KERNEL_1 {}\n\n'.format(model_decoder_excit.kernel_size-1))
     hf.write('#define DEC_MELSP_CONV_KERNEL_1 {}\n\n'.format(model_decoder_melsp.kernel_size-1))
 
     hf.write('typedef struct {\n')
     hf.write('  float feature_conv_enc_melsp_state[FEATURE_CONV_ENC_MELSP_STATE_SIZE];\n')
     hf.write('  float feature_conv_enc_excit_state[FEATURE_CONV_ENC_EXCIT_STATE_SIZE];\n')
-    hf.write('  float feature_conv_spk_state[FEATURE_CONV_SPK_STATE_SIZE];\n')
     hf.write('  float feature_conv_dec_excit_state[FEATURE_CONV_DEC_EXCIT_STATE_SIZE];\n')
     hf.write('  float feature_conv_dec_melsp_state[FEATURE_CONV_DEC_MELSP_STATE_SIZE];\n')
     hf.write('  float gru_enc_melsp_state[SPARSE_GRU_ENC_MELSP_STATE_SIZE];\n')
     hf.write('  float gru_enc_excit_state[SPARSE_GRU_ENC_EXCIT_STATE_SIZE];\n')
-    hf.write('  float gru_spk_state[GRU_SPK_STATE_SIZE];\n')
     hf.write('  float gru_dec_excit_state[GRU_DEC_EXCIT_STATE_SIZE];\n')
     hf.write('  float gru_dec_melsp_state[SPARSE_GRU_DEC_MELSP_STATE_SIZE];\n')
     hf.write('} CycleVAEMelspExcitSpkNNetState;\n')
