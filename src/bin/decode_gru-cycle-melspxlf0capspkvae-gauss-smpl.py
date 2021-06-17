@@ -583,7 +583,7 @@ def main():
                     cvlf0_cyc = np.array(cvlf0_cyc[0].cpu().data.numpy(), dtype=np.float64)
 
                     if trg_exist:
-                        if outpad_rights[1] > 0:
+                        if outpad_rights[0] > 0:
                             lat_src = torch.cat((lat_src_e, lat_src), 2)[:,outpad_lefts[0]:-outpad_rights[0]]
                         else:
                             lat_src = torch.cat((lat_src_e, lat_src), 2)[:,outpad_lefts[0]:]
@@ -748,8 +748,8 @@ def main():
                     _, twf_melsp, _, _ = dtw.dtw_org_to_trg(np.array(melsp_cv_rest[spcidx], \
                                                 dtype=np.float64), np.array(melsp_trg_rest[spcidx_trg], dtype=np.float64), mcd=-1)
                     twf_melsp = np.array(twf_melsp[:,0])
-                    lsd_arr = np.sqrt(np.mean((20*(np.log10(np.clip(melsp_cv_rest[twf_melsp], a_min=1e-16, a_max=None))\
-                                                             -np.log10(np.clip(melsp_rest[twf_melsp], a_min=1e-16, a_max=None))))**2, axis=-1))
+                    lsd_arr = np.sqrt(np.mean((20*(np.log10(np.clip(melsp_cv_rest[spcidx][twf_melsp], a_min=1e-16, a_max=None))\
+                                                             -np.log10(np.clip(melsp_trg_rest[spcidx_trg], a_min=1e-16, a_max=None))))**2, axis=-1))
                     lsd_mean = np.mean(lsd_arr)
                     lsd_std = np.std(lsd_arr)
                     logging.info("lsd_trg: %.6f dB +- %.6f" % (lsd_mean, lsd_std))

@@ -27,17 +27,17 @@ $ cd ..
 ```
 
 
-## Latest version and current status
-- 3.1:
-    - Revised handling of speaker-code with factorized and controllable trainable basis vectors
-    - Revised MWDLP architecture with trainable basis vectors of previous logits and an additional FC layer for data-driven LP
-    - Revised C implementation for faster FC layer computation in MWDLP
-- On going to update samples and demo
+## Latest version
+- 3.1
+    - Slight fix on MWDLP max. step from prev. commit [1ef01de](https://github.com/patrickltobing/cyclevae-vc-neuralvoco/commit/1ef01de18f5810022aa90bbd3ec8d6b0096ade08).
+    - Slight fix on MWDLP dev. acc. check criterion.
+    - Update samples and demo
 
 
-## Samples and real-time compilable demo with CPU [from version 3.0]
-* [Samples](https://drive.google.com/drive/folders/14pJSpYsoPpLR6Ah-EbENSsN6ABcSvB0w?usp=sharing)
-* [Real-time compilable demo with CPU](https://drive.google.com/file/d/1j7ddvltaWwie0wEp79W6VL2EV-SSAW-g/view?usp=sharing)
+## Samples and real-time compilable demo with CPU [Updated with version 3.1]
+* [Samples (dev. set)](https://drive.google.com/drive/folders/1uRZNczzD_jVmwVQghITVT0y9EQX7nmFn?usp=sharing)
+* [Samples (test. set)](https://drive.google.com/drive/folders/1T6MYe-Kg37_2aDtyUWU7eB7px4-y3lVW?usp=sharing)
+* [Real-time compilable demo with CPU](https://drive.google.com/file/d/1wt-QL5x4PUGNM8QL7YpL9NbWLdKrCMRj/view?usp=sharing)
 
 
 ## Steps to build the models:

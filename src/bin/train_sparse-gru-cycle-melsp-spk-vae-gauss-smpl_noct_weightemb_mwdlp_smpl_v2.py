@@ -36,7 +36,7 @@ from utils import find_files
 from utils import read_hdf5
 from utils import read_txt
 from vcneuvoco import GRU_VAE_ENCODER, GRU_SPEC_DECODER, GRU_LAT_FEAT_CLASSIFIER
-from vcneuvoco import SPKID_TRANSFORM_LAYER, GRU_SPK
+from vcneuvoco import SPKID_TRANSFORM_LAYER
 from vcneuvoco import GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF, encode_mu_law
 from vcneuvoco import kl_laplace_laplace, kl_categorical_categorical_logits, GaussLoss
 from vcneuvoco import decode_mu_law_torch, MultiResolutionSTFTLoss
