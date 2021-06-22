@@ -91,8 +91,8 @@ spkidtr_dim: 2
 ## to freely interpolate between 2-dim cont. spk-space
 
 ## dimension of each of data-driven time-invariant and time-variant speaker-embeddings
-#emb_spk_dim: 512
-emb_spk_dim: 1024
+#emb_spk_dim: 256
+emb_spk_dim: 512
 n_weight_emb: 4
 
 ## learning rate
@@ -105,7 +105,7 @@ do_prob: 0.5
 #step_count: 20
 step_count: 1035000
 #step_count_wave: 20
-step_count_wave: 4340000
+step_count_wave: 4260000
 
 # number of workers (threads) for batch data handling
 n_workers: 1
@@ -131,7 +131,7 @@ n_stage_cycvae: 4
 #t_start: 1
 t_start: 20000
 #t_end: 20
-t_end: 1270000
+t_end: 1070000
 #interval: 1
 interval: 20
 densities: 0.09-0.09-0.12

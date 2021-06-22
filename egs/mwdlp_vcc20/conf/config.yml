@@ -55,7 +55,7 @@ do_prob: 0.5
 
 ## maximum step count
 #step_count_wave: 20
-step_count_wave: 4340000
+step_count_wave: 4260000
 
 # number of workers (threads) for batch data handling
 n_workers: 1
@@ -67,7 +67,7 @@ mdl_name_wave: wavernn_dualgru_compact_lpc_mband_10bit_cf_stft_emb
 #t_start: 1
 t_start: 20000
 #t_end: 20
-t_end: 1270000
+t_end: 1070000
 #interval: 1
 interval: 20
 densities: 0.09-0.09-0.12

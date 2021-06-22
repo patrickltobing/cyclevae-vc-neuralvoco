@@ -599,7 +599,7 @@ def main():
     args.half_n_quantize = args.n_quantize // 2
     args.c_pad = args.half_n_quantize // args.cf_dim
     args.f_pad = args.half_n_quantize % args.cf_dim
-    args.t_end = 1270000
+    args.t_end = 1070000
     logging.info(f'{args.t_start} {args.t_end} {args.interval} {args.step_count}')
     args.n_half_cyc = 2
     args.t_start = args.t_start // args.n_half_cyc
@@ -611,7 +611,7 @@ def main():
     args.t_start = max(math.ceil(args.t_start * args.factor),1)
     args.t_end = max(math.ceil(args.t_end * args.factor),1)
     args.interval = max(math.ceil(args.interval * args.factor),1)
-    args.step_count = max(math.ceil(args.t_end * 3.43),1)
+    args.step_count = max(math.ceil(args.t_end * 3.8),1)
     logging.info(f'{args.t_start} {args.t_end} {args.interval} {args.step_count}')
     torch.save(args, args.expdir + "/model.conf")
 
@@ -862,7 +862,7 @@ def main():
     for param in model_encoder_excit.scale_in.parameters():
         param.requires_grad = False
     for param in model_spkidtr.parameters():
-        param.requires_grad = True
+        param.requires_grad = False
     for param in model_waveform.parameters():
         param.requires_grad = False
 
@@ -874,13 +874,6 @@ def main():
 
     module_list += list(model_encoder_excit.conv.parameters())
     module_list += list(model_encoder_excit.gru.parameters()) + list(model_encoder_excit.out.parameters())
-
-    if (args.spkidtr_dim > 0):
-        module_list += list(model_spkidtr.conv_emb.parameters()) + list(model_spkidtr.conv.parameters()) \
-                        + list(model_spkidtr.deconv.parameters()) + list(model_spkidtr.embed_spk.parameters())
-    else:
-        module_list += list(model_spkidtr.conv_emb.parameters()) + list(model_spkidtr.conv.parameters()) \
-                        + list(model_spkidtr.embed_spk.parameters())
 
     module_list += list(model_classifier.conv_lat.parameters()) + list(model_classifier.conv_feat.parameters())
     module_list += list(model_classifier.conv_feat_aux.parameters())
@@ -1708,8 +1701,6 @@ def main():
             for param in model_decoder_melsp.parameters():
                 param.requires_grad = False
             for param in model_encoder_excit.parameters():
-                param.requires_grad = False
-            for param in model_spkidtr.parameters():
                 param.requires_grad = False
             for param in model_classifier.parameters():
                 param.requires_grad = False
@@ -3300,8 +3291,6 @@ def main():
                 param.requires_grad = True
             for param in model_encoder_excit.scale_in.parameters():
                 param.requires_grad = False
-            for param in model_spkidtr.parameters():
-                param.requires_grad = True
             for param in model_classifier.parameters():
                 param.requires_grad = True
             # start next epoch
@@ -4123,14 +4112,6 @@ def main():
                                 flag = True
                                 explode_model = "dec_melsp"
                                 break
-                if not flag:
-                    for name, param in model_spkidtr.named_parameters():
-                        if param.requires_grad:
-                            grad_norm = param.grad.norm()
-                            if torch.isnan(grad_norm) or torch.isinf(grad_norm):
-                                flag = True
-                                explode_model = "spkidtr"
-                                break
                 if flag:
                     logging.info("explode grad %s" % (explode_model))
                     optimizer.zero_grad()
@@ -4140,7 +4121,6 @@ def main():
                 torch.nn.utils.clip_grad_norm_(model_encoder_melsp.parameters(), 10)
                 torch.nn.utils.clip_grad_norm_(model_encoder_excit.parameters(), 10)
                 torch.nn.utils.clip_grad_norm_(model_decoder_melsp.parameters(), 10)
-                torch.nn.utils.clip_grad_norm_(model_spkidtr.parameters(), 10)
                 optimizer.step()
 
                 with torch.no_grad():
@@ -4470,8 +4450,6 @@ def main():
                 loss_melsp_cv[i//2].append(batch_loss_melsp_cv[i//2].item())
                 loss_magsp_cv[i//2].append(batch_loss_magsp_cv[i//2].item())
 
-        logging.info(model_spkidtr.embed_spk.weight[:4][:,:4])
-
         optimizer.zero_grad()
         batch_loss.backward()
         flag = False
@@ -4498,14 +4476,6 @@ def main():
                     if torch.isnan(grad_norm) or torch.isinf(grad_norm):
                         flag = True
                         explode_model = "dec_melsp"
-                        break
-        if not flag:
-            for name, param in model_spkidtr.named_parameters():
-                if param.requires_grad:
-                    grad_norm = param.grad.norm()
-                    if torch.isnan(grad_norm) or torch.isinf(grad_norm):
-                        flag = True
-                        explode_model = "spkidtr"
                         break
         if flag:
             logging.info("explode grad %s" % (explode_model))
@@ -4545,10 +4515,7 @@ def main():
         torch.nn.utils.clip_grad_norm_(model_encoder_melsp.parameters(), 10)
         torch.nn.utils.clip_grad_norm_(model_encoder_excit.parameters(), 10)
         torch.nn.utils.clip_grad_norm_(model_decoder_melsp.parameters(), 10)
-        torch.nn.utils.clip_grad_norm_(model_spkidtr.parameters(), 10)
         optimizer.step()
-
-        logging.info(model_spkidtr.embed_spk.weight[:4][:,:4])
 
         with torch.no_grad():
             if idx_stage < args.n_stage-1 and iter_idx + 1 == t_starts[idx_stage+1]:

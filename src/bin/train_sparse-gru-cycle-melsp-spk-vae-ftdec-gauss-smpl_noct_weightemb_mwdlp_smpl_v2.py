@@ -589,7 +589,7 @@ def main():
     args.half_n_quantize = args.n_quantize // 2
     args.c_pad = args.half_n_quantize // args.cf_dim
     args.f_pad = args.half_n_quantize % args.cf_dim
-    args.t_end = 1270000
+    args.t_end = 1070000
     logging.info(f'{args.t_start} {args.t_end} {args.interval} {args.step_count}')
     args.n_half_cyc = 2
     args.t_start = args.t_start // args.n_half_cyc
@@ -601,7 +601,7 @@ def main():
     args.t_start = max(math.ceil(args.t_start * args.factor),1)
     args.t_end = max(math.ceil(args.t_end * args.factor),1)
     args.interval = max(math.ceil(args.interval * args.factor),1)
-    args.step_count = max(math.ceil(args.t_end * 3.43),1)
+    args.step_count = max(math.ceil(args.t_end * 3.8),1)
     logging.info(f'{args.t_start} {args.t_end} {args.interval} {args.step_count}')
     torch.save(args, args.expdir + "/model.conf")
 
@@ -3892,8 +3892,6 @@ def main():
                 loss_gauss_cv[i//2].append(batch_loss_gauss_cv[i//2].item())
                 loss_melsp_cv[i//2].append(batch_loss_melsp_cv[i//2].item())
                 loss_magsp_cv[i//2].append(batch_loss_magsp_cv[i//2].item())
-
-        logging.info(model_spkidtr.embed_spk.weight[:4][:,:4])
 
         optimizer.zero_grad()
         batch_loss.backward()
