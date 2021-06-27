@@ -55,7 +55,7 @@ do_prob: 0.5
 
 ## maximum step count
 #step_count_wave: 20
-step_count_wave: 4260000
+step_count_wave: 4350000
 
 # number of workers (threads) for batch data handling
 n_workers: 1
