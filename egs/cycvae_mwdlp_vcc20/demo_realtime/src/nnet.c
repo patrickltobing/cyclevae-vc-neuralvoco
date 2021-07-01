@@ -207,7 +207,7 @@ void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *f
 
     //refine logits with data-driven linear prediction procedure
     //for (n=0,k=0;n<N_MBANDS;n++) {
-    for (n=0;n<N_MBANDS;n++) {
+    for (n=0,k=0;n<N_MBANDS;n++) {
         //compute_activation(&fc_out[k], &fc_out[k], DLPC_ORDER, layer->activation_signs); //signs
         //k += DLPC_ORDER;
         //compute_activation(&fc_out[k], &fc_out[k], DLPC_ORDER, layer->activation_mags); //mags
@@ -216,9 +216,9 @@ void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *f
         //RNN_COPY(&output[n*SQRT_QUANTIZE], &fc_out[k], SQRT_QUANTIZE);
         //k += SQRT_QUANTIZE;
         //for (i=0,j=n*SQRT_QUANTIZE,m=n*MDENSE_OUT_FC,l=m+DLPC_ORDER;i<DLPC_ORDER;i++) {
-        for (i=0,j=n*SQRT_QUANTIZE;i<DLPC_ORDER;i++) {
+        for (i=0,j=n*SQRT_QUANTIZE;i<DLPC_ORDER;i++,k++) {
             last_idx = last_output[i*N_MBANDS+n];
-            output[j+last_idx] += signs[i]*mags[i]*prev_logits[last_idx];
+            output[j+last_idx] += signs[k]*mags[k]*prev_logits[last_idx];
             //output[j+last_idx] += fc_out[m+i]*fc_out[l+i]*prev_logits[last_idx];
         }
     }
