@@ -149,7 +149,8 @@ void compute_dense_linear(const DenseLayer *layer, float *output, const float *i
 
 //PLT_Mar21
 void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *fc_layer,
-    const float *prev_logits, float *output, const float *input, const int *last_output, float* ddlpc)
+    const float *prev_logits, float *output, const float *input, const int *last_output)
+    //const float *prev_logits, float *output, const float *input, const int *last_output, float* ddlpc)
 {
     //int i, j, k, l, m, n, last_idx;
     int i, j, k, n, last_idx;
@@ -211,9 +212,9 @@ void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *f
         //for (i=0,j=n*SQRT_QUANTIZE,m=n*MDENSE_OUT_FC,l=m+DLPC_ORDER;i<DLPC_ORDER;i++) {
         for (i=0,j=n*SQRT_QUANTIZE;i<DLPC_ORDER;i++,k++) {
             last_idx = last_output[i*N_MBANDS+n];
-            ddlpc[k] = signs[k]*mags[k];
-            output[j+last_idx] += ddlpc[k]*prev_logits[last_idx];
-            //output[j+last_idx] += fc_out[m+i]*fc_out[l+i]*prev_logits[last_idx];
+            output[j+last_idx] += signs[k]*mags[k]*prev_logits[last_idx];
+            //ddlpc[k] = signs[k]*mags[k];
+            //output[j+last_idx] += ddlpc[k]*prev_logits[last_idx];
         }
     }
 }

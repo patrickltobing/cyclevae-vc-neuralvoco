@@ -125,7 +125,8 @@ void compute_dense_linear(const DenseLayer *layer, float *output, const float *i
 
 //PLT_Mar21
 void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *fc_layer, const float *prev_logits,
-    float *output, const float *input, const int *last_output, float* ddlpc);
+    float *output, const float *input, const int *last_output);
+    //float *output, const float *input, const int *last_output, float* ddlpc);
 
 //PLT_Mar21
 void compute_mdense_mwdlp10_nodlpc(const MDenseLayerMWDLP10 *layer, const DenseLayer *fc_layer, float *output,

@@ -907,8 +907,8 @@ def main():
     n_data = len(feat_list)
     if n_data >= 225:
         batch_size_utt = round(n_data/150)
-        if batch_size_utt > 120:
-            batch_size_utt = 120
+        if batch_size_utt > 90:
+            batch_size_utt = 90
     else:
         batch_size_utt = 1
     logging.info("number of training_data -- batch_size = %d -- %d " % (n_data, batch_size_utt))
