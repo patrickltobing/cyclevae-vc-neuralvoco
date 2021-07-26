@@ -1128,8 +1128,9 @@ if [ `echo ${stage} | grep 5` ];then
     # decode
     if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf_stft_emb" ]; then
         echo ""
-        echo "now synthesizing ${spk_src}, log here:  ${expdir_wave}/log/decode_dev_${min_idx_wave}_${spk_src}.log"
+        #echo "now synthesizing ${spk_src}, log here:  ${expdir_wave}/log/decode_tst_${min_idx_wave}_${spk_src}.log"
         #${cuda_cmd} ${expdir_wave}/log/decode_tst_${min_idx_wave}_${spk_src}.log \
+        echo "now synthesizing ${spk_src}, log here:  ${expdir_wave}/log/decode_dev_${min_idx_wave}_${spk_src}.log"
         ${cuda_cmd} ${expdir_wave}/log/decode_dev_${min_idx_wave}_${spk_src}.log \
             decode_wavernn_dualgru_compact_lpc_mband_cf.py \
                 --feats ${feats_scp} \

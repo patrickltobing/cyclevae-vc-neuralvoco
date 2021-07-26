@@ -30,6 +30,8 @@
 #ifndef _NNET_H_
 #define _NNET_H_
 
+#include "arch.h"
+
 #define ACTIVATION_LINEAR  0
 #define ACTIVATION_SIGMOID 1
 #define ACTIVATION_TANH    2
@@ -126,6 +128,16 @@ typedef struct {
   int dim;
 } EmbeddingLayer;
 
+//PLT_Jul21
+typedef struct {
+#ifdef WINDOWS_SYS
+    BCRYPT_ALG_HANDLE rng_prov;
+#else
+    unsigned short int xsubi[3];
+    struct drand48_data drand_buffer[1];
+#endif
+} RNGState;
+
 //PLT_Sep20
 void sgemv_accum16_(float *out, const float *weights, int rows, int cols, int col_stride, const float *x);
 void sgemv_accum(float *out, const float *weights, int rows, int cols, int col_stride, const float *x);
@@ -150,14 +162,15 @@ void compute_gru3(const GRULayer *gru, float *state, const float *input);
 void compute_sparse_gru(const SparseGRULayer *gru, float *state, const float *input);
 
 //PLT_Jun21
-void compute_conv1d_linear_enc_excit(const Conv1DLayer *layer, float *output, float *mem, const float *input);
 void compute_conv1d_linear_enc_melsp(const Conv1DLayer *layer, float *output, float *mem, const float *input);
+void compute_conv1d_linear_enc_excit(const Conv1DLayer *layer, float *output, float *mem, const float *input);
+void compute_conv1d_linear_spk(const Conv1DLayer *layer, float *output, float *mem, const float *input);
 void compute_conv1d_linear_dec_excit(const Conv1DLayer *layer, float *output, float *mem, const float *input);
 void compute_conv1d_linear_dec_melsp(const Conv1DLayer *layer, float *output, float *mem, const float *input);
 void compute_conv1d_linear_frame_in(const Conv1DLayer *layer, float *output, float *mem, const float *input);
 
-//PLT_Sep20
-int sample_from_pdf_mwdlp(const float *pdf, int N);
+//PLT_Jul21
+int sample_from_pdf_mwdlp(const float *pdf, int N, RNGState *rng_state);
 
 //PLT_Dec20
 void compute_normalize(const NormStats *norm_stats, float *input_output);
@@ -166,10 +179,14 @@ void compute_denormalize(const NormStats *norm_stats, float *input_output);
 //PLT_Jan21
 void compute_sparse_gru_enc_melsp(const SparseFrameGRULayer *gru, float *state, const float *input);
 void compute_sparse_gru_enc_excit(const SparseFrameGRULayer *gru, float *state, const float *input);
+
+void compute_gru_spk(const FrameGRULayer *gru, float *state, const float *input);
+
 void compute_gru_dec_excit(const FrameGRULayer *gru, float *state, const float *input);
 void compute_sparse_gru_dec_melsp(const SparseFrameGRULayer *gru, float *state, const float *input);
 
-void compute_sampling_gauss(float *loc, const float *scale, int dim);
+//PLT_Jul21
+void compute_sampling_gauss(float *loc, const float *scale, int dim, RNGState *rng_state);
 
 void compute_spkidtr(const DenseLayer *in_emb_layer, const DenseLayer *in_layer, const DenseLayer *out_layer,
         float *output, float *coeff, const float *input);

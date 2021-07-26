@@ -29,22 +29,15 @@ $ cd ..
 
 ## Latest version
 - 3.1
-    - Slight fix on MWDLP max. step from prev. commit [1ef01de](https://github.com/patrickltobing/cyclevae-vc-neuralvoco/commit/1ef01de18f5810022aa90bbd3ec8d6b0096ade08).
-    - Slight fix on MWDLP dev. acc. check criterion.
-    - Update samples and demo
-
-
-## Samples and real-time compilable demo with CPU [Updated with version 3.1]
-* [Samples (dev. set)](https://drive.google.com/drive/folders/1uRZNczzD_jVmwVQghITVT0y9EQX7nmFn?usp=sharing)
-* [Samples (test. set)](https://drive.google.com/drive/folders/1T6MYe-Kg37_2aDtyUWU7eB7px4-y3lVW?usp=sharing)
-* [Real-time compilable demo with CPU](https://drive.google.com/file/d/1wt-QL5x4PUGNM8QL7YpL9NbWLdKrCMRj/view?usp=sharing)
+    - Finalize VC and MWDLP Python implementations (impl.)
+    - Bug fixes on C impl. to match the output of Python impl.
 
 
 ## Steps to build the models:
 1. Data preparation and preprocessing
 2. VC and neural vocoder models training [~ 2.5 and 4 days each, respectively]
 3. VC fine-tuning with fixed neural vocoder [~ 2.5 days]
-4. VC decoder fine-tuning with fixed encoder and neural vocoder [~ 1.5 days]
+4. VC decoder fine-tuning with fixed encoder and neural vocoder [~ 2.5 days]
 
 
 ## Steps for real-time low-latency decoding with CPU:

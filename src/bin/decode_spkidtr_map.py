@@ -128,17 +128,11 @@ def main():
         male = ['bdl', 'p237', 'p245', 'p251', 'p252', 'p259', 'p274', 'p304', 'p311', 'p326', 'p345', 'p360', 'p363', \
                 'p226', 'p227', 'p232', 'p237', 'p241', 'p243', 'p245', 'p246', 'p247', 'p251', 'p252', 'p254', 'p255', 'p256', 'p258', 'p259', 'p260', 'p263', 'p270', 'p271', 'p272', 'p273', 'p274', 'p275', 'p278', 'p279', 'p281', 'p284', 'p285', 'p286', 'p287', 'p292', 'p298', 'p302', 'p304', 'p311', 'p315', 'p316', 'p326', \
                     'SEM1', 'SEM2', 'TFM1', 'TGM1', 'TMM1', 'TEM1', 'TEM2', \
-                        'VCC2SM1', 'VCC2SM2', 'VCC2SM3', 'VCC2TM1', 'VCC2TM2', 'VCC2SM4', \
-                            'okada', 'otake', 'uchino', 'morikawa', 'yamada', 'nuct'] #32
+                        'VCC2SM1', 'VCC2SM2', 'VCC2SM3', 'VCC2TM1', 'VCC2TM2', 'VCC2SM4']
         female = ['slt', 'p231', 'p238', 'p248', 'p253', 'p264', 'p265', 'p266', 'p276', 'p305', 'p308', 'p318', 'p335', \
                     'p225', 'p228', 'p229', 'p230', 'p231', 'p233', 'p234', 'p236', 'p238', 'p239', 'p240', 'p244', 'p248', 'p249', 'p250', 'p253', 'p257', 'p261', 'p262', 'p264', 'p265', 'p266', 'p267', 'p268', 'p269', 'p276', 'p277', 'p282', 'p283', 'p288', 'p293', 'p294', 'p295', 'p297', 'p299', 'p300', 'p301', 'p303', 'p305', \
                     'SEF1', 'SEF2', 'TEF1', 'TEF2', 'TFF1', 'TGF1', 'TMF1', \
-                        'VCC2SF1', 'VCC2SF2', 'VCC2SF3', 'VCC2TF1', 'VCC2TF2', 'VCC2SF4', \
-                            'taga', 'takada', 'mizokuchi', 'tts'] #30
-        #male = ['fake', 'morikawa', 'okada', 'otake', 'uchino', 'SEM1', 'SEM2', 'TFM1', 'TGM1', 'TMM1', 'p237', 'p245', 'p251', 'p252', 'p259', 'p274', 'p304', 'p311', 'p326', 'p345', 'p360', 'p363', 'yamada', 'TEM1', 'TEM2']
-        #female = ['SEF1', 'SEF2', 'naomi', 'mizokuchi', 'taga', 'takada', 'TEF1', 'TEF2', 'TFF1', 'TGF1', 'TMF1', 'p231', 'p238', 'p248', 'p253', 'p264', 'p265', 'p266', 'p276', 'p305', 'p308', 'p318', 'p335']
-        #male = ['VCC2SM1' , 'VCC2SM2' , 'VCC2SM3' , 'VCC2TM1' , 'VCC2TM2' , 'VCC2SM4']
-        #female = ['VCC2SF1' , 'VCC2SF2' , 'VCC2SF3' , 'VCC2TF1' , 'VCC2TF2' , 'VCC2SF4']
+                        'VCC2SF1', 'VCC2SF2', 'VCC2SF3', 'VCC2TF1', 'VCC2TF2', 'VCC2SF4']
         gender = []
         for i in range(n_spk):
             #gender.append(0)
@@ -179,27 +173,6 @@ def main():
         #ax.scatter(x, y, s=160, c=colormap[gender])
         for i, txt in enumerate(spk_list):
             #ax.annotate(txt, (x[i], y[i]))
-            #ax.annotate(txt, (x[i], y[i]), weight='bold', size=16)
-            if txt == 'okada':
-                txt = 'JpnM1'
-            elif txt == 'otake':
-                txt = 'JpnM2'
-            elif txt == 'uchino':
-                txt = 'JpnM3'
-            elif txt == 'morikawa':
-                txt = 'JpnM4'
-            elif txt == 'yamada':
-                txt = 'JpnM5'
-            elif txt == 'nuct':
-                txt = 'JpnM6'
-            elif txt == 'taga':
-                txt = 'JpnF1'
-            elif txt == 'takada':
-                txt = 'JpnF2'
-            elif txt == 'mizokuchi':
-                txt = 'JpnF3'
-            elif txt == 'tts':
-                txt = 'ttsLJSpeech'
             #ax.annotate(txt, (x[i], y[i]), weight='bold', size=16)
             ax.annotate(txt, (x[i], y[i]), size=14)
         #plt.xlim([-0.35, 0.05])

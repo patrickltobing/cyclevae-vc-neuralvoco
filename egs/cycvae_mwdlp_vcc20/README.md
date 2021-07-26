@@ -39,7 +39,7 @@ $ bash download_vcc20.sh
 4. `$ bash run.sh`
 
 
-## VC decoder fine-tuning with fixed encoder and neural vocoder [~ 1.5 days]
+## VC decoder fine-tuning with fixed encoder and neural vocoder [~ 2.5 days]
 1. Open **run.sh**
 2. Set `stage=6`
 3. Set a value of `GPU_device=` for GPU device selection

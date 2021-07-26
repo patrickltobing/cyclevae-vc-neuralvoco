@@ -2,6 +2,7 @@
 #define MWDLP10NET_PRIVATE_H
 
 #include "mwdlp10net.h"
+#include "nnet.h"
 #include "nnet_data.h"
 
 //PLT_Dec20
@@ -116,6 +117,7 @@ struct MWDLP10NetState {
     float first_pqmf_state[PQMF_ORDER_MBANDS+FIRST_N_OUTPUT_MBANDS];
     //last in_state pqmf_synth filt.,(ORD+1)*NB+(ORD//2-1)*NB=ORD*NB+DELAY*NB
     float last_pqmf_state[PQMF_ORDER_MBANDS+PQMF_DELAY_MBANDS];
+    RNGState rng_state;
 };
 
 

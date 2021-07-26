@@ -25,8 +25,8 @@
    NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
    SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-/* Modified by Patrick Lumban Tobing (Nagoya University) on Sept.-Dec. 2020 - Mar. 2021,
-   marked by PLT_<Sep20/Dec20/Mar21> */
+/* Modified by Patrick Lumban Tobing (Nagoya University) on Sept.-Dec. 2020 - Jul. 2021,
+   marked by PLT_<Sep20/Dec20/Mar21/Jul21> */
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -149,7 +149,7 @@ void compute_dense_linear(const DenseLayer *layer, float *output, const float *i
 
 //PLT_Mar21
 void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *fc_layer,
-    const float *prev_logits, float *output, const float *input, const int *last_output)
+    const float *prev_logits, float *output, const float *input, const int *last_output, float* ddlpc)
 {
     //int i, j, k, l, m, n, last_idx;
     int i, j, k, n, last_idx;
@@ -200,7 +200,7 @@ void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *f
 
     //refine logits with data-driven linear prediction procedure
     //for (n=0,k=0;n<N_MBANDS;n++) {
-    for (n=0;n<N_MBANDS;n++) {
+    for (n=0,k=0;n<N_MBANDS;n++) {
         //compute_activation(&fc_out[k], &fc_out[k], DLPC_ORDER, layer->activation_signs); //signs
         //k += DLPC_ORDER;
         //compute_activation(&fc_out[k], &fc_out[k], DLPC_ORDER, layer->activation_mags); //mags
@@ -209,9 +209,10 @@ void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *f
         //RNN_COPY(&output[n*SQRT_QUANTIZE], &fc_out[k], SQRT_QUANTIZE);
         //k += SQRT_QUANTIZE;
         //for (i=0,j=n*SQRT_QUANTIZE,m=n*MDENSE_OUT_FC,l=m+DLPC_ORDER;i<DLPC_ORDER;i++) {
-        for (i=0,j=n*SQRT_QUANTIZE;i<DLPC_ORDER;i++) {
+        for (i=0,j=n*SQRT_QUANTIZE;i<DLPC_ORDER;i++,k++) {
             last_idx = last_output[i*N_MBANDS+n];
-            output[j+last_idx] += signs[i]*mags[i]*prev_logits[last_idx];
+            ddlpc[k] = signs[k]*mags[k];
+            output[j+last_idx] += ddlpc[k]*prev_logits[last_idx];
             //output[j+last_idx] += fc_out[m+i]*fc_out[l+i]*prev_logits[last_idx];
         }
     }
@@ -334,11 +335,13 @@ void compute_conv1d_linear_frame_in(const Conv1DLayer* layer, float* output, flo
     RNN_COPY(mem, &tmp[FEATURES_DIM], FEATURE_CONV_STATE_SIZE); //set state size for next frame
 }
 
-//PLT_Sep20
-int sample_from_pdf_mwdlp(const float *pdf, int N)
+//PLT_Jul21
+int sample_from_pdf_mwdlp(const float *pdf, int N, RNGState *rng_state)
 {
     int i;
     float r;
+#if defined(WINDOWS_SYS)
+    UINT buffer = 0;
     float tmp[SQRT_QUANTIZE], cdf[SQRT_QUANTIZE], sum, norm;
     for (i=0;i<N;i++)
         tmp[i] = pdf[i];
@@ -351,10 +354,32 @@ int sample_from_pdf_mwdlp(const float *pdf, int N)
     for (i=1;i<N;i++)
         cdf[i] = cdf[i-1] + norm*tmp[i-1];
     /* Do the sampling (from the cdf). */
-    r = (float) rand() / RAND_MAX; //r ~ [0,1]
+    BCryptGenRandom(rng_state->rng_prov, (PUCHAR)(&buffer), sizeof(buffer), 0);
+    r = (float)buffer / UINT_MAX;
     for (i=N-1;i>0;i--)
         if (r >= cdf[i]) return i; //largest cdf that is less/equal than r
     return 0;
+#else
+    long int rand_num = 0;
+    float tmp[SQRT_QUANTIZE], cdf[SQRT_QUANTIZE], sum, norm;
+    for (i=0;i<N;i++)
+        tmp[i] = pdf[i];
+    softmax(tmp, tmp, N);
+    for (i=0,sum=0;i<N;i++)
+        sum += tmp[i];
+    norm = 1.f/sum;
+    /* Convert tmp to a CDF (sum of all previous probs., init. with 0) */
+    cdf[0] = 0;
+    for (i=1;i<N;i++)
+        cdf[i] = cdf[i-1] + norm*tmp[i-1];
+    /* Do the sampling (from the cdf). */
+    nrand48_r(rng_state->xsubi, rng_state->drand_buffer, &rand_num); // res ~ [0,2^31-1]
+    r = (float) rand_num / NRAND48_MAX; //r ~ [0,1]
+    //r = (float) rand() / RAND_MAX; //r ~ [0,1]
+    for (i=N-1;i>0;i--)
+        if (r >= cdf[i]) return i; //largest cdf that is less/equal than r
+    return 0;
+#endif
 }
 
 //PLT_Dec20

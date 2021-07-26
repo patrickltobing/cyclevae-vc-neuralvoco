@@ -55,14 +55,12 @@ static void print_vector(float *x, int N)
 #endif
 
 
-//PLT_Jan21
-static void run_frame_network_cyclevae_melsp_excit_spk(CycleVAEMelspExcitSpkNNetState *net,
+//PLT_Jul21
+static void run_frame_network_cyclevae_melsp_excit_spk(CycleVAEMelspExcitSpkNNetState *net, RNGState *rng_state,
     float *melsp, float *spk_code_aux, short first_frame_flag)
-    //const float *melsp_in, float *spk_code_aux, float *melsp_cv, short first_frame_flag, float *lat_tmp, float *spk_tmp, float *conv_tmp, float *gru_tmp, float *f0_tmp)
-        //MWDLP16CycleVAEMelspExcitSpkNetState *net_st)
+    //float *melsp, float *spk_code_aux, short first_frame_flag, float *melsp_in_tmp, float *conv_tmp, float *gru_tmp, float *lat_tmp, float *spk_in_tmp, float *spk_red_tmp, float *spk_conv_tmp, float *spk_gru_tmp, float *spk_out_tmp, float *spk_tmp, float *melsp_red_tmp, float *melsp_conv_tmp, float *melsp_gru_tmp, float *melsp_pdf_tmp, float *melsp_smpl_tmp)
 {
-    //int i, j, k;
-    //float in[FEATURE_DIM_MELSP];
+    int i, j, k;
     float melsp_scale[FEATURE_DIM_MELSP];
     float out_buffer[FEATURE_DIM_MELSP_2];
     float red_buffer[FEATURE_RED_DIM];
@@ -71,129 +69,333 @@ static void run_frame_network_cyclevae_melsp_excit_spk(CycleVAEMelspExcitSpkNNet
     float lat_melsp[FEATURE_LAT_DIM_MELSP];
     float lat_excit[FEATURE_LAT_DIM_EXCIT];
     float lat_excit_melsp[FEATURE_LAT_DIM_EXCIT_MELSP];
-    //float spk_code_lat_excit_melsp[FEATURE_SPK_LAT_DIM_EXCIT_MELSP];
-    //float spk_input[FEATURE_CONV_SPK_OUT_SIZE];
-    //float time_varying_spk_code_weight[FEATURE_N_WEIGHT_EMBED_SPK];
-    //float code_weight;
-    //float time_varying_spk_code[FEATURE_WEIGHT_EMBED_SPK];
+    float spk_code_lat_excit_melsp[FEATURE_SPK_LAT_DIM_EXCIT_MELSP];
+    float spk_input[FEATURE_CONV_SPK_OUT_SIZE];
+    float time_varying_spk_code_weight[FEATURE_N_WEIGHT_EMBED_SPK];
+    float code_weight;
+    float time_varying_spk_code[FEATURE_SPK_DIM];
     float dec_melsp_input[FEATURE_CONV_DEC_MELSP_OUT_SIZE];
-    //float dec_excit_input[FEATURE_CONV_DEC_EXCIT_OUT_SIZE];
-    //float dec_excit_out[2];
-    //float uvf0, f0;
-    //float uvf0_f0[2];
-    float spk_code_aux_lat_excit_melsp[FEATURE_SPK_LAT_DIM_EXCIT_MELSP];
-    //const EmbeddingLayer *spk_embedding = &embed_spk;
+    float spk_code_aux_lat_excit_melsp[FEATURE_SPK_DIM_2_LAT_DIM_EXCIT_MELSP];
+    const EmbeddingLayer *spk_embedding = &embed_spk_tv;
     //clock_t t;
     //double time_taken;
 
     //handle pad first before calling this function
-    //compute enc input here [segmental input conv.]
-    //printf("enc_melsp_excit %d %d\n", net_st->frame_count, net_st->cv_frame_count);
-    //t = clock();
-    //printf("\n");
-    //RNN_COPY(in, melsp, FEATURE_DIM_MELSP);
-    compute_normalize(&melsp_norm, melsp);
-    //t = clock();
-    compute_conv1d_linear_enc_melsp(&feature_conv_enc_melsp, enc_melsp_input, net->feature_conv_enc_melsp_state, melsp);
-    //printf("\nconv_enc_melsp %lf sec.\n", ((double)(clock()-t))/CLOCKS_PER_SEC);
-    //t = clock();
-    compute_conv1d_linear_enc_excit(&feature_conv_enc_excit, enc_excit_input, net->feature_conv_enc_excit_state, melsp);
-    //printf("\nconv_enc_excit %lf sec.\n", ((double)(clock()-t))/CLOCKS_PER_SEC);
-    //printf("exc_conv");
-    //for (k = 0; k < FEATURE_CONV_ENC_EXCIT_OUT_SIZE; k++) {
-    ////    printf(" [%d] %f", k, enc_excit_input[k]);
-    //    conv_tmp[k] = enc_excit_input[k];
-    //}
-    //printf("\n");
-    //printf("msp_conv");
-    //for (k = 0; k < FEATURE_CONV_ENC_MELSP_OUT_SIZE; k++) {
-    ////    printf(" [%d] %f", k, enc_melsp_input[k]);
-    //    conv_tmp[FEATURE_CONV_ENC_EXCIT_OUT_SIZE+k] = enc_melsp_input[k];
-    //}
-    //printf("\n");
-    //compute_gru_enc_melsp(&gru_enc_melsp, net->gru_enc_melsp_state, enc_melsp_input);
-    //compute_gru_enc_excit(&gru_enc_excit, net->gru_enc_excit_state, enc_excit_input);
-    //t = clock();
-    compute_sparse_gru_enc_melsp(&sparse_gru_enc_melsp, net->gru_enc_melsp_state, enc_melsp_input);
-    //printf("\ngru_enc_melsp %lf sec.\n", ((double)(clock()-t))/CLOCKS_PER_SEC);
-    //t = clock();
-    compute_sparse_gru_enc_excit(&sparse_gru_enc_excit, net->gru_enc_excit_state, enc_excit_input);
-    //printf("\ngru_enc_excit %lf sec.\n", ((double)(clock()-t))/CLOCKS_PER_SEC);
-    //printf("exc_gru");
-    //for (k = 0; k < GRU_ENC_EXCIT_STATE_SIZE; k++) {
-    //    printf(" [%d] %f", k, net->gru_enc_excit_state[k]);
-    //    gru_tmp[k] = net->gru_enc_excit_state[k];
-    //}
-    //printf("\n");
-    //t = clock();
-    compute_dense(&fc_out_enc_melsp, lat_melsp, net->gru_enc_melsp_state);
-    //printf("\nout_enc_melsp %lf sec.\n", ((double)(clock()-t))/CLOCKS_PER_SEC);
-    //t = clock();
-    compute_dense(&fc_out_enc_excit, lat_excit, net->gru_enc_excit_state);
-    //printf("\nout_enc_excit %lf sec.\n", ((double)(clock()-t))/CLOCKS_PER_SEC);
-    //compute_dense_linear(&fc_out_enc_excit, lat_excit, net->gru_enc_excit_state);
-    //for (k = 0; k < FEATURE_LAT_DIM_EXCIT; k++) {
-    ////    printf("lat_exc [%d] %f ", k, lat_excit[k]);
-    //    lat_tmp[k] = lat_excit[k];
-    //}
-    //for (k = 0; k < FEATURE_LAT_DIM_EXCIT_MELSP; k++) {
-    //    printf("lat_melsp [%d] %f ", k, lat_melsp[k]);
-    //    lat_tmp[k] = lat_melsp[k];
-    //}
-    //t = clock() - t;
-    RNN_COPY(lat_excit_melsp, lat_excit, FEATURE_LAT_DIM_EXCIT);
-    RNN_COPY(&lat_excit_melsp[FEATURE_LAT_DIM_EXCIT], lat_melsp, FEATURE_LAT_DIM_MELSP);
-    //time_taken = ((double)t)/CLOCKS_PER_SEC;
-    //printf("\ncopy_enc %lf sec.\n", time_taken);
-    //printf("\ncopy_enc %lf sec.\n", ((double)(clock()-t))/CLOCKS_PER_SEC);
-    //printf("\nencs %lf sec.\n", ((double)(clock()-t))/CLOCKS_PER_SEC);
-    //for (k = 0; k < FEATURE_LAT_DIM_EXCIT_MELSP; k++) {
-    ////    printf("lat [%d] %f ", k, lat_excit_melsp[k]);
-    //    lat_tmp[k] = lat_excit_melsp[k];
-    //}
-    //printf("\n");
+    if (!first_frame_flag) {
+        compute_normalize(&melsp_norm, melsp);
+        /*
+        for (k = 0; k < FEATURES_DIM; k++) {
+            melsp_in_tmp[k] = melsp[k];
+        }
+        */
+        //t = clock();
+        compute_conv1d_linear_enc_melsp(&feature_conv_enc_melsp, enc_melsp_input, net->feature_conv_enc_melsp_state, melsp);
+        //printf("\nconv_enc_melsp %lf sec.\n", ((double)(clock()-t))/CLOCKS_PER_SEC);
+        //t = clock();
+        compute_conv1d_linear_enc_excit(&feature_conv_enc_excit, enc_excit_input, net->feature_conv_enc_excit_state, melsp);
+        //printf("\nconv_enc_excit %lf sec.\n", ((double)(clock()-t))/CLOCKS_PER_SEC);
+        //printf("exc_conv");
+        /*
+        for (k = 0; k < FEATURE_CONV_ENC_EXCIT_OUT_SIZE; k++) {
+        //    printf(" [%d] %f", k, enc_excit_input[k]);
+            conv_tmp[k] = enc_excit_input[k];
+        }
+        //printf("\n");
+        //printf("msp_conv");
+        for (k = 0; k < FEATURE_CONV_ENC_MELSP_OUT_SIZE; k++) {
+        //    printf(" [%d] %f", k, enc_melsp_input[k]);
+            conv_tmp[FEATURE_CONV_ENC_EXCIT_OUT_SIZE+k] = enc_melsp_input[k];
+        }
+        */
+        //printf("\n");
+        //t = clock();
+        compute_sparse_gru_enc_melsp(&sparse_gru_enc_melsp, net->gru_enc_melsp_state, enc_melsp_input);
+        //printf("\ngru_enc_melsp %lf sec.\n", ((double)(clock()-t))/CLOCKS_PER_SEC);
+        //t = clock();
+        compute_sparse_gru_enc_excit(&sparse_gru_enc_excit, net->gru_enc_excit_state, enc_excit_input);
+        //printf("\ngru_enc_excit %lf sec.\n", ((double)(clock()-t))/CLOCKS_PER_SEC);
+        //printf("exc_gru");
+        /*
+        for (k = 0; k < SPARSE_GRU_ENC_EXCIT_STATE_SIZE; k++) {
+        //    printf(" [%d] %f", k, net->gru_enc_excit_state[k]);
+            gru_tmp[k] = net->gru_enc_excit_state[k];
+        }
+        for (k = 0; k < SPARSE_GRU_ENC_MELSP_STATE_SIZE; k++) {
+        //    printf(" [%d] %f", k, net->gru_enc_excit_state[k]);
+            gru_tmp[SPARSE_GRU_ENC_MELSP_STATE_SIZE+k] = net->gru_enc_melsp_state[k];
+        }
+        */
+        //printf("\n");
+        //t = clock();
+        compute_dense(&fc_out_enc_melsp, lat_melsp, net->gru_enc_melsp_state);
+        //printf("\nout_enc_melsp %lf sec.\n", ((double)(clock()-t))/CLOCKS_PER_SEC);
+        //t = clock();
+        compute_dense(&fc_out_enc_excit, lat_excit, net->gru_enc_excit_state);
+        //printf("\nout_enc_excit %lf sec.\n", ((double)(clock()-t))/CLOCKS_PER_SEC);
+        //compute_dense_linear(&fc_out_enc_excit, lat_excit, net->gru_enc_excit_state);
+        //for (k = 0; k < FEATURE_LAT_DIM_EXCIT; k++) {
+        ////    printf("lat_exc [%d] %f ", k, lat_excit[k]);
+        //    lat_tmp[k] = lat_excit[k];
+        //}
+        //for (k = 0; k < FEATURE_LAT_DIM_EXCIT_MELSP; k++) {
+        //    printf("lat_melsp [%d] %f ", k, lat_melsp[k]);
+        //    lat_tmp[k] = lat_melsp[k];
+        //}
+        //t = clock() - t;
+        RNN_COPY(lat_excit_melsp, lat_excit, FEATURE_LAT_DIM_EXCIT);
+        RNN_COPY(&lat_excit_melsp[FEATURE_LAT_DIM_EXCIT], lat_melsp, FEATURE_LAT_DIM_MELSP);
+        //time_taken = ((double)t)/CLOCKS_PER_SEC;
+        //printf("\ncopy_enc %lf sec.\n", time_taken);
+        //printf("\ncopy_enc %lf sec.\n", ((double)(clock()-t))/CLOCKS_PER_SEC);
+        //printf("\nencs %lf sec.\n", ((double)(clock()-t))/CLOCKS_PER_SEC);
+        /*
+        for (k = 0; k < FEATURE_LAT_DIM_EXCIT_MELSP; k++) {
+        //    printf("lat [%d] %f ", k, lat_excit_melsp[k]);
+            lat_tmp[k] = lat_excit_melsp[k];
+        }
+        */
+        //printf("\n");
 
-    //compute melsp input here [concate spk-code,spk-code-aux,uv-f0,lat_excit,lat_melsp]
-    //printf("dec_melsp %d %d\n", net_st->frame_count, net_st->cv_frame_count);
-    //t = clock();
-    //RNN_COPY(spk_code_aux_lat_excit_melsp, spk_code_aux, FEATURE_SPK_DIM_2);
-    RNN_COPY(spk_code_aux_lat_excit_melsp, spk_code_aux, FEATURE_SPK_DIM);
-    //RNN_COPY(&spk_code_aux_f0_lat_excit_melsp[FEATURE_N_SPK_2], uvf0_f0, 2);
-    //RNN_COPY(&spk_code_aux_lat_excit_melsp[FEATURE_SPK_DIM_2], lat_excit_melsp, FEATURE_LAT_DIM_EXCIT_MELSP);
-    RNN_COPY(&spk_code_aux_lat_excit_melsp[FEATURE_SPK_DIM], lat_excit_melsp, FEATURE_LAT_DIM_EXCIT_MELSP);
-    compute_dense(&fc_red_dec_melsp, red_buffer, spk_code_aux_lat_excit_melsp);
-    if (first_frame_flag) { //pad_first
-        float *mem_dec_melsp = net->feature_conv_dec_melsp_state; //mem of stored input frames
-        for (int i=0;i<DEC_MELSP_CONV_KERNEL_1;i++) //store first input with replicate padding kernel_size-1
-            RNN_COPY(&mem_dec_melsp[i*FEATURE_RED_DIM], red_buffer, FEATURE_RED_DIM);
+        //compute spk input here [concate spk-code,lat_excit,lat_melsp]
+        //printf("spk_net %d %d\n", net_st->frame_count, net_st->cv_frame_count);
+        RNN_COPY(spk_code_lat_excit_melsp, spk_code_aux, FEATURE_SPK_DIM); //spk_code_aux=[1-hot-spk-code,time-vary-spk-code]
+        RNN_COPY(&spk_code_lat_excit_melsp[FEATURE_SPK_DIM], lat_excit_melsp, FEATURE_LAT_DIM_EXCIT_MELSP);
+        /*
+        for (k = 0; k < FEATURE_SPK_LAT_DIM_EXCIT_MELSP; k++) {
+            spk_in_tmp[k] = spk_code_lat_excit_melsp[k];
+        }
+        */
+        //t = clock();
+        //compute_dense_linear(&fc_red_spk, red_buffer, spk_code_lat_excit_melsp);
+        //for (k = 0; k < FEATURE_RED_DIM; k++) {
+        //    spk_red_tmp[k] = red_buffer[k];
+        //}
+        compute_dense(&fc_red_spk, red_buffer, spk_code_lat_excit_melsp);
+        /*
+        for (k = 0; k < FEATURE_RED_DIM; k++) {
+            spk_red_tmp[k] = red_buffer[k];
+        }
+        */
+        //printf("red_spk %f sec.\n", ((double)(clock()-t))/CLOCKS_PER_SEC);
+        //t = clock();
+        compute_conv1d_linear_spk(&feature_conv_spk, spk_input, net->feature_conv_spk_state, red_buffer);
+        /*
+        for (k = 0; k < FEATURE_CONV_SPK_OUT_SIZE; k++) {
+            spk_conv_tmp[k] = spk_input[k];
+        }
+        */
+        //printf("conv_spk %f sec.\n", ((double)(clock()-t))/CLOCKS_PER_SEC);
+        //t = clock();
+        //printf("\n");
+        //for (i=0;i<GRU_SPK_STATE_SIZE;i++)
+        //    printf("%f ", net->gru_spk_state[i]);
+        compute_gru_spk(&gru_spk, net->gru_spk_state, spk_input);
+        //printf("\n");
+        //for (i=0;i<GRU_SPK_STATE_SIZE;i++)
+        //    printf("%f ", net->gru_spk_state[i]);
+        //printf("\n");
+        /*
+        for (k = 0; k < GRU_SPK_STATE_SIZE; k++) {
+            spk_gru_tmp[k] = net->gru_spk_state[k];
+        }
+        */
+        //printf("gru_spk %f sec.\n", ((double)(clock()-t))/CLOCKS_PER_SEC);
+        //t = clock();
+        compute_dense(&fc_out_spk, time_varying_spk_code_weight, net->gru_spk_state);
+        /*
+        for (k = 0; k < FEATURE_N_WEIGHT_EMBED_SPK; k++) {
+            spk_out_tmp[k] = time_varying_spk_code_weight[k];
+        }
+        */
+        //printf("out_spk %f sec.\n", ((double)(clock()-t))/CLOCKS_PER_SEC);
+        for (j=0, i=0; j<FEATURE_N_WEIGHT_EMBED_SPK; j++) {
+            for (k=0, code_weight=time_varying_spk_code_weight[j]; k<FEATURE_DIM_EMBED_SPK; k++, i++) {
+                time_varying_spk_code[i] = code_weight*spk_embedding->embedding_weights[i];
+            }
+        }
+        RNN_COPY(&spk_code_aux[FEATURE_SPK_DIM], time_varying_spk_code, FEATURE_SPK_DIM);
+        /*
+        for (k = 0; k < FEATURE_SPK_DIM_2; k++) {
+            spk_tmp[k] = spk_code_aux[k];
+        }
+        */
+        //RNN_COPY(&spk_code_aux[FEATURE_N_SPK], time_varying_spk_code, FEATURE_N_SPK);
+        //t = clock() - t;
+        //time_taken = ((double)t)/CLOCKS_PER_SEC;
+        //printf("spk %f sec.\n", time_taken);
+        //for (k = 0; k < FEATURE_N_SPK; k++) {
+        ////    printf("spk [%d] %f ", k, spk_code_aux[FEATURE_N_SPK+k]);
+        //    spk_tmp[FEATURE_N_SPK+k] = spk_code_aux[FEATURE_N_SPK+k];
+        //}
+        //printf("\n");
+
+        //compute melsp input here [concate spk-code,spk-code-aux,uv-f0,lat_excit,lat_melsp]
+        //printf("dec_melsp %d %d\n", net_st->frame_count, net_st->cv_frame_count);
+        //t = clock();
+        RNN_COPY(spk_code_aux_lat_excit_melsp, spk_code_aux, FEATURE_SPK_DIM_2);
+        //RNN_COPY(&spk_code_aux_f0_lat_excit_melsp[FEATURE_N_SPK_2], uvf0_f0, 2);
+        RNN_COPY(&spk_code_aux_lat_excit_melsp[FEATURE_SPK_DIM_2], lat_excit_melsp, FEATURE_LAT_DIM_EXCIT_MELSP);
+        compute_dense(&fc_red_dec_melsp, red_buffer, spk_code_aux_lat_excit_melsp);
+        /*
+        for (k = 0; k < FEATURE_RED_DIM; k++) {
+            melsp_red_tmp[k] = red_buffer[k];
+        }
+        */
+        compute_conv1d_linear_dec_melsp(&feature_conv_dec_melsp, dec_melsp_input, net->feature_conv_dec_melsp_state, red_buffer);
+        /*
+        for (k = 0; k < FEATURE_CONV_DEC_MELSP_OUT_SIZE; k++) {
+            melsp_conv_tmp[k] = dec_melsp_input[k];
+        }
+        */
+        //printf("conv_melsp %f sec.\n", ((double)(clock()-t))/CLOCKS_PER_SEC);
+        //compute_gru_dec_melsp(&gru_dec_melsp, net->gru_dec_melsp_state, dec_melsp_input);
+        //t = clock();
+        compute_sparse_gru_dec_melsp(&sparse_gru_dec_melsp, net->gru_dec_melsp_state, dec_melsp_input);
+        /*
+        for (k = 0; k < SPARSE_GRU_DEC_MELSP_STATE_SIZE; k++) {
+            melsp_gru_tmp[k] = net->gru_dec_melsp_state[k];
+        }
+        */
+        //printf("gru_melsp %f sec.\n", ((double)(clock()-t))/CLOCKS_PER_SEC);
+        //t = clock();
+        //compute_dense(&fc_out_dec_melsp, melsp_cv, net->gru_dec_melsp_state);
+        compute_dense_linear(&fc_out_dec_melsp, out_buffer, net->gru_dec_melsp_state);
+        compute_activation(melsp, out_buffer, FEATURE_DIM_MELSP, ACTIVATION_TANHSHRINK);
+        //compute_activation(melsp_scale, &out_buffer[FEATURE_DIM_MELSP], FEATURE_DIM_MELSP, ACTIVATION_EXP);
+        compute_activation(melsp_scale, &out_buffer[FEATURE_DIM_MELSP], FEATURE_DIM_MELSP, ACTIVATION_SIGMOID_EXP);
+        //RNN_COPY(melsp_scale, &out_buffer[FEATURE_DIM_MELSP], FEATURE_DIM_MELSP);
+        compute_denormalize(&melsp_norm, melsp);
+        /*
+        for (k = 0; k < FEATURES_DIM; k++) {
+            melsp_pdf_tmp[k] = melsp[k];
+        }
+        for (i = 0; i < FEATURES_DIM; i++, k++) {
+            melsp_pdf_tmp[k] = melsp_scale[i];
+        }
+        */
+        compute_sampling_gauss(melsp, melsp_scale, FEATURE_DIM_MELSP, rng_state);
+        /*
+        for (k = 0; k < FEATURES_DIM; k++) {
+            melsp_smpl_tmp[k] = melsp[k];
+        }
+        */
+        //printf("\ndec %f sec.\n", ((double)(clock()-t))/CLOCKS_PER_SEC);
+        //for (i=0;i<FEATURE_DIM_MELSP;i++) {
+        //    printf(" [%d] %f", i+1, melsp_cv[i]);
+        //}
+        //printf("\n");
+        //compute_denormalize(&melsp_norm, melsp_cv);
+        //compute_denormalize(&melsp_norm, in);
+        //RNN_COPY(melsp_cv, in, FEATURE_DIM_MELSP);
+        //for (i=0;i<FEATURE_DIM_MELSP;i++) {
+        //    printf(" [%d] %f", i+1, melsp_cv[i]);
+        //}
+        //printf("\n");
+    } else {
+        if (first_frame_flag) { // init gru state with first frame input due to full padding in training
+            float *mem_spk = net->feature_conv_spk_state; //mem of stored input frames spk
+            float *mem_dec_melsp = net->feature_conv_dec_melsp_state; //mem of stored input frames dec melsp
+            float tmp_s[FEATURE_CONV_SPK_STATE_SIZE];
+            float tmp_d[FEATURE_CONV_DEC_MELSP_STATE_SIZE];
+            //enc in, simply replicate
+            compute_conv1d_linear_enc_melsp(&feature_conv_enc_melsp, enc_melsp_input, net->feature_conv_enc_melsp_state, melsp);
+            compute_conv1d_linear_enc_excit(&feature_conv_enc_excit, enc_excit_input, net->feature_conv_enc_excit_state, melsp);
+            for (int init_state=0; init_state<N_INIT_STATE; init_state++) { // for init gru state, due to padding with whole network and cyclic in training
+                //printf("init_state [%d]\n", init_state);
+                //enc gru
+                compute_sparse_gru_enc_melsp(&sparse_gru_enc_melsp, net->gru_enc_melsp_state, enc_melsp_input);
+                compute_sparse_gru_enc_excit(&sparse_gru_enc_excit, net->gru_enc_excit_state, enc_excit_input);
+                compute_dense(&fc_out_enc_melsp, lat_melsp, net->gru_enc_melsp_state);
+                compute_dense(&fc_out_enc_excit, lat_excit, net->gru_enc_excit_state);
+                RNN_COPY(lat_excit_melsp, lat_excit, FEATURE_LAT_DIM_EXCIT);
+                RNN_COPY(&lat_excit_melsp[FEATURE_LAT_DIM_EXCIT], lat_melsp, FEATURE_LAT_DIM_MELSP);
+
+                //spk and dec
+                RNN_COPY(spk_code_lat_excit_melsp, spk_code_aux, FEATURE_SPK_DIM); //spk_code_aux=[1-hot-spk-code,time-vary-spk-code]
+                RNN_COPY(&spk_code_lat_excit_melsp[FEATURE_SPK_DIM], lat_excit_melsp, FEATURE_LAT_DIM_EXCIT_MELSP);
+                compute_dense(&fc_red_spk, red_buffer, spk_code_lat_excit_melsp);
+                if (init_state >= SPK_CONV_KERNEL_1) { // conv spk state sufficient, start gru state
+                    //printf("gru spk\n");
+                    compute_conv1d_linear_spk(&feature_conv_spk, spk_input, net->feature_conv_spk_state, red_buffer);
+                    //for (i=0;i<FEATURE_CONV_SPK_OUT_SIZE;i++)
+                    //    printf("%f ", spk_input[i]);
+                    //printf("[%d]\n",init_state+1);
+                    //for (i=0;i<GRU_SPK_STATE_SIZE;i++)
+                    //    printf("%f ", net->gru_spk_state[i]);
+                    compute_gru_spk(&gru_spk, net->gru_spk_state, spk_input);
+                    //printf("\n");
+                    //for (i=0;i<GRU_SPK_STATE_SIZE;i++)
+                    //    printf("%f ", net->gru_spk_state[i]);
+                    //printf("\n");
+                    compute_dense(&fc_out_spk, time_varying_spk_code_weight, net->gru_spk_state);
+                    for (j=0, i=0; j<FEATURE_N_WEIGHT_EMBED_SPK; j++) {
+                        for (k=0, code_weight=time_varying_spk_code_weight[j]; k<FEATURE_DIM_EMBED_SPK; k++, i++) {
+                            time_varying_spk_code[i] = code_weight*spk_embedding->embedding_weights[i];
+                        }
+                    }
+                    RNN_COPY(&spk_code_aux[FEATURE_SPK_DIM], time_varying_spk_code, FEATURE_SPK_DIM);
+                    //dec
+                    RNN_COPY(spk_code_aux_lat_excit_melsp, spk_code_aux, FEATURE_SPK_DIM_2);
+                    RNN_COPY(&spk_code_aux_lat_excit_melsp[FEATURE_SPK_DIM_2], lat_excit_melsp, FEATURE_LAT_DIM_EXCIT_MELSP);
+                    compute_dense(&fc_red_dec_melsp, red_buffer, spk_code_aux_lat_excit_melsp);
+                    if (init_state >= SPK_DEC_MELSP_CONV_KERNEL_1) { // conv dec melsp state sufficient, start gru state
+                    //    printf("gru melsp\n");
+                        compute_conv1d_linear_dec_melsp(&feature_conv_dec_melsp, dec_melsp_input, net->feature_conv_dec_melsp_state, red_buffer);
+                        compute_sparse_gru_dec_melsp(&sparse_gru_dec_melsp, net->gru_dec_melsp_state, dec_melsp_input);
+                    } else if (init_state > SPK_CONV_KERNEL_1) { // upd dec melsp conv state
+                    //    printf("upd melsp\n");
+                        RNN_COPY(tmp_d, &mem_dec_melsp[FEATURE_RED_DIM], FEATURE_CONV_DEC_MELSP_STATE_SIZE_1); //store previous input kernel_size-2
+                        RNN_COPY(&tmp_d[FEATURE_CONV_DEC_MELSP_STATE_SIZE_1], red_buffer, FEATURE_RED_DIM); //add new input
+                        RNN_COPY(mem_dec_melsp, tmp_d, FEATURE_CONV_DEC_MELSP_STATE_SIZE); //move to mem_spk
+                    } else { // init dec melsp conv state
+                    //    printf("init melsp\n");
+                        for (i=0;i<DEC_MELSP_CONV_KERNEL_1;i++)
+                            RNN_COPY(&mem_dec_melsp[i*FEATURE_RED_DIM], red_buffer, FEATURE_RED_DIM);
+                    }
+                } else if (init_state > 0) { // upd spk conv state
+                    //printf("upd spk\n");
+                    RNN_COPY(tmp_s, &mem_spk[FEATURE_RED_DIM], FEATURE_CONV_SPK_STATE_SIZE_1); //store previous input kernel_size-2
+                    RNN_COPY(&tmp_s[FEATURE_CONV_SPK_STATE_SIZE_1], red_buffer, FEATURE_RED_DIM); //add new input
+                    RNN_COPY(mem_spk, tmp_s, FEATURE_CONV_SPK_STATE_SIZE); //move to mem_spk
+                } else { // init spk conv state
+                    //printf("init spk\n");
+                    for (i=0;i<SPK_CONV_KERNEL_1;i++)
+                        RNN_COPY(&mem_spk[i*FEATURE_RED_DIM], red_buffer, FEATURE_RED_DIM);
+                }
+            }
+        } else { // input next frame, waiting for delay of future frame, keep updating gru
+            //printf("upd delay\n");
+            compute_normalize(&melsp_norm, melsp);
+            //enc
+            compute_conv1d_linear_enc_melsp(&feature_conv_enc_melsp, enc_melsp_input, net->feature_conv_enc_melsp_state, melsp);
+            compute_conv1d_linear_enc_excit(&feature_conv_enc_excit, enc_excit_input, net->feature_conv_enc_excit_state, melsp);
+            compute_sparse_gru_enc_melsp(&sparse_gru_enc_melsp, net->gru_enc_melsp_state, enc_melsp_input);
+            compute_sparse_gru_enc_excit(&sparse_gru_enc_excit, net->gru_enc_excit_state, enc_excit_input);
+            compute_dense(&fc_out_enc_melsp, lat_melsp, net->gru_enc_melsp_state);
+            compute_dense(&fc_out_enc_excit, lat_excit, net->gru_enc_excit_state);
+            RNN_COPY(lat_excit_melsp, lat_excit, FEATURE_LAT_DIM_EXCIT);
+            RNN_COPY(&lat_excit_melsp[FEATURE_LAT_DIM_EXCIT], lat_melsp, FEATURE_LAT_DIM_MELSP);
+            //spk
+            RNN_COPY(spk_code_lat_excit_melsp, spk_code_aux, FEATURE_SPK_DIM); //spk_code_aux=[1-hot-spk-code,time-vary-spk-code]
+            RNN_COPY(&spk_code_lat_excit_melsp[FEATURE_SPK_DIM], lat_excit_melsp, FEATURE_LAT_DIM_EXCIT_MELSP);
+            compute_dense(&fc_red_spk, red_buffer, spk_code_lat_excit_melsp);
+            compute_conv1d_linear_spk(&feature_conv_spk, spk_input, net->feature_conv_spk_state, red_buffer);
+            compute_gru_spk(&gru_spk, net->gru_spk_state, spk_input);
+            compute_dense(&fc_out_spk, time_varying_spk_code_weight, net->gru_spk_state);
+            for (j=0, i=0; j<FEATURE_N_WEIGHT_EMBED_SPK; j++) {
+                for (k=0, code_weight=time_varying_spk_code_weight[j]; k<FEATURE_DIM_EMBED_SPK; k++, i++) {
+                    time_varying_spk_code[i] = code_weight*spk_embedding->embedding_weights[i];
+                }
+            }
+            RNN_COPY(&spk_code_aux[FEATURE_SPK_DIM], time_varying_spk_code, FEATURE_SPK_DIM);
+            //dec
+            RNN_COPY(spk_code_aux_lat_excit_melsp, spk_code_aux, FEATURE_SPK_DIM_2);
+            RNN_COPY(&spk_code_aux_lat_excit_melsp[FEATURE_SPK_DIM_2], lat_excit_melsp, FEATURE_LAT_DIM_EXCIT_MELSP);
+            compute_dense(&fc_red_dec_melsp, red_buffer, spk_code_aux_lat_excit_melsp);
+            compute_conv1d_linear_dec_melsp(&feature_conv_dec_melsp, dec_melsp_input, net->feature_conv_dec_melsp_state, red_buffer);
+            compute_sparse_gru_dec_melsp(&sparse_gru_dec_melsp, net->gru_dec_melsp_state, dec_melsp_input);
+        }
     }
-    compute_conv1d_linear_dec_melsp(&feature_conv_dec_melsp, dec_melsp_input, net->feature_conv_dec_melsp_state, red_buffer);
-    //printf("conv_melsp %f sec.\n", ((double)(clock()-t))/CLOCKS_PER_SEC);
-    //compute_gru_dec_melsp(&gru_dec_melsp, net->gru_dec_melsp_state, dec_melsp_input);
-    //t = clock();
-    compute_sparse_gru_dec_melsp(&sparse_gru_dec_melsp, net->gru_dec_melsp_state, dec_melsp_input);
-    //printf("gru_melsp %f sec.\n", ((double)(clock()-t))/CLOCKS_PER_SEC);
-    //t = clock();
-    //compute_dense(&fc_out_dec_melsp, melsp_cv, net->gru_dec_melsp_state);
-    compute_dense_linear(&fc_out_dec_melsp, out_buffer, net->gru_dec_melsp_state);
-    compute_activation(melsp, out_buffer, FEATURE_DIM_MELSP, ACTIVATION_TANHSHRINK);
-    //compute_activation(melsp_scale, &out_buffer[FEATURE_DIM_MELSP], FEATURE_DIM_MELSP, ACTIVATION_EXP);
-    compute_activation(melsp_scale, &out_buffer[FEATURE_DIM_MELSP], FEATURE_DIM_MELSP, ACTIVATION_SIGMOID_EXP);
-    //RNN_COPY(melsp_scale, &out_buffer[FEATURE_DIM_MELSP], FEATURE_DIM_MELSP);
-    compute_denormalize(&melsp_norm, melsp);
-    compute_sampling_gauss(melsp, melsp_scale, FEATURE_DIM_MELSP);
-    //printf("\ndec %f sec.\n", ((double)(clock()-t))/CLOCKS_PER_SEC);
-    //for (i=0;i<FEATURE_DIM_MELSP;i++) {
-    //    printf(" [%d] %f", i+1, melsp_cv[i]);
-    //}
-    //printf("\n");
-    //compute_denormalize(&melsp_norm, melsp_cv);
-    //compute_denormalize(&melsp_norm, in);
-    //RNN_COPY(melsp_cv, in, FEATURE_DIM_MELSP);
-    //for (i=0;i<FEATURE_DIM_MELSP;i++) {
-    //    printf(" [%d] %f", i+1, melsp_cv[i]);
-    //}
-    //printf("\n");
 }
 
 
@@ -207,18 +409,6 @@ static void run_frame_network_mwdlp10(MWDLP10NNetState *net, float *gru_a_condit
     //double time_taken;
     //feature normalization if not last frame, just replicate if last frame
     if (!flag_last_frame) {
-        //float in[FEATURES_DIM];
-        //float conv_in[FEATURES_DIM];
-        //float conv_in_in[FEATURE_CONV_IN_IN_OUT_SIZE];
-        //float conv_in_out[FEATURES_DIM];
-        //RNN_COPY(in, features, FEATURES_DIM);
-        //compute_normalize(&feature_norm, in);
-        //compute_conv1d_linear(&feature_conv, conv_out, net->feature_conv_state, in);
-        //compute_dense(&feature_conv_in, conv_in, in);
-        //compute_dense(&feature_conv_in_in, conv_in_in, in);
-        //compute_dense(&feature_conv_in_out, conv_in_out, conv_in_in);
-        //compute_conv1d_linear(&feature_conv, conv_out, net->feature_conv_state, conv_in);
-        //compute_conv1d_linear(&feature_conv, conv_out, net->feature_conv_state, conv_in_out);
         compute_normalize(&feature_norm, features);
         compute_conv1d_linear_frame_in(&feature_conv, conv_out, net->feature_conv_state, features);
         compute_denormalize(&feature_norm, features);
@@ -372,6 +562,20 @@ MWDLP10NET_CYCVAE_EXPORT MWDLP10CycleVAEMelspExcitSpkNetState *mwdlp10cyclevaene
         }
         for (i=0;i<N_QUANTIZE;i++)
             mwdlp10net->mu_law_10_table[i] = mu_law_10_table[i];
+#if defined(WINDOWS_SYS)
+            if (!BCRYPT_SUCCESS(
+                BCryptOpenAlgorithmProvider(&mwdlp10net->rng_state.rng_prov, BCRYPT_RNG_ALGORITHM,
+                    NULL, 0))) {
+                /* handle error */
+                printf("error: cannot initialize bcrypt rng algo. provider\n");
+                exit(EXIT_FAILURE);
+            }
+#else
+            mwdlp10net->rng_state.xsubi[0] = (unsigned short int)(time(NULL) & 0xffff);
+            mwdlp10net->rng_state.xsubi[1] = (unsigned short int)((time(NULL) >> 16) & 0xffff);
+            mwdlp10net->rng_state.xsubi[2] = (unsigned short int)((time(NULL) >> 32) & 0xffff);
+            seed48_r(mwdlp10net->rng_state.xsubi, mwdlp10net->rng_state.drand_buffer);
+#endif    
         return mwdlp10net;
     }
     printf("Cannot allocate and initialize memory for MWDLP10CycleVAEMelspExcitSpkNetState.\n");
@@ -383,6 +587,9 @@ MWDLP10NET_CYCVAE_EXPORT MWDLP10CycleVAEMelspExcitSpkNetState *mwdlp10cyclevaene
 //PLT_Dec20
 MWDLP10NET_CYCVAE_EXPORT void mwdlp10cyclevaenet_destroy(MWDLP10CycleVAEMelspExcitSpkNetState *mwdlp10cyclevaenet)
 {
+#if defined(WINDOWS_SYS)
+    BCryptCloseAlgorithmProvider(mwdlp10cyclevaenet->rng_state.rng_prov, 0);
+#endif
     if (mwdlp10cyclevaenet != NULL) free(mwdlp10cyclevaenet);
 }
 
@@ -412,6 +619,20 @@ MWDLP10NET_CYCVAE_EXPORT MWDLP10NetState *mwdlp10net_create()
         }
         for (i=0;i<N_QUANTIZE;i++)
             mwdlp10net->mu_law_10_table[i] = mu_law_10_table[i];
+#if defined(WINDOWS_SYS)
+            if (!BCRYPT_SUCCESS(
+                BCryptOpenAlgorithmProvider(&mwdlp10net->rng_state.rng_prov, BCRYPT_RNG_ALGORITHM,
+                    NULL, 0))) {
+                /* handle error */
+                printf("error: cannot initialize bcrypt rng algo. provider\n");
+                exit(EXIT_FAILURE);
+            }
+#else
+            mwdlp10net->rng_state.xsubi[0] = (unsigned short int)(time(NULL) & 0xffff);
+            mwdlp10net->rng_state.xsubi[1] = (unsigned short int)((time(NULL) >> 16) & 0xffff);
+            mwdlp10net->rng_state.xsubi[2] = (unsigned short int)((time(NULL) >> 32) & 0xffff);
+            seed48_r(mwdlp10net->rng_state.xsubi, mwdlp10net->rng_state.drand_buffer);
+#endif    
         return mwdlp10net;
     }
     printf("Cannot allocate and initialize memory for MWDLP10NetState.\n");
@@ -423,6 +644,9 @@ MWDLP10NET_CYCVAE_EXPORT MWDLP10NetState *mwdlp10net_create()
 //PLT_Dec20
 MWDLP10NET_CYCVAE_EXPORT void mwdlp10net_destroy(MWDLP10NetState *mwdlp10net)
 {
+#if defined(WINDOWS_SYS)
+    BCryptCloseAlgorithmProvider(mwdlp10net->rng_state.rng_prov, 0);
+#endif
     if (mwdlp10net != NULL) free(mwdlp10net);
 }
 
@@ -431,19 +655,11 @@ MWDLP10NET_CYCVAE_EXPORT void mwdlp10net_destroy(MWDLP10NetState *mwdlp10net)
 MWDLP10NET_CYCVAE_EXPORT void cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(
     MWDLP10CycleVAEMelspExcitSpkNetState *mwdlp10net, float *features,
         float *spk_code_aux, short *output, int *n_output, int flag_last_frame)
-        //float *spk_code_aux, short *output, int *n_output, int flag_last_frame, int flag_melsp_out)
-        //float *spk_code_aux, short *output, int *n_output, int flag_last_frame, float *melsp_cv, float *lat_tmp, float *spk_tmp, float *conv_tmp, float *gru_tmp, float *f0_tmp)
-        //float *spk_code_aux, short *output, int *n_output, int flag_last_frame, float *melsp_cv)
-        //float *spk_code_aux, short *output, int *n_output, int flag_last_frame, float *melsp_cv, short *pcm_1, short *pcm_2, short *pcm_3, short *pcm_4)
-    //MWDLP10CycleVAEMelspExcitSpkNetState *mwdlp10net, const float *features,
+        //float *spk_code_aux, short *output, int *n_output, int flag_last_frame, float *melsp_in_tmp, float *conv_tmp, float *gru_tmp, float *lat_tmp, float *spk_in_tmp, float *spk_red_tmp, float *spk_conv_tmp, float *spk_gru_tmp, float *spk_out_tmp, float *spk_tmp, float *melsp_red_tmp, float *melsp_conv_tmp, float *melsp_gru_tmp, float *melsp_pdf_tmp, float *melsp_smpl_tmp)
 {
     int i, j, k, l, m;
     int coarse[N_MBANDS];
     int fine[N_MBANDS];
-    //float lat_excit_melsp[FEATURE_LAT_DIM_EXCIT_MELSP];
-    //float lat_excit_melsp[FEATURE_DIM_MELSP_LAT_EXCIT_MELSP];
-    //float melsp_cv[FEATURE_DIM_MELSP];
-    //float *melsp_cv = features;
     float pdf[SQRT_QUANTIZE_MBANDS];
     float gru_a_condition[RNN_MAIN_NEURONS_3];
     float gru_b_condition[RNN_SUB_NEURONS_3];
@@ -455,6 +671,7 @@ MWDLP10NET_CYCVAE_EXPORT void cyclevae_melsp_excit_spk_convert_mwdlp10net_synthe
     const EmbeddingLayer *prev_logits_f = &prev_logits_fine;
     MWDLP10NNetState *nnet = &mwdlp10net->nnet;
     CycleVAEMelspExcitSpkNNetState *cv_nnet = &mwdlp10net->cv_nnet;
+    RNGState *rng_state = &mwdlp10net->rng_state;
     int *last_coarse_mb_pt = &mwdlp10net->last_coarse[N_MBANDS];
     int *last_coarse_0_pt = &mwdlp10net->last_coarse[0];
     int *last_fine_mb_pt = &mwdlp10net->last_fine[N_MBANDS];
@@ -464,25 +681,20 @@ MWDLP10NET_CYCVAE_EXPORT void cyclevae_melsp_excit_spk_convert_mwdlp10net_synthe
     float *pqmf_state_mbsqr_pt = &mwdlp10net->pqmf_state[N_MBANDS_SQR];
     float *pqmf_state_ordmb_pt = &mwdlp10net->pqmf_state[PQMF_ORDER_MBANDS];
     const float *pqmf_synth_filter = (&pqmf_synthesis)->input_weights;
-    //printf("cv_synth a\n");
-    //printf("frame_count: %d\n", mwdlp10net->frame_count);
     if (mwdlp10net->cv_frame_count < FEATURE_CONV_VC_DELAY) { //stored input frames not yet reach delay (cyclevae)
-        float *mem_enc_melsp = cv_nnet->feature_conv_enc_melsp_state; //mem of stored input frames
-        float *mem_enc_excit = cv_nnet->feature_conv_enc_excit_state; //mem of stored input frames
-        //float in_c[FEATURE_DIM_MELSP];
-        //RNN_COPY(in_c, features, FEATURE_DIM_MELSP);
-        compute_normalize(&melsp_norm, features); //feature normalization
-        if (mwdlp10net->cv_frame_count == 0) //pad_first
+        if (mwdlp10net->cv_frame_count == 0) { //pad_first
+            compute_normalize(&melsp_norm, features); //feature normalization
+            float *mem_enc_melsp = cv_nnet->feature_conv_enc_melsp_state; //mem of stored input frames
+            float *mem_enc_excit = cv_nnet->feature_conv_enc_excit_state; //mem of stored input frames
             for (i=0;i<ENC_CONV_KERNEL_1;i++) { //store first input with replicate padding kernel_size-1
                 RNN_COPY(&mem_enc_melsp[i*FEATURE_DIM_MELSP], features, FEATURE_DIM_MELSP);
                 RNN_COPY(&mem_enc_excit[i*FEATURE_DIM_MELSP], features, FEATURE_DIM_MELSP);
             }
-        else {
-            float tmp_c[FEATURE_CONV_ENC_STATE_SIZE];
-            RNN_COPY(tmp_c, &mem_enc_melsp[FEATURE_DIM_MELSP], FEATURE_CONV_ENC_STATE_SIZE_1); //store previous input kernel_size-2
-            RNN_COPY(&tmp_c[FEATURE_CONV_ENC_STATE_SIZE_1], features, FEATURE_DIM_MELSP); //add new input
-            RNN_COPY(mem_enc_melsp, tmp_c, FEATURE_CONV_ENC_STATE_SIZE); //move to mem_enc_melsp
-            RNN_COPY(mem_enc_excit, tmp_c, FEATURE_CONV_ENC_STATE_SIZE); //move to mem_enc_excit
+            run_frame_network_cyclevae_melsp_excit_spk(cv_nnet, rng_state, features, spk_code_aux, 1); // for gru state pad 1st
+            //run_frame_network_cyclevae_melsp_excit_spk(cv_nnet, rng_state, features, spk_code_aux, 1, melsp_in_tmp, conv_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp); // for gru state pad 1st
+        } else {
+            run_frame_network_cyclevae_melsp_excit_spk(cv_nnet, rng_state, features, spk_code_aux, -1); // for gru state
+            //run_frame_network_cyclevae_melsp_excit_spk(cv_nnet, rng_state, features, spk_code_aux, -1, melsp_in_tmp, conv_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp); // for gru state
         }
         compute_denormalize(&melsp_norm, features); //feature normalization
         mwdlp10net->cv_frame_count++;
@@ -490,93 +702,21 @@ MWDLP10NET_CYCVAE_EXPORT void cyclevae_melsp_excit_spk_convert_mwdlp10net_synthe
         *n_output = 0;
         return ;
     } else if (mwdlp10net->cv_frame_count == FEATURE_CONV_VC_DELAY) {
-        //printf("cv_synth a0 %d %d %d %d\n", mwdlp10net->cv_frame_count, mwdlp10net->frame_count, FEATURE_CONV_VC_DELAY, FEATURE_CONV_ALL_DELAY);
-        //printf("cv_synth a1\n");
-        //run_frame_network_cyclevae_melsp_excit_spk(cv_nnet, features, spk_code_aux, melsp_cv, 1, lat_tmp, spk_tmp, conv_tmp, gru_tmp, f0_tmp); //convert melsp 1st frame
-        run_frame_network_cyclevae_melsp_excit_spk(cv_nnet, features, spk_code_aux, 1); //convert melsp 1st frame
-        //run_frame_network_cyclevae_melsp_excit_spk(cv_nnet, features, spk_code_aux, melsp_cv, 1, mwdlp10net); //convert melsp 1st frame
-        //printf("cv_synth a0 %d %d %d %d\n", mwdlp10net->cv_frame_count, mwdlp10net->frame_count, FEATURE_CONV_VC_DELAY, FEATURE_CONV_ALL_DELAY);
-        //printf("cv_synth a2\n");
-        //RNN_COPY(melsp_cv, features, FEATURE_DIM_MELSP);
-        //if (flag_melsp_out)
-        //    RNN_COPY(features, melsp_cv, FEATURE_DIM_MELSP);
-        //float in[FEATURES_DIM];
-        //float in_buffer[FEATURE_N_SPK_2_DIM_MELSP_LAT_EXCIT_MELSP];
-        //float in_out_buffer[FC_RED_IN_OUT_SIZE];
-        //float conv_out_buffer[CONV_RED_IN_OUT_SIZE];
-        //float out_buffer[FEATURES_DIM_2];
-        //float melsp_loc[FEATURES_DIM];
-        //float melsp_scale[FEATURES_DIM];
-        //RNN_COPY(in, melsp_cv, FEATURES_DIM);
-        //compute_normalize(&feature_norm, in);
-        //RNN_COPY(in_buffer, spk_code_aux, FEATURE_N_SPK_2);
-        //RNN_COPY(&lat_excit_melsp[FEATURE_LAT_DIM_EXCIT_MELSP], in, FEATURE_DIM_MELSP);
-        //RNN_COPY(&in_buffer[FEATURE_N_SPK_2], lat_excit_melsp, FEATURE_DIM_MELSP_LAT_EXCIT_MELSP);
-        //compute_dense(&fc_red_in, in_out_buffer, in_buffer);
-        //for (i=0;i<CONV_RED_KERNEL_1;i++) //store first input with replicate padding kernel_size-1
-        //    RNN_COPY(&nnet->conv_red_in_state[i*FC_RED_IN_OUT_SIZE], in_out_buffer, FC_RED_IN_OUT_SIZE);
-        //compute_conv1d_linear(&conv_red_in, conv_out_buffer, nnet->conv_red_in_state, in_out_buffer);
-        //compute_gru_red(&gru_red, nnet->gru_red_state, conv_out_buffer);
-        //compute_dense_linear(&fc_red_out, out_buffer, nnet->gru_red_state);
-        //compute_activation(melsp_loc, out_buffer, FEATURES_DIM, ACTIVATION_TANHSHRINK);
-        //compute_activation(melsp_scale, &out_buffer[FEATURES_DIM], FEATURES_DIM, ACTIVATION_SIGMOID_EXP);
-        //compute_denormalize(&melsp_norm, melsp_loc);
-        //compute_sampling_laplace(melsp_loc, melsp_scale, FEATURES_DIM);
-        //for (i=0;i<FEATURE_DIM_MELSP;i++) {
-        //    melsp_loc[i] += melsp_cv[i];
-        //}
-        //RNN_COPY(melsp_cv, melsp_loc, FEATURES_DIM);
-        //compute_normalize(&melsp_norm, melsp_loc);
-        //RNN_COPY(in, features, FEATURES_DIM);
+        run_frame_network_cyclevae_melsp_excit_spk(cv_nnet, rng_state, features, spk_code_aux, 0); //convert melsp 1st frame
+        //run_frame_network_cyclevae_melsp_excit_spk(cv_nnet, rng_state, features, spk_code_aux, 0, melsp_in_tmp, conv_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp); // convert melsp 1st frame
         compute_normalize(&feature_norm, features);
         for (i=0;i<CONV_KERNEL_1;i++) //store first input with replicate padding kernel_size-1
             RNN_COPY(&nnet->feature_conv_state[i*FEATURES_DIM], features, FEATURES_DIM);
         compute_denormalize(&feature_norm, features);
-        //compute_denormalize(&feature_norm, melsp_cv); //feature normalization
-        //printf("cv_synth a4a\n");
-        //printf("cv_synth a0 %d %d %d %d\n", mwdlp10net->cv_frame_count, mwdlp10net->frame_count, FEATURE_CONV_VC_DELAY, FEATURE_CONV_ALL_DELAY);
         if (mwdlp10net->frame_count < FEATURE_CONV_ALL_DELAY) { //stored input frames not yet reach delay (cyclevae+wvrnn)
-        //    printf("cv_synth a5a\n");
             mwdlp10net->cv_frame_count++;
             mwdlp10net->frame_count++;
             *n_output = 0;
-        //    printf("cv_synth a5\n");
             return;
-        } //if cyclevae+wavernn delay is reached, then wavernn delay is causal
+        }
     } else if (mwdlp10net->frame_count < FEATURE_CONV_ALL_DELAY) { //stored input frames not yet reach cyclevae+wavernn delay
-        //printf("cv_synth a6\n");
-        //run_frame_network_cyclevae_melsp_excit_spk(cv_nnet, features, spk_code_aux, melsp_cv, 0, lat_tmp, spk_tmp, conv_tmp, gru_tmp, f0_tmp); //convert melsp
-        run_frame_network_cyclevae_melsp_excit_spk(cv_nnet, features, spk_code_aux, 0); //convert melsp
-        //run_frame_network_cyclevae_melsp_excit_spk(cv_nnet, features, spk_code_aux, melsp_cv, 0, mwdlp10net); //convert melsp
-        //printf("cv_synth a7\n");
-        //RNN_COPY(melsp_cv, features, FEATURE_DIM_MELSP);
-        //if (flag_melsp_out)
-        //    RNN_COPY(features, melsp_cv, FEATURE_DIM_MELSP);
-        //float in[FEATURES_DIM];
-        //float in_buffer[FEATURE_N_SPK_2_DIM_MELSP_LAT_EXCIT_MELSP];
-        //float in_out_buffer[FC_RED_IN_OUT_SIZE];
-        //float conv_out_buffer[CONV_RED_IN_OUT_SIZE];
-        //float out_buffer[FEATURES_DIM_2];
-        //float melsp_loc[FEATURES_DIM];
-        //float melsp_scale[FEATURES_DIM];
-        //RNN_COPY(in, melsp_cv, FEATURES_DIM);
-        //compute_normalize(&feature_norm, in);
-        //RNN_COPY(in_buffer, spk_code_aux, FEATURE_N_SPK_2);
-        //RNN_COPY(&lat_excit_melsp[FEATURE_LAT_DIM_EXCIT_MELSP], in, FEATURE_DIM_MELSP);
-        //RNN_COPY(&in_buffer[FEATURE_N_SPK_2], lat_excit_melsp, FEATURE_DIM_MELSP_LAT_EXCIT_MELSP);
-        //compute_dense(&fc_red_in, in_out_buffer, in_buffer);
-        //compute_conv1d_linear(&conv_red_in, conv_out_buffer, nnet->conv_red_in_state, in_out_buffer);
-        //compute_gru_red(&gru_red, nnet->gru_red_state, conv_out_buffer);
-        //compute_dense_linear(&fc_red_out, out_buffer, nnet->gru_red_state);
-        //compute_activation(melsp_loc, out_buffer, FEATURES_DIM, ACTIVATION_TANHSHRINK);
-        //compute_activation(melsp_scale, &out_buffer[FEATURES_DIM], FEATURES_DIM, ACTIVATION_SIGMOID_EXP);
-        //compute_denormalize(&melsp_norm, melsp_loc);
-        //compute_sampling_laplace(melsp_loc, melsp_scale, FEATURES_DIM);
-        //for (i=0;i<FEATURE_DIM_MELSP;i++) {
-        //    melsp_loc[i] += melsp_cv[i];
-        //}
-        //RNN_COPY(melsp_cv, melsp_loc, FEATURES_DIM);
-        //compute_normalize(&melsp_norm, melsp_loc);
+        run_frame_network_cyclevae_melsp_excit_spk(cv_nnet, rng_state, features, spk_code_aux, 0); //convert melsp
+        //run_frame_network_cyclevae_melsp_excit_spk(cv_nnet, rng_state, features, spk_code_aux, 0, melsp_in_tmp, conv_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp); // convert melsp
         compute_normalize(&feature_norm, features);
         float *mem = nnet->feature_conv_state; //mem of stored input frames
         RNN_MOVE(mem, &mem[FEATURES_DIM], FEATURE_CONV_STATE_SIZE_1); //store previous input kernel_size-2
@@ -585,36 +725,24 @@ MWDLP10NET_CYCVAE_EXPORT void cyclevae_melsp_excit_spk_convert_mwdlp10net_synthe
         mwdlp10net->cv_frame_count++;
         mwdlp10net->frame_count++;
         *n_output = 0;
-        //compute_denormalize(&feature_norm, melsp_cv); //feature normalization
-        //printf("cv_synth a9\n");
         return;
     }
-    //printf("cv_synth b\n");
     //cyclevae+wavernn delay is reached
     if (!flag_last_frame) { //not last frame [decided by the section handling input waveform]
-        //printf("cv_synth c\n");
         if (FEATURE_CONV_ALL_DELAY_FLAG) //if wavernn delay is not causal, then always convert melsp once reached this portion
-            run_frame_network_cyclevae_melsp_excit_spk(cv_nnet, features, spk_code_aux, 0);
-            //run_frame_network_cyclevae_melsp_excit_spk(cv_nnet, features, spk_code_aux, melsp_cv, 0, lat_tmp, spk_tmp, conv_tmp, gru_tmp, f0_tmp);
-            //run_frame_network_cyclevae_melsp_excit_spk(cv_nnet, features, spk_code_aux, melsp_cv, 0, mwdlp10net);
-        //printf("cv_synth d\n");
-        //RNN_COPY(melsp_cv, features, FEATURE_DIM_MELSP);
-        //compute_normalize(&feature_norm, melsp_cv); //feature normalization
-        //if (flag_melsp_out)
-        //    RNN_COPY(features, melsp_cv, FEATURE_DIM_MELSP);
+            run_frame_network_cyclevae_melsp_excit_spk(cv_nnet, rng_state, features, spk_code_aux, 0);
+            //run_frame_network_cyclevae_melsp_excit_spk(cv_nnet, rng_state, features, spk_code_aux, 0, melsp_in_tmp, conv_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp);
         run_frame_network_mwdlp10(nnet, gru_a_condition, gru_b_condition, gru_c_condition, features, 0);
-        //printf("cv_synth e\n");
         for (i=0,m=0,*n_output=0;i<N_SAMPLE_BANDS;i++) {
-        //    printf("cv_synth f %d\n", i+1);
             //coarse
             run_sample_network_mwdlp10_coarse(nnet, a_embed_coarse, a_embed_fine, prev_logits_c, pdf,
                     gru_a_condition, gru_b_condition, mwdlp10net->last_coarse, mwdlp10net->last_fine);
             for (j=0;j<N_MBANDS;j++)
-                coarse[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE);
+                coarse[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE, rng_state);
             //fine
             run_sample_network_mwdlp10_fine(nnet, c_embed_coarse, prev_logits_f, pdf, gru_c_condition, coarse, mwdlp10net->last_fine);
             for (j=0;j<N_MBANDS;j++) {
-                fine[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE);
+                fine[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE, rng_state);
                 mwdlp10net->buffer_output[j] = mwdlp10net->mu_law_10_table[coarse[j] * SQRT_QUANTIZE + fine[j]]*N_MBANDS;
                 //if (j==0) pcm_1[i] = mwdlp10net->mu_law_10_table[coarse[j] * SQRT_QUANTIZE + fine[j]]*32768;
                 //else if (j==1) pcm_2[i] = mwdlp10net->mu_law_10_table[coarse[j] * SQRT_QUANTIZE + fine[j]]*32768;
@@ -639,7 +767,6 @@ MWDLP10NET_CYCVAE_EXPORT void cyclevae_melsp_excit_spk_convert_mwdlp10net_synthe
             //pqmf synthesis if its delay sufficient [stored previous generated samples in a multiple of NBANDS]
             //previous samples at least PQMF_DELAY, because current output contribute 1 at each band
             //which means right_side + current sufficient to cover center+right side samples
-            //printf("first_n_output: %d %d %d %d %d %d %d\n", PQMF_DELAY, FIRST_N_OUTPUT, FIRST_N_OUTPUT_MBANDS, PQMF_DELAY / N_MBANDS, PQMF_DELAY % N_MBANDS, (((PQMF_DELAY / N_MBANDS) + (PQMF_DELAY % N_MBANDS)) * N_MBANDS) / PQMF_DELAY, (140 % (PQMF_DELAY + 0)));
             if (mwdlp10net->sample_count >= PQMF_DELAY) {
                 if (mwdlp10net->first_flag > 0) {
                     //synthesis n=n_bands samples
@@ -659,7 +786,6 @@ MWDLP10NET_CYCVAE_EXPORT void cyclevae_melsp_excit_spk_convert_mwdlp10net_synthe
                         else if (tmp_out > 0.999969482421875) tmp_out = 0.999969482421875;
                         // 16bit pcm signed
                         output[m] = round(tmp_out * 32768);
-                //        printf("[%d] %d ", m, output[m]);
                     }
                 } else {
                     //synthesis first n=(((pqmf_delay / n_bands + pqmf_delay % n_bands) * n_bands) % pqmf_delay) samples
@@ -685,7 +811,6 @@ MWDLP10NET_CYCVAE_EXPORT void cyclevae_melsp_excit_spk_convert_mwdlp10net_synthe
                         else if (tmp_out > 0.999969482421875) tmp_out = 0.999969482421875;
                         //16bit pcm signed
                         output[m] = round(tmp_out * 32768);
-               //         printf("[%d] %d ", m, output[m]);
                     }
                     mwdlp10net->first_flag = 1;
                     *n_output += FIRST_N_OUTPUT;
@@ -706,14 +831,12 @@ MWDLP10NET_CYCVAE_EXPORT void cyclevae_melsp_excit_spk_convert_mwdlp10net_synthe
                         else if (tmp_out > 0.999969482421875) tmp_out = 0.999969482421875;
                         //16bit pcm signed
                         output[m] = round(tmp_out * 32768);
-                //        printf("[%d] %d ", m, output[m]);
                     }
                 }
                 //printf("\n");
                 *n_output += N_MBANDS;
             }
             mwdlp10net->sample_count += N_MBANDS;
-            //printf("cv_synth g\n");
         }    
     } else if (mwdlp10net->sample_count >= PQMF_DELAY) { //last frame [input waveform is ended,
         //    synthesize the delayed samples [frame-side and pqmf-side] if previous generated samples already reached PQMF delay]
@@ -721,21 +844,18 @@ MWDLP10NET_CYCVAE_EXPORT void cyclevae_melsp_excit_spk_convert_mwdlp10net_synthe
         //replicate_pad_right segmental_conv
         float *last_frame = &nnet->feature_conv_state[FEATURE_CONV_STATE_SIZE_1]; //for replicate pad_right
         for (l=0,m=0,*n_output=0;l<FEATURE_CONV_DELAY;l++) { //note that delay includes cyclevae+wavernn, if only neural vocoder discard cyclevae delay
-            //printf("cv_synth h %d\n", l+1);
             run_frame_network_mwdlp10(nnet, gru_a_condition, gru_b_condition, gru_c_condition, last_frame, 1);
-            //printf("cv_synth i\n");
             for (i=0;i<N_SAMPLE_BANDS;i++) {
-            //    printf("cv_synth j %d\n", i+1);
                 //coarse
                 run_sample_network_mwdlp10_coarse(nnet, a_embed_coarse, a_embed_fine, prev_logits_c, pdf,
                         gru_a_condition, gru_b_condition, mwdlp10net->last_coarse, mwdlp10net->last_fine);
                 for (j=0;j<N_MBANDS;j++)
-                    coarse[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE);
+                    coarse[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE, rng_state);
                 //fine
                 run_sample_network_mwdlp10_fine(nnet, c_embed_coarse, prev_logits_f, pdf, gru_c_condition, coarse,
                     mwdlp10net->last_fine);
                 for (j=0;j<N_MBANDS;j++) {
-                    fine[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE);
+                    fine[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE, rng_state);
                     //float,[-1,1),upsample-bands(x n_bands)
                     mwdlp10net->buffer_output[j] = mwdlp10net->mu_law_10_table[coarse[j] * SQRT_QUANTIZE + fine[j]]*N_MBANDS;
                 }
@@ -772,11 +892,9 @@ MWDLP10NET_CYCVAE_EXPORT void cyclevae_melsp_excit_spk_convert_mwdlp10net_synthe
         //zero_pad_right pqmf [last pqmf state size is PQMF_ORDER+PQMF_DELAY, i.e., 2*DELAY+DELAY
         //    because we want to synthesize DELAY number of samples, themselves require
         //    2*DELAY samples covering left- and right-sides of kaiser window]
-        //printf("cv_synth k\n");
         RNN_COPY(mwdlp10net->last_pqmf_state, &mwdlp10net->pqmf_state[N_MBANDS_SQR], PQMF_ORDER_MBANDS);
         //from [o_1,...,o_{2N},0] to [o_1,..,o_{N+1},0,...,0]; N=PQMF_DELAY=PQMF_ORDER//2=(TAPS-1)//2
         for  (i=0;i<PQMF_DELAY;i++,m++) {
-        //    printf("cv_synth l %d\n", i+1);
             tmp_out = 0;
             //pqmf_synth
             sgemv_accum(&tmp_out, pqmf_synth_filter, 1, TAPS_MBANDS, 1, &mwdlp10net->last_pqmf_state[i*N_MBANDS]);
@@ -793,7 +911,6 @@ MWDLP10NET_CYCVAE_EXPORT void cyclevae_melsp_excit_spk_convert_mwdlp10net_synthe
             output[m] = round(tmp_out * 32768);
         }
         *n_output += PQMF_DELAY;
-        //printf("cv_synth m\n");
     }
     return;
 }
@@ -816,6 +933,7 @@ MWDLP10NET_CYCVAE_EXPORT void mwdlp10net_synthesize(MWDLP10NetState *mwdlp10net,
     const EmbeddingLayer *prev_logits_c = &prev_logits_coarse;
     const EmbeddingLayer *prev_logits_f = &prev_logits_fine;
     MWDLP10NNetState *nnet = &mwdlp10net->nnet;
+    RNGState *rng_state = &mwdlp10net->rng_state;
     int *last_coarse_mb_pt = &mwdlp10net->last_coarse[N_MBANDS];
     int *last_coarse_0_pt = &mwdlp10net->last_coarse[0];
     int *last_fine_mb_pt = &mwdlp10net->last_fine[N_MBANDS];
@@ -827,20 +945,9 @@ MWDLP10NET_CYCVAE_EXPORT void mwdlp10net_synthesize(MWDLP10NetState *mwdlp10net,
     const float *pqmf_synth_filter = (&pqmf_synthesis)->input_weights;
     if (mwdlp10net->frame_count < FEATURE_CONV_DELAY) { //stored input frames not yet reach delay
         float *mem = nnet->feature_conv_state; //mem of stored input frames
-        //float in[FEATURES_DIM];
-        //RNN_COPY(in, features, FEATURES_DIM);
-        //compute_normalize(&feature_norm, in); //feature normalization
-        //float conv_in[FEATURES_DIM];
-        //float conv_in_in[FEATURE_CONV_IN_IN_OUT_SIZE];
-        //float conv_in_out[FEATURES_DIM];
-        //compute_dense(&feature_conv_in, conv_in, in);
-        //compute_dense(&feature_conv_in_in, conv_in_in, in);
-        //compute_dense(&feature_conv_in_out, conv_in_out, conv_in_in);
         compute_normalize(&feature_norm, features);
         if (mwdlp10net->frame_count == 0) //pad_first
             for (i=0;i<CONV_KERNEL_1;i++) //store first input with replicate padding kernel_size-1
-                //RNN_COPY(&mem[i*FEATURES_DIM], conv_in, FEATURES_DIM);
-                //RNN_COPY(&mem[i*FEATURES_DIM], conv_in_out, FEATURES_DIM);
                 RNN_COPY(&mem[i*FEATURES_DIM], features, FEATURES_DIM);
 
         else {
@@ -859,11 +966,11 @@ MWDLP10NET_CYCVAE_EXPORT void mwdlp10net_synthesize(MWDLP10NetState *mwdlp10net,
             run_sample_network_mwdlp10_coarse(nnet, a_embed_coarse, a_embed_fine, prev_logits_c, pdf,
                     gru_a_condition, gru_b_condition, mwdlp10net->last_coarse, mwdlp10net->last_fine);
             for (j=0;j<N_MBANDS;j++)
-                coarse[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE);
+                coarse[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE, rng_state);
             //fine
             run_sample_network_mwdlp10_fine(nnet, c_embed_coarse, prev_logits_f, pdf, gru_c_condition, coarse, mwdlp10net->last_fine);
             for (j=0;j<N_MBANDS;j++) {
-                fine[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE);
+                fine[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE, rng_state);
                 mwdlp10net->buffer_output[j] = mwdlp10net->mu_law_10_table[coarse[j] * SQRT_QUANTIZE + fine[j]]*N_MBANDS;
             }
             //update state of last_coarse and last_fine integer output
@@ -957,12 +1064,12 @@ MWDLP10NET_CYCVAE_EXPORT void mwdlp10net_synthesize(MWDLP10NetState *mwdlp10net,
                 run_sample_network_mwdlp10_coarse(nnet, a_embed_coarse, a_embed_fine, prev_logits_c, pdf,
                         gru_a_condition, gru_b_condition, mwdlp10net->last_coarse, mwdlp10net->last_fine);
                 for (j=0;j<N_MBANDS;j++)
-                    coarse[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE);
+                    coarse[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE, rng_state);
                 //fine
                 run_sample_network_mwdlp10_fine(nnet, c_embed_coarse, prev_logits_f, pdf, gru_c_condition, coarse,
                     mwdlp10net->last_fine);
                 for (j=0;j<N_MBANDS;j++) {
-                    fine[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE);
+                    fine[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE, rng_state);
                     //float,[-1,1),upsample-bands(x n_bands)
                     mwdlp10net->buffer_output[j] = mwdlp10net->mu_law_10_table[coarse[j] * SQRT_QUANTIZE + fine[j]]*N_MBANDS;
                 }
@@ -1025,6 +1132,7 @@ MWDLP10NET_CYCVAE_EXPORT void mwdlp10net_synthesize(MWDLP10NetState *mwdlp10net,
 MWDLP10NET_CYCVAE_EXPORT void cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(
     MWDLP10CycleVAEMelspExcitSpkNetState *mwdlp10net, float *features,
         float *spk_code_aux, short *output, int *n_output, int flag_last_frame)
+        //float *spk_code_aux, short *output, int *n_output, int flag_last_frame, float *melsp_in_tmp, float *conv_tmp, float *gru_tmp, float *lat_tmp, float *spk_in_tmp, float *spk_red_tmp, float *spk_conv_tmp, float *spk_gru_tmp, float *spk_out_tmp, float *spk_tmp, float *melsp_red_tmp, float *melsp_conv_tmp, float *melsp_gru_tmp, float *melsp_pdf_tmp, float *melsp_smpl_tmp)
 {
     int i, j, k, l, m;
     float pdf[SQRT_QUANTIZE_MBANDS];
@@ -1036,6 +1144,7 @@ MWDLP10NET_CYCVAE_EXPORT void cyclevae_melsp_excit_spk_convert_mwdlp10net_synthe
     const EmbeddingLayer *c_embed_coarse = &gru_c_embed_coarse;
     MWDLP10NNetState *nnet = &mwdlp10net->nnet;
     CycleVAEMelspExcitSpkNNetState *cv_nnet = &mwdlp10net->cv_nnet;
+    RNGState *rng_state = &mwdlp10net->rng_state;
     int *last_coarse_0_pt = &mwdlp10net->last_coarse[0];
     int *last_fine_0_pt = &mwdlp10net->last_fine[0];
     float tmp_out;
@@ -1044,20 +1153,19 @@ MWDLP10NET_CYCVAE_EXPORT void cyclevae_melsp_excit_spk_convert_mwdlp10net_synthe
     float *pqmf_state_ordmb_pt = &mwdlp10net->pqmf_state[PQMF_ORDER_MBANDS];
     const float *pqmf_synth_filter = (&pqmf_synthesis)->input_weights;
     if (mwdlp10net->cv_frame_count < FEATURE_CONV_VC_DELAY) { //stored input frames not yet reach delay (cyclevae)
-        float *mem_enc_melsp = cv_nnet->feature_conv_enc_melsp_state; //mem of stored input frames
-        float *mem_enc_excit = cv_nnet->feature_conv_enc_excit_state; //mem of stored input frames
         compute_normalize(&melsp_norm, features); //feature normalization
-        if (mwdlp10net->cv_frame_count == 0) //pad_first
+        if (mwdlp10net->cv_frame_count == 0) { //pad_first
+            float *mem_enc_melsp = cv_nnet->feature_conv_enc_melsp_state; //mem of stored input frames
+            float *mem_enc_excit = cv_nnet->feature_conv_enc_excit_state; //mem of stored input frames
             for (i=0;i<ENC_CONV_KERNEL_1;i++) { //store first input with replicate padding kernel_size-1
                 RNN_COPY(&mem_enc_melsp[i*FEATURE_DIM_MELSP], features, FEATURE_DIM_MELSP);
                 RNN_COPY(&mem_enc_excit[i*FEATURE_DIM_MELSP], features, FEATURE_DIM_MELSP);
             }
-        else {
-            float tmp_c[FEATURE_CONV_ENC_STATE_SIZE];
-            RNN_COPY(tmp_c, &mem_enc_melsp[FEATURE_DIM_MELSP], FEATURE_CONV_ENC_STATE_SIZE_1); //store previous input kernel_size-2
-            RNN_COPY(&tmp_c[FEATURE_CONV_ENC_STATE_SIZE_1], features, FEATURE_DIM_MELSP); //add new input
-            RNN_COPY(mem_enc_melsp, tmp_c, FEATURE_CONV_ENC_STATE_SIZE); //move to mem_enc_melsp
-            RNN_COPY(mem_enc_excit, tmp_c, FEATURE_CONV_ENC_STATE_SIZE); //move to mem_enc_excit
+            run_frame_network_cyclevae_melsp_excit_spk(cv_nnet, rng_state, features, spk_code_aux, 1); // for gru state pad 1st
+            //run_frame_network_cyclevae_melsp_excit_spk(cv_nnet, rng_state, features, spk_code_aux, 1, melsp_in_tmp, conv_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp); // for gru state pad 1st
+        } else {
+            run_frame_network_cyclevae_melsp_excit_spk(cv_nnet, rng_state, features, spk_code_aux, -1); // for gru state
+            //run_frame_network_cyclevae_melsp_excit_spk(cv_nnet, rng_state, features, spk_code_aux, -1, melsp_in_tmp, conv_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp); // for gru state
         }
         compute_denormalize(&melsp_norm, features); //feature normalization
         mwdlp10net->cv_frame_count++;
@@ -1065,7 +1173,8 @@ MWDLP10NET_CYCVAE_EXPORT void cyclevae_melsp_excit_spk_convert_mwdlp10net_synthe
         *n_output = 0;
         return ;
     } else if (mwdlp10net->cv_frame_count == FEATURE_CONV_VC_DELAY) {
-        run_frame_network_cyclevae_melsp_excit_spk(cv_nnet, features, spk_code_aux, 1); //convert melsp 1st frame
+        run_frame_network_cyclevae_melsp_excit_spk(cv_nnet, rng_state, features, spk_code_aux, 0); //convert melsp 1st frame
+        //run_frame_network_cyclevae_melsp_excit_spk(cv_nnet, rng_state, features, spk_code_aux, 0, melsp_in_tmp, conv_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp); // convert melsp 1st frame
         compute_normalize(&feature_norm, features);
         for (i=0;i<CONV_KERNEL_1;i++) //store first input with replicate padding kernel_size-1
             RNN_COPY(&nnet->feature_conv_state[i*FEATURES_DIM], features, FEATURES_DIM);
@@ -1077,7 +1186,8 @@ MWDLP10NET_CYCVAE_EXPORT void cyclevae_melsp_excit_spk_convert_mwdlp10net_synthe
             return;
         } //if cyclevae+wavernn delay is reached, then wavernn delay is causal
     } else if (mwdlp10net->frame_count < FEATURE_CONV_ALL_DELAY) { //stored input frames not yet reach cyclevae+wavernn delay
-        run_frame_network_cyclevae_melsp_excit_spk(cv_nnet, features, spk_code_aux, 0); //convert melsp
+        run_frame_network_cyclevae_melsp_excit_spk(cv_nnet, rng_state, features, spk_code_aux, 0); //convert melsp
+        //run_frame_network_cyclevae_melsp_excit_spk(cv_nnet, rng_state, features, spk_code_aux, 0, melsp_in_tmp, conv_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp); // convert melsp
         compute_normalize(&feature_norm, features);
         float *mem = nnet->feature_conv_state; //mem of stored input frames
         RNN_MOVE(mem, &mem[FEATURES_DIM], FEATURE_CONV_STATE_SIZE_1); //store previous input kernel_size-2
@@ -1091,18 +1201,19 @@ MWDLP10NET_CYCVAE_EXPORT void cyclevae_melsp_excit_spk_convert_mwdlp10net_synthe
     //cyclevae+wavernn delay is reached
     if (!flag_last_frame) { //not last frame [decided by the section handling input waveform]
         if (FEATURE_CONV_ALL_DELAY_FLAG) //if wavernn delay is not causal, then always convert melsp once reached this portion
-            run_frame_network_cyclevae_melsp_excit_spk(cv_nnet, features, spk_code_aux, 0);
+            run_frame_network_cyclevae_melsp_excit_spk(cv_nnet, rng_state, features, spk_code_aux, 0);
+            //run_frame_network_cyclevae_melsp_excit_spk(cv_nnet, rng_state, features, spk_code_aux, 0, melsp_in_tmp, conv_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp);
         run_frame_network_mwdlp10(nnet, gru_a_condition, gru_b_condition, gru_c_condition, features, 0);
         for (i=0,m=0,*n_output=0;i<N_SAMPLE_BANDS;i++) {
             //coarse
             run_sample_network_mwdlp10_coarse_nodlpc(nnet, a_embed_coarse, a_embed_fine, pdf,
                     gru_a_condition, gru_b_condition, last_coarse_0_pt, last_fine_0_pt);
             for (j=0;j<N_MBANDS;j++)
-                last_coarse_0_pt[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE);
+                last_coarse_0_pt[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE, rng_state);
             //fine
             run_sample_network_mwdlp10_fine_nodlpc(nnet, c_embed_coarse, pdf, gru_c_condition, last_coarse_0_pt);
             for (j=0;j<N_MBANDS;j++) {
-                last_fine_0_pt[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE);
+                last_fine_0_pt[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE, rng_state);
                 mwdlp10net->buffer_output[j] = mwdlp10net->mu_law_10_table[last_coarse_0_pt[j] * SQRT_QUANTIZE + last_fine_0_pt[j]]*N_MBANDS;
             }
             //update state of pqmf synthesis input
@@ -1193,11 +1304,11 @@ MWDLP10NET_CYCVAE_EXPORT void cyclevae_melsp_excit_spk_convert_mwdlp10net_synthe
                 run_sample_network_mwdlp10_coarse_nodlpc(nnet, a_embed_coarse, a_embed_fine, pdf,
                         gru_a_condition, gru_b_condition, last_coarse_0_pt, last_fine_0_pt);
                 for (j=0;j<N_MBANDS;j++)
-                    last_coarse_0_pt[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE);
+                    last_coarse_0_pt[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE, rng_state);
                 //fine
                 run_sample_network_mwdlp10_fine_nodlpc(nnet, c_embed_coarse, pdf, gru_c_condition, last_coarse_0_pt);
                 for (j=0;j<N_MBANDS;j++) {
-                    last_fine_0_pt[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE);
+                    last_fine_0_pt[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE, rng_state);
                     //float,[-1,1),upsample-bands(x n_bands)
                     mwdlp10net->buffer_output[j] = mwdlp10net->mu_law_10_table[last_coarse_0_pt[j] * SQRT_QUANTIZE + last_fine_0_pt[j]]*N_MBANDS;
                 }
@@ -1265,6 +1376,7 @@ MWDLP10NET_CYCVAE_EXPORT void mwdlp10net_synthesize_nodlpc(MWDLP10NetState *mwdl
     const EmbeddingLayer *a_embed_fine = &gru_a_embed_fine;
     const EmbeddingLayer *c_embed_coarse = &gru_c_embed_coarse;
     MWDLP10NNetState *nnet = &mwdlp10net->nnet;
+    RNGState *rng_state = &mwdlp10net->rng_state;
     int *last_coarse_0_pt = &mwdlp10net->last_coarse[0];
     int *last_fine_0_pt = &mwdlp10net->last_fine[0];
     float tmp_out;
@@ -1295,11 +1407,11 @@ MWDLP10NET_CYCVAE_EXPORT void mwdlp10net_synthesize_nodlpc(MWDLP10NetState *mwdl
             run_sample_network_mwdlp10_coarse_nodlpc(nnet, a_embed_coarse, a_embed_fine, pdf,
                     gru_a_condition, gru_b_condition, last_coarse_0_pt, last_fine_0_pt);
             for (j=0;j<N_MBANDS;j++)
-                last_coarse_0_pt[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE);
+                last_coarse_0_pt[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE, rng_state);
             //fine
             run_sample_network_mwdlp10_fine_nodlpc(nnet, c_embed_coarse, pdf, gru_c_condition, last_coarse_0_pt);
             for (j=0;j<N_MBANDS;j++) {
-                last_fine_0_pt[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE);
+                last_fine_0_pt[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE, rng_state);
                 mwdlp10net->buffer_output[j] = mwdlp10net->mu_law_10_table[last_coarse_0_pt[j] * SQRT_QUANTIZE + last_fine_0_pt[j]]*N_MBANDS;
             }
             //update state of last_coarse and last_fine integer output
@@ -1389,11 +1501,11 @@ MWDLP10NET_CYCVAE_EXPORT void mwdlp10net_synthesize_nodlpc(MWDLP10NetState *mwdl
                 run_sample_network_mwdlp10_coarse_nodlpc(nnet, a_embed_coarse, a_embed_fine, pdf,
                         gru_a_condition, gru_b_condition, last_coarse_0_pt, last_fine_0_pt);
                 for (j=0;j<N_MBANDS;j++)
-                    last_coarse_0_pt[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE);
+                    last_coarse_0_pt[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE, rng_state);
                 //fine
                 run_sample_network_mwdlp10_fine_nodlpc(nnet, c_embed_coarse, pdf, gru_c_condition, last_coarse_0_pt);
                 for (j=0;j<N_MBANDS;j++) {
-                    last_fine_0_pt[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE);
+                    last_fine_0_pt[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE, rng_state);
                     //float,[-1,1),upsample-bands(x n_bands)
                     mwdlp10net->buffer_output[j] = mwdlp10net->mu_law_10_table[last_coarse_0_pt[j] * SQRT_QUANTIZE + last_fine_0_pt[j]]*N_MBANDS;
                 }

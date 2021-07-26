@@ -23,8 +23,8 @@
    NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
    SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-/* Modified by Patrick Lumban Tobing (Nagoya University) on Dec. 2020,
-   marked by PLT_Dec20 */
+/* Modified by Patrick Lumban Tobing (Nagoya University) on Dec. 2020 - Jul. 2021,
+   marked by PLT_<Dec20/Jul21> */
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -57,8 +57,8 @@ DSPState *dspstate_create()
 {
     DSPState *dsp;
     dsp = (DSPState *) calloc(1,dspstate_get_size());
-    dsp->kfft = opus_fft_alloc_twiddles(FFT_LENGTH, NULL, NULL, NULL, 0);
     if (dsp != NULL) {
+        dsp->kfft = opus_fft_alloc_twiddles(FFT_LENGTH, NULL, NULL, NULL, 0);
         int i, j, k;
         for (i=0;i<HPASS_FILT_TAPS;i++)
             dsp->hpass_filt[i] = hpassfilt[i];
@@ -140,6 +140,7 @@ void shift_apply_window(DSPState *dsp, const float *x)
 }
 
 
+//PLT_Jul21
 void mel_spec_extract(DSPState *dsp, float *melsp)
 {
     int i, j, k;
@@ -148,18 +149,18 @@ void mel_spec_extract(DSPState *dsp, float *melsp)
     //printf("in_melsp_b\n");
     //cplx -> mag
     for (i=0;i<MAGSP_DIM;i++) {
-        //need to multiply by 2*10^3 here to match the output of librosa STFT
-        dsp->magsp[i] = sqrt(pow((dsp->out_fft[i].r*2000), 2) + pow((dsp->out_fft[i].i*2000), 2));
+        //need to multiply by 2.05*10^3 here to match the output of librosa STFT
+        dsp->magsp[i] = sqrt(pow((dsp->out_fft[i].r*2050), 2) + pow((dsp->out_fft[i].i*2050), 2));
     //    printf("in_melsp_c %d %f\n", i, dsp->magsp[i]);
     }
     //printf("in_melsp_d\n");
     //mag -> mel --> log(1+10000*mel)
     //int j, k;
-    for (i=0;i<MEL_DIM;i++) {
+    for (i=0,k=0;i<MEL_DIM;i++) {
     //  printf("in_melsp_f1 %d\n", i);
-      for (j=0,k=i*MAGSP_DIM,melsp[i]=0;j<MAGSP_DIM;j++) {
+      for (j=0,melsp[i]=0;j<MAGSP_DIM;j++,k++) {
     //        printf("in_melsp_g1 %d\n", j);
-          melsp[i] += dsp->magsp[j]*dsp->melfb[k+j];
+          melsp[i] += dsp->magsp[j]*dsp->melfb[k];
       //    printf("in_melsp_g1 %d %d %d %f %f\n", i, j, k, dsp->magsp[j], dsp->melfb[k+j]);
       }
       melsp[i] = log(1+10000*melsp[i]);

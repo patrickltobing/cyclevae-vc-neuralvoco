@@ -24,11 +24,13 @@
    NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
    SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-/* Modified by Patrick Lumban Tobing (Nagoya University) on Sept.-Dec. 2020 - Mar. 2021,
-   marked by PLT_<Sep20/Dec20/Mar21> */
+/* Modified by Patrick Lumban Tobing (Nagoya University) on Sept.-Dec. 2020 - Jul. 2021,
+   marked by PLT_<Sep20/Dec20/Mar21/Jul21> */
 
 #ifndef _NNET_H_
 #define _NNET_H_
+
+#include "arch.h"
 
 #define ACTIVATION_LINEAR  0
 #define ACTIVATION_SIGMOID 1
@@ -100,6 +102,16 @@ typedef struct {
   int dim;
 } EmbeddingLayer;
 
+//PLT_Jul21
+typedef struct {
+#ifdef WINDOWS_SYS
+    BCRYPT_ALG_HANDLE rng_prov;
+#else
+    unsigned short int xsubi[3];
+    struct drand48_data drand_buffer[1];
+#endif
+} RNGState;
+
 //PLT_Mar21
 void sgemv_accum16_(float *out, const float *weights, int rows, int cols, int col_stride, const float *x);
 void sgemv_accum(float *out, const float *weights, int rows, int cols, int col_stride, const float *x);
@@ -113,7 +125,7 @@ void compute_dense_linear(const DenseLayer *layer, float *output, const float *i
 
 //PLT_Mar21
 void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *fc_layer, const float *prev_logits,
-    float *output, const float *input, const int *last_output);
+    float *output, const float *input, const int *last_output, float* ddlpc);
 
 //PLT_Mar21
 void compute_mdense_mwdlp10_nodlpc(const MDenseLayerMWDLP10 *layer, const DenseLayer *fc_layer, float *output,
@@ -126,8 +138,8 @@ void compute_sparse_gru(const SparseGRULayer *gru, float *state, const float *in
 //PLT_Jun21
 void compute_conv1d_linear_frame_in(const Conv1DLayer *layer, float *output, float *mem, const float *input);
 
-//PLT_Sep20
-int sample_from_pdf_mwdlp(const float *pdf, int N);
+//PLT_Jul21
+int sample_from_pdf_mwdlp(const float *pdf, int N, RNGState *rng_state);
 
 //PLT_Dec20
 void compute_normalize(const NormStats *norm_stats, float *input_output);

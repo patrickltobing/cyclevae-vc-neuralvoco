@@ -25,8 +25,8 @@ mel_dim: 80
 alpha: 0.85
 
 ## GRU hidden units wavernn
-#hidden_units_wave: 704
-#hidden_units_wave: 832
+#hidden_units_wave: 864
+#hidden_units_wave: 896
 hidden_units_wave: 1184
 
 hidden_units_wave_2: 32

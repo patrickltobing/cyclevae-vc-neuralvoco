@@ -23,8 +23,8 @@
    NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
    SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-/* Modified by Patrick Lumban Tobing (Nagoya University) on Dec. 2020 - Mar. 2021,
-   marked by PLT_<Dec20/Jan21/Mar21> */
+/* Modified by Patrick Lumban Tobing (Nagoya University) on Dec. 2020 - Jul. 2021,
+   marked by PLT_<Dec20/Jul21> */
 
 //PLT_Dec20
 #ifndef _MWDLP10NET_H_
@@ -54,12 +54,14 @@ MWDLP10NET_EXPORT MWDLP10NetState *mwdlp10net_create();
 
 MWDLP10NET_EXPORT void mwdlp10net_destroy(MWDLP10NetState *mwdlp10net);
 
-//PLT_Jan21
+//PLT_Jul21
 MWDLP10NET_EXPORT void mwdlp10net_synthesize(MWDLP10NetState *st, const float *features,
     short *output, int *n_output, int flag_last_frame);
+    //short *output, int *n_output, int flag_last_frame, float *out_ddlpc_coarse, float *out_ddlpc_fine, short *pcm_band);
 
-//PLT_Mar21
+//PLT_Jul21
 MWDLP10NET_EXPORT void mwdlp10net_synthesize_nodlpc(MWDLP10NetState *st, const float *features,
     short *output, int *n_output, int flag_last_frame);
+    //short *output, int *n_output, int flag_last_frame, short *pcm_band);
 
 #endif

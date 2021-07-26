@@ -201,12 +201,46 @@ int main(int argc, char **argv) {
     // ignore spk-index option if interpolated is used
     if (cv_interp_flag) cv_point_flag = 0;
 
-    srand (time(NULL));
+    //srand (time(NULL));
     clock_t t = clock();
 
     short l, features_dim_1;
     if (print_melsp_flag) features_dim_1 = FEATURES_DIM - 1;
     long samples = 0;
+    /*
+    float melsp_in_tmp[FEATURES_DIM];
+    float conv_tmp[FEATURE_CONV_ENC_EXCIT_OUT_SIZE+FEATURE_CONV_ENC_EXCIT_OUT_SIZE];
+    float gru_tmp[SPARSE_GRU_ENC_EXCIT_STATE_SIZE+SPARSE_GRU_ENC_MELSP_STATE_SIZE];
+    float lat_tmp[FEATURE_LAT_DIM_EXCIT_MELSP];
+    float spk_in_tmp[FEATURE_SPK_LAT_DIM_EXCIT_MELSP];
+    float spk_red_tmp[FEATURE_RED_DIM];
+    float spk_conv_tmp[FEATURE_CONV_SPK_OUT_SIZE];
+    float spk_gru_tmp[GRU_SPK_STATE_SIZE];
+    float spk_out_tmp[FEATURE_N_WEIGHT_EMBED_SPK];
+    float spk_tmp[FEATURE_SPK_DIM_2];
+    float melsp_red_tmp[FEATURE_RED_DIM];
+    float melsp_conv_tmp[FEATURE_CONV_DEC_MELSP_OUT_SIZE];
+    float melsp_gru_tmp[SPARSE_GRU_DEC_MELSP_STATE_SIZE];
+    float melsp_pdf_tmp[FEATURES_DIM*2];
+    float melsp_smpl_tmp[FEATURES_DIM];
+    FILE *fout_magsp_tmp = fopen("magsp_tmp.txt", "w");
+    FILE *fout_melsp_tmp = fopen("melsp_tmp.txt", "w");
+    FILE *fout_melsp_in_tmp = fopen("melsp_in_tmp.txt", "w");
+    FILE *fout_conv_tmp = fopen("conv_tmp.txt", "w");
+    FILE *fout_gru_tmp = fopen("gru_tmp.txt", "w");
+    FILE *fout_lat_tmp = fopen("lat_tmp.txt", "w");
+    FILE *fout_spk_in_tmp = fopen("spk_in_tmp.txt", "w");
+    FILE *fout_spk_red_tmp = fopen("spk_red_tmp.txt", "w");
+    FILE *fout_spk_conv_tmp = fopen("spk_conv_tmp.txt", "w");
+    FILE *fout_spk_gru_tmp = fopen("spk_gru_tmp.txt", "w");
+    FILE *fout_spk_out_tmp = fopen("spk_out_tmp.txt", "w");
+    FILE *fout_spk_tmp = fopen("spk_tmp.txt", "w");
+    FILE *fout_melsp_red_tmp = fopen("melsp_red_tmp.txt", "w");
+    FILE *fout_melsp_conv_tmp = fopen("melsp_conv_tmp.txt", "w");
+    FILE *fout_melsp_gru_tmp = fopen("melsp_gru_tmp.txt", "w");
+    FILE *fout_melsp_pdf_tmp = fopen("melsp_pdf_tmp.txt", "w");
+    FILE *fout_melsp_smpl_tmp = fopen("melsp_smpl_tmp.txt", "w");
+    */
 
     if (wav_in_flag) { //waveform input
         short num_reflected_right_edge_samples;
@@ -395,8 +429,8 @@ int main(int argc, char **argv) {
 
                 // set spk-conditioning here
                 float spk_code_coeff[FEATURE_N_WEIGHT_EMBED_SPK];
-                float spk_code_aux[FEATURE_SPK_DIM];
-                RNN_COPY(spk_code_aux, (&embed_spk)->embedding_weights, FEATURE_SPK_DIM);
+                float spk_code_aux[FEATURE_SPK_DIM_2];
+                RNN_COPY(spk_code_aux, (&embed_spk_ti)->embedding_weights, FEATURE_SPK_DIM);
                 if (cv_point_flag) { //exact point spk-code location
                     float one_hot_code[FEATURE_N_SPK] = {0};
                     one_hot_code[spk_idx-1] = 1;
@@ -407,12 +441,7 @@ int main(int argc, char **argv) {
                     }
                     printf("\n");
                     compute_spkidtr(&fc_in_spk_code, &fc_in_spk_code_transform, &fc_out_spk_code_transform, spk_code_aux, spk_code_coeff, one_hot_code);
-                    printf("%d-dim coeff.: ", FEATURE_N_WEIGHT_EMBED_SPK);
-                    for (k = 0; k < FEATURE_N_WEIGHT_EMBED_SPK; k++) {
-                        printf("[%ld] %f ", k+1, spk_code_coeff[k]);
-                    }
-                    printf("\n");
-                    //printf("%d-dim embed.: ", FEATURE_SPK_DIM);
+                    //printf("%d-dim spk-embed.: ", FEATURE_SPK_DIM);
                     //for (k = 0; k < FEATURE_SPK_DIM; k++) {
                     //    printf("[%ld] %f ", k+1, spk_code_aux[k]);
                     //}
@@ -424,12 +453,7 @@ int main(int argc, char **argv) {
                     //2-dim --> N-dim [N_SPK]
                     printf("2-dim spk-coord: %f %f\n", spk_coord[0], spk_coord[1]);
                     compute_spkidtr_coord(&fc_out_spk_code_transform, spk_code_aux, spk_code_coeff, spk_coord);
-                    printf("%d-dim coeff.: ", FEATURE_N_WEIGHT_EMBED_SPK);
-                    for (k = 0; k < FEATURE_N_WEIGHT_EMBED_SPK; k++) {
-                        printf("[%ld] %f ", k+1, spk_code_coeff[k]);
-                    }
-                    printf("\n");
-                    //printf("%d-dim embed.: ", FEATURE_SPK_DIM);
+                    //printf("%d-dim spk-embed.: ", FEATURE_SPK_DIM);
                     //for (k = 0; k < FEATURE_SPK_DIM; k++) {
                     //    printf("[%ld] %f ", k+1, spk_code_aux[k]);
                     //}
@@ -476,8 +500,141 @@ int main(int argc, char **argv) {
                         if (waveform_buffer_flag) {
                             mel_spec_extract(dsp, features);
                 
+                            /*
+                            if (k > FEATURE_CONV_VC_DELAY) {
+                                for (l=0;l<MAGSP_DIM;l++) {
+                                    if (l < MAGSP_DIM-1) {
+                                        fprintf(fout_magsp_tmp, "%f ", dsp->magsp[l]);
+                                    } else {
+                                        fprintf(fout_magsp_tmp, "%f\n", dsp->magsp[l]);
+                                    }
+                                }
+                                for (l=0;l<FEATURES_DIM;l++) {
+                                    if (l < features_dim_1) {
+                                        //fprintf(fout_melsp_tmp, "%f ", (exp(features[l])-1)/10000);
+                                        fprintf(fout_melsp_tmp, "%f ", features[l]);
+                                    } else {
+                                        //fprintf(fout_melsp_tmp, "%f\n", (exp(features[l]-1)/10000));
+                                        fprintf(fout_melsp_tmp, "%f\n", features[l]);
+                                    }
+                                }
+                            }
+                            */
+
                             if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0);
                             else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, pcm, &n_output, 0);
+                            /*
+                            if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0, melsp_in_tmp, conv_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp);
+                            else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, pcm, &n_output, 0, melsp_in_tmp, conv_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp);
+
+                            if (k > FEATURE_CONV_VC_DELAY) {
+                                for (l=0;l<FEATURES_DIM;l++) {
+                                    if (l < features_dim_1) {
+                                        fprintf(fout_melsp_in_tmp, "%f ", melsp_in_tmp[l]);
+                                    } else {
+                                        fprintf(fout_melsp_in_tmp, "%f\n", melsp_in_tmp[l]);
+                                    }
+                                }
+                                for (l=0;l<FEATURE_CONV_ENC_EXCIT_OUT_SIZE+FEATURE_CONV_ENC_MELSP_OUT_SIZE;l++) {
+                                    if (l < FEATURE_CONV_ENC_EXCIT_OUT_SIZE+FEATURE_CONV_ENC_MELSP_OUT_SIZE-1) {
+                                        fprintf(fout_conv_tmp, "%f ", conv_tmp[l]);
+                                    } else {
+                                        fprintf(fout_conv_tmp, "%f\n", conv_tmp[l]);
+                                    }
+                                }
+                                for (l=0;l<SPARSE_GRU_ENC_EXCIT_STATE_SIZE+SPARSE_GRU_ENC_MELSP_STATE_SIZE;l++) {
+                                    if (l < SPARSE_GRU_ENC_EXCIT_STATE_SIZE+SPARSE_GRU_ENC_MELSP_STATE_SIZE-1) {
+                                        fprintf(fout_gru_tmp, "%f ", gru_tmp[l]);
+                                    } else {
+                                        fprintf(fout_gru_tmp, "%f\n", gru_tmp[l]);
+                                    }
+                                }
+                                for (l=0;l<FEATURE_LAT_DIM_EXCIT_MELSP;l++) {
+                                    if (l < FEATURE_LAT_DIM_EXCIT_MELSP-1) {
+                                        fprintf(fout_lat_tmp, "%f ", lat_tmp[l]);
+                                    } else {
+                                        fprintf(fout_lat_tmp, "%f\n", lat_tmp[l]);
+                                    }
+                                }
+                                for (l=0;l<FEATURE_SPK_LAT_DIM_EXCIT_MELSP;l++) {
+                                    if (l < FEATURE_SPK_LAT_DIM_EXCIT_MELSP-1) {
+                                        fprintf(fout_spk_in_tmp, "%f ", spk_in_tmp[l]);
+                                    } else {
+                                        fprintf(fout_spk_in_tmp, "%f\n", spk_in_tmp[l]);
+                                    }
+                                }
+                                for (l=0;l<FEATURE_RED_DIM;l++) {
+                                    if (l < FEATURE_RED_DIM-1) {
+                                        fprintf(fout_spk_red_tmp, "%f ", spk_red_tmp[l]);
+                                    } else {
+                                        fprintf(fout_spk_red_tmp, "%f\n", spk_red_tmp[l]);
+                                    }
+                                }
+                                for (l=0;l<FEATURE_CONV_SPK_OUT_SIZE;l++) {
+                                    if (l < FEATURE_CONV_SPK_OUT_SIZE-1) {
+                                        fprintf(fout_spk_conv_tmp, "%f ", spk_conv_tmp[l]);
+                                    } else {
+                                        fprintf(fout_spk_conv_tmp, "%f\n", spk_conv_tmp[l]);
+                                    }
+                                }
+                                for (l=0;l<GRU_SPK_STATE_SIZE;l++) {
+                                    if (l < GRU_SPK_STATE_SIZE-1) {
+                                        fprintf(fout_spk_gru_tmp, "%f ", spk_gru_tmp[l]);
+                                    } else {
+                                        fprintf(fout_spk_gru_tmp, "%f\n", spk_gru_tmp[l]);
+                                    }
+                                }
+                                for (l=0;l<FEATURE_N_WEIGHT_EMBED_SPK;l++) {
+                                    if (l < FEATURE_N_WEIGHT_EMBED_SPK-1) {
+                                        fprintf(fout_spk_out_tmp, "%f ", spk_out_tmp[l]);
+                                    } else {
+                                        fprintf(fout_spk_out_tmp, "%f\n", spk_out_tmp[l]);
+                                    }
+                                }
+                                for (l=0;l<FEATURE_SPK_DIM_2;l++) {
+                                    if (l < FEATURE_SPK_DIM_2-1) {
+                                        fprintf(fout_spk_tmp, "%f ", spk_tmp[l]);
+                                    } else {
+                                        fprintf(fout_spk_tmp, "%f\n", spk_tmp[l]);
+                                    }
+                                }
+                                for (l=0;l<FEATURE_RED_DIM;l++) {
+                                    if (l < FEATURE_RED_DIM-1) {
+                                        fprintf(fout_melsp_red_tmp, "%f ", melsp_red_tmp[l]);
+                                    } else {
+                                        fprintf(fout_melsp_red_tmp, "%f\n", melsp_red_tmp[l]);
+                                    }
+                                }
+                                for (l=0;l<FEATURE_CONV_DEC_MELSP_OUT_SIZE;l++) {
+                                    if (l < FEATURE_CONV_DEC_MELSP_OUT_SIZE-1) {
+                                        fprintf(fout_melsp_conv_tmp, "%f ", melsp_conv_tmp[l]);
+                                    } else {
+                                        fprintf(fout_melsp_conv_tmp, "%f\n", melsp_conv_tmp[l]);
+                                    }
+                                }
+                                for (l=0;l<SPARSE_GRU_DEC_MELSP_STATE_SIZE;l++) {
+                                    if (l < SPARSE_GRU_DEC_MELSP_STATE_SIZE-1) {
+                                        fprintf(fout_melsp_gru_tmp, "%f ", melsp_gru_tmp[l]);
+                                    } else {
+                                        fprintf(fout_melsp_gru_tmp, "%f\n", melsp_gru_tmp[l]);
+                                    }
+                                }
+                                for (l=0;l<FEATURES_DIM*2;l++) {
+                                    if (l < FEATURES_DIM*2-1) {
+                                        fprintf(fout_melsp_pdf_tmp, "%f ", melsp_pdf_tmp[l]);
+                                    } else {
+                                        fprintf(fout_melsp_pdf_tmp, "%f\n", melsp_pdf_tmp[l]);
+                                    }
+                                }
+                                for (l=0;l<FEATURES_DIM;l++) {
+                                    if (l < FEATURES_DIM-1) {
+                                        fprintf(fout_melsp_smpl_tmp, "%f ", melsp_smpl_tmp[l]);
+                                    } else {
+                                        fprintf(fout_melsp_smpl_tmp, "%f\n", melsp_smpl_tmp[l]);
+                                    }
+                                }
+                            }
+                            */
 
                             if (print_melsp_flag && k > FEATURE_CONV_VC_DELAY) {
                                 for (l=0;l<FEATURES_DIM;l++) {
@@ -539,8 +696,141 @@ int main(int argc, char **argv) {
                         features_last[l] = features[l];
                     }
 
+                    /*
+                    if (k > FEATURE_CONV_VC_DELAY) {
+                        for (l=0;l<MAGSP_DIM;l++) {
+                            if (l < MAGSP_DIM-1) {
+                                fprintf(fout_magsp_tmp, "%f ", dsp->magsp[l]);
+                            } else {
+                                fprintf(fout_magsp_tmp, "%f\n", dsp->magsp[l]);
+                            }
+                        }
+                        for (l=0;l<FEATURES_DIM;l++) {
+                            if (l < features_dim_1) {
+                                //fprintf(fout_melsp_tmp, "%f ", (exp(features[l])-1)/10000);
+                                fprintf(fout_melsp_tmp, "%f ", features[l]);
+                            } else {
+                                //fprintf(fout_melsp_tmp, "%f\n", (exp(features[l]-1)/10000));
+                                fprintf(fout_melsp_tmp, "%f\n", features[l]);
+                            }
+                        }
+                    }
+                    */
+
                     if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0);
                     else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, pcm, &n_output, 0);
+                    /*
+                    if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0, melsp_in_tmp, conv_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp);
+                    else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, pcm, &n_output, 0, melsp_in_tmp, conv_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp);
+
+                    if (k > FEATURE_CONV_VC_DELAY) {
+                        for (l=0;l<FEATURES_DIM;l++) {
+                            if (l < features_dim_1) {
+                                fprintf(fout_melsp_in_tmp, "%f ", melsp_in_tmp[l]);
+                            } else {
+                                fprintf(fout_melsp_in_tmp, "%f\n", melsp_in_tmp[l]);
+                            }
+                        }
+                        for (l=0;l<FEATURE_CONV_ENC_EXCIT_OUT_SIZE+FEATURE_CONV_ENC_MELSP_OUT_SIZE;l++) {
+                            if (l < FEATURE_CONV_ENC_EXCIT_OUT_SIZE+FEATURE_CONV_ENC_MELSP_OUT_SIZE-1) {
+                                fprintf(fout_conv_tmp, "%f ", conv_tmp[l]);
+                            } else {
+                                fprintf(fout_conv_tmp, "%f\n", conv_tmp[l]);
+                            }
+                        }
+                        for (l=0;l<SPARSE_GRU_ENC_EXCIT_STATE_SIZE+SPARSE_GRU_ENC_MELSP_STATE_SIZE;l++) {
+                            if (l < SPARSE_GRU_ENC_EXCIT_STATE_SIZE+SPARSE_GRU_ENC_MELSP_STATE_SIZE-1) {
+                                fprintf(fout_gru_tmp, "%f ", gru_tmp[l]);
+                            } else {
+                                fprintf(fout_gru_tmp, "%f\n", gru_tmp[l]);
+                            }
+                        }
+                        for (l=0;l<FEATURE_LAT_DIM_EXCIT_MELSP;l++) {
+                            if (l < FEATURE_LAT_DIM_EXCIT_MELSP-1) {
+                                fprintf(fout_lat_tmp, "%f ", lat_tmp[l]);
+                            } else {
+                                fprintf(fout_lat_tmp, "%f\n", lat_tmp[l]);
+                            }
+                        }
+                        for (l=0;l<FEATURE_SPK_LAT_DIM_EXCIT_MELSP;l++) {
+                            if (l < FEATURE_SPK_LAT_DIM_EXCIT_MELSP-1) {
+                                fprintf(fout_spk_in_tmp, "%f ", spk_in_tmp[l]);
+                            } else {
+                                fprintf(fout_spk_in_tmp, "%f\n", spk_in_tmp[l]);
+                            }
+                        }
+                        for (l=0;l<FEATURE_RED_DIM;l++) {
+                            if (l < FEATURE_RED_DIM-1) {
+                                fprintf(fout_spk_red_tmp, "%f ", spk_red_tmp[l]);
+                            } else {
+                                fprintf(fout_spk_red_tmp, "%f\n", spk_red_tmp[l]);
+                            }
+                        }
+                        for (l=0;l<FEATURE_CONV_SPK_OUT_SIZE;l++) {
+                            if (l < FEATURE_CONV_SPK_OUT_SIZE-1) {
+                                fprintf(fout_spk_conv_tmp, "%f ", spk_conv_tmp[l]);
+                            } else {
+                                fprintf(fout_spk_conv_tmp, "%f\n", spk_conv_tmp[l]);
+                            }
+                        }
+                        for (l=0;l<GRU_SPK_STATE_SIZE;l++) {
+                            if (l < GRU_SPK_STATE_SIZE-1) {
+                                fprintf(fout_spk_gru_tmp, "%f ", spk_gru_tmp[l]);
+                            } else {
+                                fprintf(fout_spk_gru_tmp, "%f\n", spk_gru_tmp[l]);
+                            }
+                        }
+                        for (l=0;l<FEATURE_N_WEIGHT_EMBED_SPK;l++) {
+                            if (l < FEATURE_N_WEIGHT_EMBED_SPK-1) {
+                                fprintf(fout_spk_out_tmp, "%f ", spk_out_tmp[l]);
+                            } else {
+                                fprintf(fout_spk_out_tmp, "%f\n", spk_out_tmp[l]);
+                            }
+                        }
+                        for (l=0;l<FEATURE_SPK_DIM_2;l++) {
+                            if (l < FEATURE_SPK_DIM_2-1) {
+                                fprintf(fout_spk_tmp, "%f ", spk_tmp[l]);
+                            } else {
+                                fprintf(fout_spk_tmp, "%f\n", spk_tmp[l]);
+                            }
+                        }
+                        for (l=0;l<FEATURE_RED_DIM;l++) {
+                            if (l < FEATURE_RED_DIM-1) {
+                                fprintf(fout_melsp_red_tmp, "%f ", melsp_red_tmp[l]);
+                            } else {
+                                fprintf(fout_melsp_red_tmp, "%f\n", melsp_red_tmp[l]);
+                            }
+                        }
+                        for (l=0;l<FEATURE_CONV_DEC_MELSP_OUT_SIZE;l++) {
+                            if (l < FEATURE_CONV_DEC_MELSP_OUT_SIZE-1) {
+                                fprintf(fout_melsp_conv_tmp, "%f ", melsp_conv_tmp[l]);
+                            } else {
+                                fprintf(fout_melsp_conv_tmp, "%f\n", melsp_conv_tmp[l]);
+                            }
+                        }
+                        for (l=0;l<SPARSE_GRU_DEC_MELSP_STATE_SIZE;l++) {
+                            if (l < SPARSE_GRU_DEC_MELSP_STATE_SIZE-1) {
+                                fprintf(fout_melsp_gru_tmp, "%f ", melsp_gru_tmp[l]);
+                            } else {
+                                fprintf(fout_melsp_gru_tmp, "%f\n", melsp_gru_tmp[l]);
+                            }
+                        }
+                        for (l=0;l<FEATURES_DIM*2;l++) {
+                            if (l < FEATURES_DIM*2-1) {
+                                fprintf(fout_melsp_pdf_tmp, "%f ", melsp_pdf_tmp[l]);
+                            } else {
+                                fprintf(fout_melsp_pdf_tmp, "%f\n", melsp_pdf_tmp[l]);
+                            }
+                        }
+                        for (l=0;l<FEATURES_DIM;l++) {
+                            if (l < FEATURES_DIM-1) {
+                                fprintf(fout_melsp_smpl_tmp, "%f ", melsp_smpl_tmp[l]);
+                            } else {
+                                fprintf(fout_melsp_smpl_tmp, "%f\n", melsp_smpl_tmp[l]);
+                            }
+                        }
+                    }
+                    */
 
                     if (print_melsp_flag) {
                         for (l=0;l<FEATURES_DIM;l++) {
@@ -567,8 +857,141 @@ int main(int argc, char **argv) {
                             features[l] = features_last[l];
                         }
 
+                        /*
+                        if (k > FEATURE_CONV_VC_DELAY) {
+                            for (l=0;l<MAGSP_DIM;l++) {
+                                if (l < MAGSP_DIM-1) {
+                                    fprintf(fout_magsp_tmp, "%f ", dsp->magsp[l]);
+                                } else {
+                                    fprintf(fout_magsp_tmp, "%f\n", dsp->magsp[l]);
+                                }
+                            }
+                            for (l=0;l<FEATURES_DIM;l++) {
+                                if (l < features_dim_1) {
+                                    //fprintf(fout_melsp_tmp, "%f ", (exp(features[l])-1)/10000);
+                                    fprintf(fout_melsp_tmp, "%f ", features[l]);
+                                } else {
+                                    //fprintf(fout_melsp_tmp, "%f\n", (exp(features[l]-1)/10000));
+                                    fprintf(fout_melsp_tmp, "%f\n", features[l]);
+                                }
+                            }
+                        }
+                        */
+
                         if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0);
                         else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, pcm, &n_output, 0);
+                        /*
+                        if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0, melsp_in_tmp, conv_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp);
+                        else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, pcm, &n_output, 0, melsp_in_tmp, conv_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp);
+
+                        if (k > FEATURE_CONV_VC_DELAY) {
+                            for (l=0;l<FEATURES_DIM;l++) {
+                                if (l < features_dim_1) {
+                                    fprintf(fout_melsp_in_tmp, "%f ", melsp_in_tmp[l]);
+                                } else {
+                                    fprintf(fout_melsp_in_tmp, "%f\n", melsp_in_tmp[l]);
+                                }
+                            }
+                            for (l=0;l<FEATURE_CONV_ENC_EXCIT_OUT_SIZE+FEATURE_CONV_ENC_MELSP_OUT_SIZE;l++) {
+                                if (l < FEATURE_CONV_ENC_EXCIT_OUT_SIZE+FEATURE_CONV_ENC_MELSP_OUT_SIZE-1) {
+                                    fprintf(fout_conv_tmp, "%f ", conv_tmp[l]);
+                                } else {
+                                    fprintf(fout_conv_tmp, "%f\n", conv_tmp[l]);
+                                }
+                            }
+                            for (l=0;l<SPARSE_GRU_ENC_EXCIT_STATE_SIZE+SPARSE_GRU_ENC_MELSP_STATE_SIZE;l++) {
+                                if (l < SPARSE_GRU_ENC_EXCIT_STATE_SIZE+SPARSE_GRU_ENC_MELSP_STATE_SIZE-1) {
+                                    fprintf(fout_gru_tmp, "%f ", gru_tmp[l]);
+                                } else {
+                                    fprintf(fout_gru_tmp, "%f\n", gru_tmp[l]);
+                                }
+                            }
+                            for (l=0;l<FEATURE_LAT_DIM_EXCIT_MELSP;l++) {
+                                if (l < FEATURE_LAT_DIM_EXCIT_MELSP-1) {
+                                    fprintf(fout_lat_tmp, "%f ", lat_tmp[l]);
+                                } else {
+                                    fprintf(fout_lat_tmp, "%f\n", lat_tmp[l]);
+                                }
+                            }
+                            for (l=0;l<FEATURE_SPK_LAT_DIM_EXCIT_MELSP;l++) {
+                                if (l < FEATURE_SPK_LAT_DIM_EXCIT_MELSP-1) {
+                                    fprintf(fout_spk_in_tmp, "%f ", spk_in_tmp[l]);
+                                } else {
+                                    fprintf(fout_spk_in_tmp, "%f\n", spk_in_tmp[l]);
+                                }
+                            }
+                            for (l=0;l<FEATURE_RED_DIM;l++) {
+                                if (l < FEATURE_RED_DIM-1) {
+                                    fprintf(fout_spk_red_tmp, "%f ", spk_red_tmp[l]);
+                                } else {
+                                    fprintf(fout_spk_red_tmp, "%f\n", spk_red_tmp[l]);
+                                }
+                            }
+                            for (l=0;l<FEATURE_CONV_SPK_OUT_SIZE;l++) {
+                                if (l < FEATURE_CONV_SPK_OUT_SIZE-1) {
+                                    fprintf(fout_spk_conv_tmp, "%f ", spk_conv_tmp[l]);
+                                } else {
+                                    fprintf(fout_spk_conv_tmp, "%f\n", spk_conv_tmp[l]);
+                                }
+                            }
+                            for (l=0;l<GRU_SPK_STATE_SIZE;l++) {
+                                if (l < GRU_SPK_STATE_SIZE-1) {
+                                    fprintf(fout_spk_gru_tmp, "%f ", spk_gru_tmp[l]);
+                                } else {
+                                    fprintf(fout_spk_gru_tmp, "%f\n", spk_gru_tmp[l]);
+                                }
+                            }
+                            for (l=0;l<FEATURE_N_WEIGHT_EMBED_SPK;l++) {
+                                if (l < FEATURE_N_WEIGHT_EMBED_SPK-1) {
+                                    fprintf(fout_spk_out_tmp, "%f ", spk_out_tmp[l]);
+                                } else {
+                                    fprintf(fout_spk_out_tmp, "%f\n", spk_out_tmp[l]);
+                                }
+                            }
+                            for (l=0;l<FEATURE_SPK_DIM_2;l++) {
+                                if (l < FEATURE_SPK_DIM_2-1) {
+                                    fprintf(fout_spk_tmp, "%f ", spk_tmp[l]);
+                                } else {
+                                    fprintf(fout_spk_tmp, "%f\n", spk_tmp[l]);
+                                }
+                            }
+                            for (l=0;l<FEATURE_RED_DIM;l++) {
+                                if (l < FEATURE_RED_DIM-1) {
+                                    fprintf(fout_melsp_red_tmp, "%f ", melsp_red_tmp[l]);
+                                } else {
+                                    fprintf(fout_melsp_red_tmp, "%f\n", melsp_red_tmp[l]);
+                                }
+                            }
+                            for (l=0;l<FEATURE_CONV_DEC_MELSP_OUT_SIZE;l++) {
+                                if (l < FEATURE_CONV_DEC_MELSP_OUT_SIZE-1) {
+                                    fprintf(fout_melsp_conv_tmp, "%f ", melsp_conv_tmp[l]);
+                                } else {
+                                    fprintf(fout_melsp_conv_tmp, "%f\n", melsp_conv_tmp[l]);
+                                }
+                            }
+                            for (l=0;l<SPARSE_GRU_DEC_MELSP_STATE_SIZE;l++) {
+                                if (l < SPARSE_GRU_DEC_MELSP_STATE_SIZE-1) {
+                                    fprintf(fout_melsp_gru_tmp, "%f ", melsp_gru_tmp[l]);
+                                } else {
+                                    fprintf(fout_melsp_gru_tmp, "%f\n", melsp_gru_tmp[l]);
+                                }
+                            }
+                            for (l=0;l<FEATURES_DIM*2;l++) {
+                                if (l < FEATURES_DIM*2-1) {
+                                    fprintf(fout_melsp_pdf_tmp, "%f ", melsp_pdf_tmp[l]);
+                                } else {
+                                    fprintf(fout_melsp_pdf_tmp, "%f\n", melsp_pdf_tmp[l]);
+                                }
+                            }
+                            for (l=0;l<FEATURES_DIM;l++) {
+                                if (l < FEATURES_DIM-1) {
+                                    fprintf(fout_melsp_smpl_tmp, "%f ", melsp_smpl_tmp[l]);
+                                } else {
+                                    fprintf(fout_melsp_smpl_tmp, "%f\n", melsp_smpl_tmp[l]);
+                                }
+                            }
+                        }
+                        */
 
                         if (print_melsp_flag) {
                             for (l=0;l<FEATURES_DIM;l++) {
@@ -591,8 +1014,12 @@ int main(int argc, char **argv) {
                     }
 
                     // last frame padding sample level
-                    if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 1); //last_frame_flag, synth pad_right
+                    if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 1);
                     else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, pcm, &n_output, 1);
+                    /*
+                    if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 1, melsp_in_tmp, conv_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp); //last_frame_flag, synth pad_right
+                    else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, pcm, &n_output, 1, melsp_in_tmp, conv_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp);
+                    */
 
                     if (n_output > 0)  {
                         fwrite(pcm, sizeof(pcm[0]), n_output, fout);
@@ -610,6 +1037,25 @@ int main(int argc, char **argv) {
 
                 fclose(fin);
                 fclose(fout);
+                /*
+                fclose(fout_conv_tmp);
+                fclose(fout_gru_tmp);
+                fclose(fout_lat_tmp);
+                fclose(fout_magsp_tmp);
+                fclose(fout_melsp_tmp);
+                fclose(fout_melsp_in_tmp);
+                fclose(fout_spk_in_tmp);
+                fclose(fout_spk_red_tmp);
+                fclose(fout_spk_conv_tmp);
+                fclose(fout_spk_gru_tmp);
+                fclose(fout_spk_out_tmp);
+                fclose(fout_spk_tmp);
+                fclose(fout_melsp_red_tmp);
+                fclose(fout_melsp_conv_tmp);
+                fclose(fout_melsp_gru_tmp);
+                fclose(fout_melsp_pdf_tmp);
+                fclose(fout_melsp_smpl_tmp);
+                */
                 if (print_melsp_flag) {
                     fclose(fout_msp_bin);
                     fclose(fout_msp_txt);
@@ -835,8 +1281,8 @@ int main(int argc, char **argv) {
 
                 // set spk-conditioning here
                 float spk_code_coeff[FEATURE_N_WEIGHT_EMBED_SPK];
-                float spk_code_aux[FEATURE_SPK_DIM];
-                RNN_COPY(spk_code_aux, (&embed_spk)->embedding_weights, FEATURE_SPK_DIM);
+                float spk_code_aux[FEATURE_SPK_DIM_2];
+                RNN_COPY(spk_code_aux, (&embed_spk_ti)->embedding_weights, FEATURE_SPK_DIM);
                 if (cv_point_flag) { //exact point spk-code location
                     float one_hot_code[FEATURE_N_SPK] = {0};
                     one_hot_code[spk_idx-1] = 1;
@@ -847,12 +1293,7 @@ int main(int argc, char **argv) {
                     }
                     printf("\n");
                     compute_spkidtr(&fc_in_spk_code, &fc_in_spk_code_transform, &fc_out_spk_code_transform, spk_code_aux, spk_code_coeff, one_hot_code);
-                    printf("%d-dim coeff.: ", FEATURE_N_WEIGHT_EMBED_SPK);
-                    for (k = 0; k < FEATURE_N_WEIGHT_EMBED_SPK; k++) {
-                        printf("[%ld] %f ", k+1, spk_code_coeff[k]);
-                    }
-                    printf("\n");
-                    //printf("%d-dim embed.: ", FEATURE_SPK_DIM);
+                    //printf("%d-dim spk-embed.: ", FEATURE_SPK_DIM);
                     //for (k = 0; k < FEATURE_SPK_DIM; k++) {
                     //    printf("[%ld] %f ", k+1, spk_code_aux[k]);
                     //}
@@ -864,12 +1305,7 @@ int main(int argc, char **argv) {
                     //2-dim --> N-dim [N_SPK]
                     printf("2-dim spk-coord: %f %f\n", spk_coord[0], spk_coord[1]);
                     compute_spkidtr_coord(&fc_out_spk_code_transform, spk_code_aux, spk_code_coeff, spk_coord);
-                    printf("%d-dim coeff.: ", FEATURE_N_WEIGHT_EMBED_SPK);
-                    for (k = 0; k < FEATURE_N_WEIGHT_EMBED_SPK; k++) {
-                        printf("[%ld] %f ", k+1, spk_code_coeff[k]);
-                    }
-                    printf("\n");
-                    //printf("%d-dim embed.: ", FEATURE_SPK_DIM);
+                    //printf("%d-dim spk-embed.: ", FEATURE_SPK_DIM);
                     //for (k = 0; k < FEATURE_SPK_DIM; k++) {
                     //    printf("[%ld] %f ", k+1, spk_code_aux[k]);
                     //}
@@ -957,6 +1393,10 @@ int main(int argc, char **argv) {
 
                             if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0);
                             else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, pcm, &n_output, 0);
+                            /*
+                            if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0, melsp_in_tmp, conv_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp);
+                            else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, pcm, &n_output, 0, melsp_in_tmp, conv_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp);
+                            */
                     
                             if (print_melsp_flag && k > FEATURE_CONV_VC_DELAY) {
                                 for (l=0;l<FEATURES_DIM;l++)
@@ -994,6 +1434,10 @@ int main(int argc, char **argv) {
 
                             if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0);
                             else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, pcm, &n_output, 0);
+                            /*
+                            if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0, melsp_in_tmp, conv_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp);
+                            else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, pcm, &n_output, 0, melsp_in_tmp, conv_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp);
+                            */
                     
                             if (print_melsp_flag && k >= FEATURE_CONV_VC_DELAY) {
                                 for (l=0;l<FEATURES_DIM;l++)
@@ -1044,6 +1488,10 @@ int main(int argc, char **argv) {
 
                         if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0);
                         else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, pcm, &n_output, 0);
+                        /*
+                        if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0, melsp_in_tmp, conv_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp);
+                        else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, pcm, &n_output, 0, melsp_in_tmp, conv_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp);
+                        */
 
                         if (print_melsp_flag && k >= FEATURE_CONV_VC_DELAY) {
                             for (l=0;l<FEATURES_DIM;l++) {
@@ -1066,8 +1514,12 @@ int main(int argc, char **argv) {
                     }
 
                     // last frame padding sample level
-                    if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 1); //last_frame_flag, synth pad_right
+                    if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 1);
                     else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, pcm, &n_output, 1);
+                    /*
+                    if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 1, melsp_in_tmp, conv_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp); //last_frame_flag, synth pad_right
+                    else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, pcm, &n_output, 1, melsp_in_tmp, conv_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp);
+                    */
 
                     if (n_output > 0)  {
                         fwrite(pcm, sizeof(pcm[0]), n_output, fout);

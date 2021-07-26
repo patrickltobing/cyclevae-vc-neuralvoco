@@ -60,6 +60,13 @@ int main(int argc, char **argv) {
     short melsp_bin_in_flag = 0, melsp_txt_in_flag = 0;
     short print_melsp_flag = 0;
     int n_argc = argc;
+    /*
+    int m; 
+    short idx; 
+    FILE* fout_ddlpc_coarse[N_MBANDS];
+    FILE* fout_ddlpc_fine[N_MBANDS];
+    FILE* fout_band[N_MBANDS];
+    */
     FILE *fin = NULL, *fout = NULL, *fout_msp_bin = NULL, *fout_msp_txt = NULL;
 
     if ((cmnd = strrchr(argv[0], '/')) == NULL) {
@@ -129,6 +136,46 @@ int main(int argc, char **argv) {
            } else if (argc == 1) {
                 //file handler wav output
                 fout = fopen(*argv, "wb");
+                /*
+                size_t len_argv = strlen(*argv)-4;
+                //printf("%ld\n", len_argv);
+                size_t len_name_coarse = len_argv+16+1+4+1;
+                size_t len_name_fine = len_argv+14+1+4+1;
+                size_t len_name_band = len_argv+3+1+4+1;
+                char fout_name_coarse[N_MBANDS][len_name_coarse]; //remove .wav ext + _ddlpc_coarse_B-<>.txt
+                char fout_name_fine[N_MBANDS][len_name_fine]; //remove .wav ext + _ddlpc_fine_B-<>.txt
+                char fout_name_band[N_MBANDS][len_name_band]; //remove .wav ext + _B-<>.txt
+                char tmp_name[len_argv+1];
+                //strncpy(tmp_name, *argv, len_argv);
+                strcpy(tmp_name, *argv);
+                tmp_name[len_argv] = '\0';
+                //printf("%s\n", tmp_name);
+                for (idx=0; idx<N_MBANDS; idx++) {
+                    sprintf(fout_name_coarse[idx], "%s%s%d%s", tmp_name, "_ddlpc_coarse_B-", idx+1, ".txt");
+                    sprintf(fout_name_fine[idx], "%s%s%d%s", tmp_name, "_ddlpc_fine_B-", idx+1, ".txt");
+                    sprintf(fout_name_band[idx], "%s%s%d%s", tmp_name, "_B-", idx+1, ".wav");
+                    fout_name_coarse[idx][len_name_coarse] = '\0';
+                    fout_name_fine[idx][len_name_fine] = '\0';
+                    fout_name_band[idx][len_name_band] = '\0';
+                //    printf("%d %s %s %s %s\n", idx, tmp_name, fout_name_coarse[idx], fout_name_fine[idx], fout_name_band[idx]);
+                    fout_ddlpc_coarse[idx] = fopen(fout_name_coarse[idx], "w");
+                    if (fout_ddlpc_coarse[idx] == NULL) {
+                        fprintf(stderr, "Can't open fout_ddlpc_coarse %s\n", fout_name_coarse[idx]);
+                        exit(1);
+                    }
+                    fout_ddlpc_fine[idx] = fopen(fout_name_fine[idx], "w");
+                    if (fout_ddlpc_fine[idx] == NULL) {
+                        fprintf(stderr, "Can't open fout_ddlpc_fine %s\n", fout_name_fine[idx]);
+                        exit(1);
+                    }
+                    fout_band[idx] = fopen(fout_name_band[idx], "wb");
+                    if (fout_band[idx] == NULL) {
+                        fprintf(stderr, "Can't open fout_band %s\n", fout_name_band[idx]);
+                        exit(1);
+                    }
+                }
+                //exit(1);
+                */
                 if (fout == NULL) {
                     fprintf(stderr, "Can't open fout %s\n", *argv);
                     if (print_melsp_flag) {
@@ -181,10 +228,16 @@ int main(int argc, char **argv) {
         long num_samples, size_of_each_sample;
 
         //read wave header input and initialize wave output header
+        /*
+        for (idx=0; idx<N_MBANDS; idx++) {
+            read_write_wav_band(fin, fout_band[idx], N_MBANDS);
+        }
+        */
         if (read_write_wav(fin, fout, &num_reflected_right_edge_samples, &num_samples, &size_of_each_sample)) {
 
             float features[FEATURES_DIM];
             short pcm[MAX_N_OUTPUT]; //output is in short 2-byte (16-bit) format [-32768,32767]
+            //short pcm_band[N_MBANDS*N_SAMPLE_BANDS];
             short first_buffer_flag = 0;
             short waveform_buffer_flag = 0;
             int n_output = 0;
@@ -193,6 +246,8 @@ int main(int argc, char **argv) {
             char data_buffer[size_of_each_sample];
             float x_buffer[FRAME_SHIFT];
             int read = 0;
+            //float out_ddlpc_coarse[N_SAMPLE_BANDS*LPC_ORDER_MBANDS];
+            //float out_ddlpc_fine[N_SAMPLE_BANDS*LPC_ORDER_MBANDS];
 
             // initialize waveform-->features processing struct
             DSPState *dsp;
@@ -245,6 +300,8 @@ int main(int argc, char **argv) {
 
                         if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 0);
                         else mwdlp10net_synthesize_nodlpc(net, features, pcm, &n_output, 0);
+                        //if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 0, out_ddlpc_coarse, out_ddlpc_fine, pcm_band);
+                        //else mwdlp10net_synthesize_nodlpc(net, features, pcm, &n_output, 0, pcm_band);
 
                         if (print_melsp_flag) {
                             for (l=0;l<FEATURES_DIM;l++) {
@@ -263,6 +320,20 @@ int main(int argc, char **argv) {
                         if (n_output > 0)  { //delay is reached, samples are generated
                             fwrite(pcm, sizeof(pcm[0]), n_output, fout);
                             samples += n_output;
+                            /*
+                            for (idx=0, m=0; idx<N_MBANDS; idx++) {
+                                for (l=0; l<DLPC_ORDER; l++, m++) {
+                                    if (l < DLPC_ORDER-1) {
+                                        fprintf(fout_ddlpc_coarse[idx], "%f ", out_ddlpc_coarse[m]);
+                                        fprintf(fout_ddlpc_fine[idx], "%f ", out_ddlpc_fine[m]);
+                                    } else {
+                                        fprintf(fout_ddlpc_coarse[idx], "%f\n", out_ddlpc_coarse[m]);
+                                        fprintf(fout_ddlpc_fine[idx], "%f\n", out_ddlpc_fine[m]);
+                                    }
+                                }
+                                fwrite(&pcm_band[idx*N_SAMPLE_BANDS], sizeof(pcm_band[0]), N_SAMPLE_BANDS, fout_band[idx]);
+                            }
+                            */
                         }
 
                         waveform_buffer_flag = 0;
@@ -271,6 +342,13 @@ int main(int argc, char **argv) {
                     fprintf(stderr, "\nError reading file. %d bytes -- %ld -- %ld\n", read, i+1, num_samples);
                     fclose(fin);
                     fclose(fout);
+                    /*
+                    for (idx=0; idx<N_MBANDS; idx++) {
+                        fclose(fout_ddlpc_coarse[idx]);
+                        fclose(fout_ddlpc_fine[idx]);
+                        fclose(fout_band[idx]);
+                    }
+                    */
                     if (print_melsp_flag) {
                         fclose(fout_msp_bin);
                         fclose(fout_msp_txt);
@@ -293,6 +371,13 @@ int main(int argc, char **argv) {
                     fprintf(stderr, "\nError remainder right-edge samples calculation %ld %d %d\n", j, FRAME_SHIFT, num_reflected_right_edge_samples);
                     fclose(fin);
                     fclose(fout);
+                    /*
+                    for (idx=0; idx<N_MBANDS; idx++) {
+                        fclose(fout_ddlpc_coarse[idx]);
+                        fclose(fout_ddlpc_fine[idx]);
+                        fclose(fout_band[idx]);
+                    }
+                    */
                     if (print_melsp_flag) {
                         fclose(fout_msp_bin);
                         fclose(fout_msp_txt);
@@ -306,14 +391,32 @@ int main(int argc, char **argv) {
 
                 if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 0);
                 else mwdlp10net_synthesize_nodlpc(net, features, pcm, &n_output, 0);
+                //if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 0, out_ddlpc_coarse, out_ddlpc_fine, pcm_band);
+                //else mwdlp10net_synthesize_nodlpc(net, features, pcm, &n_output, 0, pcm_band);
 
                 if (n_output > 0)  {
                     fwrite(pcm, sizeof(pcm[0]), n_output, fout);
                     samples += n_output;
+                    /*
+                    for (idx=0, m=0; idx<N_MBANDS; idx++) {
+                        for (l=0; l<DLPC_ORDER; l++, m++) {
+                            if (l < DLPC_ORDER-1) {
+                                fprintf(fout_ddlpc_coarse[idx], "%f ", out_ddlpc_coarse[m]);
+                                fprintf(fout_ddlpc_fine[idx], "%f ", out_ddlpc_fine[m]);
+                            } else {
+                                fprintf(fout_ddlpc_coarse[idx], "%f\n", out_ddlpc_coarse[m]);
+                                fprintf(fout_ddlpc_fine[idx], "%f\n", out_ddlpc_fine[m]);
+                            }
+                        }
+                        fwrite(&pcm_band[idx*N_SAMPLE_BANDS], sizeof(pcm_band[0]), N_SAMPLE_BANDS, fout_band[idx]);
+                    }
+                    */
                 }
 
                 if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 1); //last_frame_flag, synth pad_right
                 else mwdlp10net_synthesize_nodlpc(net, features, pcm, &n_output, 1);
+                //if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 1, out_ddlpc_coarse, out_ddlpc_fine, pcm_band); //last_frame_flag, synth pad_right
+                //else mwdlp10net_synthesize_nodlpc(net, features, pcm, &n_output, 1, pcm_band);
 
                 if (print_melsp_flag) {
                     for (l=0;l<FEATURES_DIM;l++) {
@@ -332,6 +435,20 @@ int main(int argc, char **argv) {
                 if (n_output > 0)  {
                     fwrite(pcm, sizeof(pcm[0]), n_output, fout);
                     samples += n_output;
+                    /*
+                    for (idx=0, m=0; idx<N_MBANDS; idx++) {
+                        for (l=0; l<DLPC_ORDER; l++, m++) {
+                            if (l < DLPC_ORDER-1) {
+                                fprintf(fout_ddlpc_coarse[idx], "%f ", out_ddlpc_coarse[m]);
+                                fprintf(fout_ddlpc_fine[idx], "%f ", out_ddlpc_fine[m]);
+                            } else {
+                                fprintf(fout_ddlpc_coarse[idx], "%f\n", out_ddlpc_coarse[m]);
+                                fprintf(fout_ddlpc_fine[idx], "%f\n", out_ddlpc_fine[m]);
+                            }
+                        }
+                        fwrite(&pcm_band[idx*N_SAMPLE_BANDS], sizeof(pcm_band[0]), N_SAMPLE_BANDS, fout_band[idx]);
+                    }
+                    */
                 }
             }
     
@@ -345,6 +462,13 @@ int main(int argc, char **argv) {
 
             fclose(fin);
             fclose(fout);
+            /*
+            for (idx=0; idx<N_MBANDS; idx++) {
+                fclose(fout_ddlpc_coarse[idx]);
+                fclose(fout_ddlpc_fine[idx]);
+                fclose(fout_band[idx]);
+            }
+            */
             if (print_melsp_flag) {
                 fclose(fout_msp_bin);
                 fclose(fout_msp_txt);
@@ -362,13 +486,21 @@ int main(int argc, char **argv) {
         long num_frame;
 
         //read input features and initialize wave output header
+        /*
+        for (idx=0; idx<N_MBANDS; idx++) {
+            read_feat_write_wav_band(fin, fout_band[idx], melsp_bin_in_flag, N_MBANDS);
+        }
+        */
         if ((num_frame = read_feat_write_wav(fin, fout, melsp_bin_in_flag)) > 0) {
 
             float features[FEATURES_DIM];
             short pcm[MAX_N_OUTPUT]; //output is in short 2-byte (16-bit) format [-32768,32767]
+            //short pcm_band[N_MBANDS*N_SAMPLE_BANDS];
             int n_output = 0;
             short i, j;
             long k;
+            //float out_ddlpc_coarse[N_SAMPLE_BANDS*LPC_ORDER_MBANDS];
+            //float out_ddlpc_fine[N_SAMPLE_BANDS*LPC_ORDER_MBANDS];
 
             // initialize mwdlp struct
             MWDLP10NetState *net;
@@ -450,6 +582,8 @@ int main(int argc, char **argv) {
 
                         if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 0);
                         else mwdlp10net_synthesize_nodlpc(net, features, pcm, &n_output, 0);
+                        //if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 0, out_ddlpc_coarse, out_ddlpc_fine, pcm_band);
+                        //else mwdlp10net_synthesize_nodlpc(net, features, pcm, &n_output, 0, pcm_band);
                 
                         //if (print_melsp_flag) {
                         //    for (l=0;l<FEATURES_DIM;l++)
@@ -465,6 +599,20 @@ int main(int argc, char **argv) {
                         if (n_output > 0)  { //delay is reached, samples are generated
                             fwrite(pcm, sizeof(pcm[0]), n_output, fout);
                             samples += n_output;
+                            /*
+                            for (idx=0, m=0; idx<N_MBANDS; idx++) {
+                                for (l=0; l<DLPC_ORDER; l++, m++) {
+                                    if (l < DLPC_ORDER-1) {
+                                        fprintf(fout_ddlpc_coarse[idx], "%f ", out_ddlpc_coarse[m]);
+                                        fprintf(fout_ddlpc_fine[idx], "%f ", out_ddlpc_fine[m]);
+                                    } else {
+                                        fprintf(fout_ddlpc_coarse[idx], "%f\n", out_ddlpc_coarse[m]);
+                                        fprintf(fout_ddlpc_fine[idx], "%f\n", out_ddlpc_fine[m]);
+                                    }
+                                }
+                                fwrite(&pcm_band[idx*N_SAMPLE_BANDS], sizeof(pcm_band[0]), N_SAMPLE_BANDS, fout_band[idx]);
+                            }
+                            */
                         }
 
                         frame = 0;
@@ -482,7 +630,9 @@ int main(int argc, char **argv) {
 
                         if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 0);
                         else mwdlp10net_synthesize_nodlpc(net, features, pcm, &n_output, 0);
-                
+                        //if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 0, out_ddlpc_coarse, out_ddlpc_fine, pcm_band);
+                        //else mwdlp10net_synthesize_nodlpc(net, features, pcm, &n_output, 0, pcm_band);
+
                         //if (print_melsp_flag) {
                         //    for (l=0;l<FEATURES_DIM;l++)
                         //        features[l] = (exp(features[l])-1)/10000;
@@ -497,12 +647,33 @@ int main(int argc, char **argv) {
                         if (n_output > 0)  { //delay is reached, samples are generated
                             fwrite(pcm, sizeof(pcm[0]), n_output, fout);
                             samples += n_output;
+                            /*
+                            for (idx=0, m=0; idx<N_MBANDS; idx++) {
+                                for (l=0; l<DLPC_ORDER; l++, m++) {
+                                    if (l < DLPC_ORDER-1) {
+                                        fprintf(fout_ddlpc_coarse[idx], "%f ", out_ddlpc_coarse[m]);
+                                        fprintf(fout_ddlpc_fine[idx], "%f ", out_ddlpc_fine[m]);
+                                    } else {
+                                        fprintf(fout_ddlpc_coarse[idx], "%f\n", out_ddlpc_coarse[m]);
+                                        fprintf(fout_ddlpc_fine[idx], "%f\n", out_ddlpc_fine[m]);
+                                    }
+                                }
+                                fwrite(&pcm_band[idx*N_SAMPLE_BANDS], sizeof(pcm_band[0]), N_SAMPLE_BANDS, fout_band[idx]);
+                            }
+                            */
                         }
                     } else {
                         fprintf(stderr, "\nError reading input. %d %ld -- %ld\n", read, num_frame, k+1);
                         //free(buffer);
                         fclose(fin);
                         fclose(fout);
+                        /*
+                        for (idx=0; idx<N_MBANDS; idx++) {
+                            fclose(fout_ddlpc_coarse[idx]);
+                            fclose(fout_ddlpc_fine[idx]);
+                            fclose(fout_band[idx]);
+                        }
+                        */
                         //if (print_melsp_flag) {
                         //    fclose(fout_msp_bin);
                         //    fclose(fout_msp_txt);
@@ -515,6 +686,13 @@ int main(int argc, char **argv) {
                 fprintf(stderr, "\nError input option %d -- %d -- %d\n", wav_in_flag, melsp_bin_in_flag, melsp_txt_in_flag);
                 fclose(fin);
                 fclose(fout);
+                /*
+                for (idx=0; idx<N_MBANDS; idx++) {
+                    fclose(fout_ddlpc_coarse[idx]);
+                    fclose(fout_ddlpc_fine[idx]);
+                    fclose(fout_band[idx]);
+                }
+                */
                 //if (print_melsp_flag) {
                 //    fclose(fout_msp_bin);
                 //    fclose(fout_msp_txt);
@@ -526,16 +704,39 @@ int main(int argc, char **argv) {
             if (k == num_frame) {
                 if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 1); //last_frame_flag, synth pad_right
                 else mwdlp10net_synthesize_nodlpc(net, features, pcm, &n_output, 1);
+                //if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 1, out_ddlpc_coarse, out_ddlpc_fine, pcm_band); //last_frame_flag, synth pad_right
+                //else mwdlp10net_synthesize_nodlpc(net, features, pcm, &n_output, 1, pcm_band);
 
                 if (n_output > 0)  {
                     fwrite(pcm, sizeof(pcm[0]), n_output, fout);
                     samples += n_output;
+                    /*
+                    for (idx=0, m=0; idx<N_MBANDS; idx++) {
+                        for (l=0; l<DLPC_ORDER; l++, m++) {
+                            if (l < DLPC_ORDER-1) {
+                                fprintf(fout_ddlpc_coarse[idx], "%f ", out_ddlpc_coarse[m]);
+                                fprintf(fout_ddlpc_fine[idx], "%f ", out_ddlpc_fine[m]);
+                            } else {
+                                fprintf(fout_ddlpc_coarse[idx], "%f\n", out_ddlpc_coarse[m]);
+                                fprintf(fout_ddlpc_fine[idx], "%f\n", out_ddlpc_fine[m]);
+                            }
+                        }
+                        fwrite(&pcm_band[idx*N_SAMPLE_BANDS], sizeof(pcm_band[0]), N_SAMPLE_BANDS, fout_band[idx]);
+                    }
+                    */
                 }
             } else {
                 fprintf(stderr, "\nError input frames  %ld -- %ld\n", k, num_frame);
                 //free(buffer);
                 fclose(fin);
                 fclose(fout);
+                /*
+                for (idx=0; idx<N_MBANDS; idx++) {
+                    fclose(fout_ddlpc_coarse[idx]);
+                    fclose(fout_ddlpc_fine[idx]);
+                    fclose(fout_band[idx]);
+                }
+                */
                 //if (print_melsp_flag) {
                 //    fclose(fout_msp_bin);
                 //    fclose(fout_msp_txt);
@@ -555,6 +756,13 @@ int main(int argc, char **argv) {
             //free(buffer);
             fclose(fin);
             fclose(fout);
+            /*
+            for (idx=0; idx<N_MBANDS; idx++) {
+                fclose(fout_ddlpc_coarse[idx]);
+                fclose(fout_ddlpc_fine[idx]);
+                fclose(fout_band[idx]);
+            }
+            */
             //if (print_melsp_flag) {
             //    fclose(fout_msp_bin);
             //    fclose(fout_msp_txt);

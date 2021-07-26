@@ -251,7 +251,7 @@ set -e
 
 if [ `echo ${stage} | grep 0` ] || [ `echo ${stage} | grep 4` ];then
 echo $mdl_name_vc
-if [ $mdl_name_vc == "cycmelspxlf0capspkvae-gauss-smpl_sparse_noct_weightemb_v2" ]; then
+if [ $mdl_name_vc == "cycmelspxlf0capspkvae-gauss-smpl_sparse_weightemb_v3" ]; then
     setting_vc=${mdl_name_vc}_${data_name}_lr${lr}_bs${batch_size}_lat${lat_dim}_late${lat_dim_e}_hue${hidden_units_enc}_hud${hidden_units_dec}_huf${hidden_units_lf0}_kse${kernel_size_enc}_ksd${kernel_size_dec}_ksf${kernel_size_lf0}_rse${right_size_enc}_rsd${right_size_dec}_rsf${right_size_lf0}_do${do_prob}_st${step_count}_mel${mel_dim}_nhcyc${n_half_cyc}_s${spkidtr_dim}_e${emb_spk_dim}_w${n_weight_emb}_ts${t_start_cycvae}_te${t_end_cycvae}_i${interval_cycvae}_d${densities_cycvae}_ns${n_stage_cycvae}
 fi
 expdir_vc=exp/tr_${setting_vc}
@@ -287,7 +287,7 @@ fi
 
 
 echo $mdl_name_ft
-if [ $mdl_name_ft == "cycmelspspkvae-gauss-smpl_sparse_noct_weightemb_mwdlp_smpl_v2" ]; then
+if [ $mdl_name_ft == "cycmelspspkvae-gauss-smpl_sparse_weightemb_mwdlp_smpl_v3" ]; then
     setting_ft=${mdl_name_ft}_${data_name}_lr${lr}_bs${batch_size_wave}_lat${lat_dim}_late${lat_dim_e}_hue${hidden_units_enc}_hud${hidden_units_dec}_huw${hidden_units_wave}_kse${kernel_size_enc}_ksd${kernel_size_dec}_ksw${kernel_size_wave}_rse${right_size_enc}_rsd${right_size_dec}_rsw${right_size_wave}_st${step_count_wave}_nhcyc${n_half_cyc}_s${spkidtr_dim}_e${emb_spk_dim}_w${n_weight_emb}_ts${t_start}_te${t_end}_i${interval}_d${densities_cycvae}_ns${n_stage}_${min_idx_cycvae}-${min_idx_wave}
 fi
 expdir_ft=exp/tr_${setting_ft}

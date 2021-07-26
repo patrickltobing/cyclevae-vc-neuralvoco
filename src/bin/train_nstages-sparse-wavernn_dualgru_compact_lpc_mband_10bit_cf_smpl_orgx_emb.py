@@ -509,7 +509,8 @@ def main():
     module_list += list(model_waveform.gru.parameters())
     module_list += list(model_waveform.gru_2.parameters()) + list(model_waveform.out.parameters())
     module_list += list(model_waveform.gru_f.parameters()) + list(model_waveform.out_f.parameters())
-    module_list += list(model_waveform.logits_c.parameters()) + list(model_waveform.logits_f.parameters())
+    if args.lpc > 0:
+        module_list += list(model_waveform.logits_c.parameters()) + list(model_waveform.logits_f.parameters())
     #module_list += list(model_waveform.logits_sgns_c.parameters()) + list(model_waveform.logits_mags_c.parameters())
     #module_list += list(model_waveform.logits_sgns_f.parameters()) + list(model_waveform.logits_mags_f.parameters())
 
@@ -1130,18 +1131,17 @@ def main():
             if (not sparse_min_flag) and (iter_idx + 1 >= t_ends[idx_stage]):
                 sparse_check_flag = True
             if (not sparse_min_flag and sparse_check_flag) \
-                or ((round(float(round(Decimal(str(eval_loss_err_avg)),2))-0.28,2) <= float(round(Decimal(str(min_eval_loss_err_avg)),2))) and \
-                    (round(float(round(Decimal(str(eval_loss_l1_avg)),2))-0.06,2) <= float(round(Decimal(str(min_eval_loss_l1_avg)),2))) and \
-                    (round(float(round(Decimal(str(eval_loss_l1_fb)),2))-0.09,2) <= float(round(Decimal(str(min_eval_loss_l1_fb)),2))) and \
-                    (round(float(round(Decimal(str(eval_loss_ce_avg+eval_loss_ce_avg_std)),2))-0.01,2) <= float(round(Decimal(str(min_eval_loss_ce_avg+min_eval_loss_ce_avg_std)),2)) \
-                        or round(float(round(Decimal(str(eval_loss_ce_avg)),2))-0.01,2) <= float(round(Decimal(str(min_eval_loss_ce_avg)),2)))):
-                round_eval_loss_err_avg = float(round(Decimal(str(eval_loss_err_avg)),2))
-                round_min_eval_loss_err_avg = float(round(Decimal(str(min_eval_loss_err_avg)),2))
-                if (round_eval_loss_err_avg <= round_min_eval_loss_err_avg) or (not err_flag and round_eval_loss_err_avg > round_min_eval_loss_err_avg) or (not sparse_min_flag and sparse_check_flag):
+                or (float(round(Decimal(str(eval_loss_err_avg-min_eval_loss_err_avg)),2)) <= 0.28 and \
+                    float(round(Decimal(str(eval_loss_l1_avg-min_eval_loss_l1_avg)),2)) <= 0.06 and \
+                    float(round(Decimal(str(eval_loss_l1_fb-min_eval_loss_l1_fb)),2)) <= 0.09 and \
+                    (float(round(Decimal(str(eval_loss_ce_avg+eval_loss_ce_avg_std-(min_eval_loss_ce_avg+min_eval_loss_ce_avg_std))),2)) <= 0.01 or \
+                        float(round(Decimal(str(eval_loss_ce_avg-min_eval_loss_ce_avg)),2)) <= 0.01)):
+                round_eval_loss_min_eval_err_avg = float(round(Decimal(str(eval_loss_err_avg-min_eval_loss_err_avg)),2))
+                if (round_eval_loss_min_eval_err_avg <= 0) or not err_flag or (not sparse_min_flag and sparse_check_flag):
                     if sparse_min_flag:
-                        if round_eval_loss_err_avg > round_min_eval_loss_err_avg:
+                        if round_eval_loss_min_eval_err_avg > 0:
                             err_flag = True
-                        elif round_eval_loss_err_avg <= round_min_eval_loss_err_avg:
+                        elif round_eval_loss_min_eval_err_avg <= 0:
                             err_flag = False
                     elif sparse_check_flag:
                         sparse_min_flag = True
