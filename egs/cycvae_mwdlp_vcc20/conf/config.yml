@@ -44,8 +44,8 @@ hidden_units_wave: 1024
 hidden_units_wave_2: 32
 
 ## Output dimension of FC layer before GRU for wavernn
-s_dim: 256
-#s_dim: 320
+#s_dim: 256
+s_dim: 320
 
 ## Output dimension of DualFC before final FC layer
 mid_dim: 16
