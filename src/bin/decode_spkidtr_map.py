@@ -107,7 +107,7 @@ def main():
     with torch.no_grad():
         model_spkidtr = SPKID_TRANSFORM_LAYER(
             n_spk=n_spk,
-            emb_dim=config.emb_spk_dim,
+            emb_dim=config.emb_spk_dim_ti,
             n_weight_emb=config.n_weight_emb,
             conv_emb_flag=True,
             spkidtr_dim=config.spkidtr_dim)

@@ -511,6 +511,8 @@ def main():
                         type=int, help="batch size (if set 0, utterance batch will be used)")
     parser.add_argument("--right_size_wave", default=0,
                         type=int, help="kernel size of dilated causal convolution")
+    parser.add_argument("--s_dim", default=256,
+                        type=int, help="kernel size of dilated causal convolution")
     parser.add_argument("--mid_dim", default=32,
                         type=int, help="kernel size of dilated causal convolution")
     parser.add_argument("--n_stage", default=4,
@@ -521,7 +523,9 @@ def main():
                         type=int, help="iter idx to finish densitiy sparsify")
     parser.add_argument("--interval", default=10,
                         type=int, help="interval in finishing densitiy sparsify")
-    parser.add_argument("--densities", default="0.685-0.685-0.88",
+    parser.add_argument("--densities_enc", default="0.225-0.25-0.3",
+                        type=str, help="final densitiy of reset, update, new hidden gate matrices")
+    parser.add_argument("--densities_dec", default="0.225-0.225-0.3",
                         type=str, help="final densitiy of reset, update, new hidden gate matrices")
     parser.add_argument("--fftl", default=2048,
                         type=int, help="kernel size of dilated causal convolution")
@@ -616,11 +620,13 @@ def main():
     args.interval = args.interval // args.n_half_cyc
     args.step_count = args.step_count // args.n_half_cyc
     logging.info(f'{args.t_start} {args.t_end} {args.interval} {args.step_count}')
-    args.factor = 0.35
+    args.factor = 0.4
     args.t_start = max(math.ceil(args.t_start * args.factor),1)
     args.t_end = max(math.ceil(args.t_end * args.factor),1)
     args.interval = max(math.ceil(args.interval * args.factor),1)
-    args.step_count = max(math.ceil(args.t_end * 3.8),1)
+    args.step_count = max(math.ceil(args.t_end * 3.6),1)
+    args.emb_spk_dim_tv = args.lat_dim + args.lat_dim_e
+    args.emb_spk_dim_ti = ((args.emb_spk_dim_tv*2) // args.n_weight_emb)*args.n_weight_emb
     logging.info(f'{args.t_start} {args.t_end} {args.interval} {args.step_count}')
     torch.save(args, args.expdir + "/model.conf")
 
@@ -652,8 +658,8 @@ def main():
     model_decoder_melsp = GRU_SPEC_DECODER(
         feat_dim=args.lat_dim+args.lat_dim_e,
         out_dim=args.mel_dim,
-        n_spk=(args.emb_spk_dim//args.n_weight_emb)*args.n_weight_emb,
-        aux_dim=(args.emb_spk_dim//args.n_weight_emb)*args.n_weight_emb,
+        n_spk=args.emb_spk_dim_ti,
+        aux_dim=args.emb_spk_dim_tv,
         hidden_layers=args.hidden_layers_dec,
         hidden_units=args.hidden_units_dec,
         kernel_size=args.kernel_size_dec,
@@ -690,14 +696,14 @@ def main():
     logging.info(model_encoder_excit)
     model_spkidtr = SPKID_TRANSFORM_LAYER(
         n_spk=n_spk,
-        emb_dim=args.emb_spk_dim,
+        emb_dim=args.emb_spk_dim_ti,
         n_weight_emb=args.n_weight_emb,
         conv_emb_flag=True,
         spkidtr_dim=args.spkidtr_dim)
     logging.info(model_spkidtr)
     model_classifier = GRU_LAT_FEAT_CLASSIFIER(
         lat_dim=args.lat_dim+args.lat_dim_e,
-        spk_aux_dim=(args.emb_spk_dim//args.n_weight_emb)*args.n_weight_emb,
+        spk_aux_dim=args.emb_spk_dim_tv,
         feat_dim=args.mel_dim,
         feat_aux_dim=args.fftl//2+1,
         n_spk=n_spk,
@@ -705,7 +711,8 @@ def main():
         hidden_layers=1)
     logging.info(model_classifier)
     model_spk = GRU_SPK(
-        n_spk=(args.emb_spk_dim//args.n_weight_emb)*args.n_weight_emb,
+        n_spk=args.emb_spk_dim_ti,
+        dim_out=args.emb_spk_dim_tv,
         feat_dim=args.lat_dim+args.lat_dim_e,
         hidden_units=32,
         kernel_size=args.kernel_size_spk,
@@ -714,8 +721,6 @@ def main():
         pad_first=True,
         right_size=args.right_size_spk,
         red_dim=args.mel_dim,
-        n_weight_emb=args.n_weight_emb,
-        weight_fact=1,
         do_prob=args.do_prob)
     logging.info(model_spk)
     model_waveform = GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(
@@ -732,6 +737,7 @@ def main():
         n_bands=args.n_bands,
         pad_first=True,
         emb_flag=True,
+        s_dim=args.s_dim,
         mid_dim=args.mid_dim)
     logging.info(model_waveform)
     criterion_gauss = GaussLoss(dim=args.mel_dim)
@@ -892,18 +898,17 @@ def main():
         param.requires_grad = True
     for param in model_encoder_excit.scale_in.parameters():
         param.requires_grad = False
-    #for param in model_spkidtr.parameters():
-    #    param.requires_grad = False
     for param in model_waveform.parameters():
         param.requires_grad = False
 
-    module_list = list(model_encoder_melsp.conv.parameters())
+    module_list = list(model_encoder_melsp.conv.parameters()) + list(model_encoder_melsp.conv_s_c.parameters())
     module_list += list(model_encoder_melsp.gru.parameters()) + list(model_encoder_melsp.out.parameters())
 
     module_list += list(model_decoder_melsp.in_red_upd.parameters()) + list(model_decoder_melsp.conv.parameters())
+    module_list += list(model_decoder_melsp.conv_s_c.parameters())
     module_list += list(model_decoder_melsp.gru.parameters()) + list(model_decoder_melsp.out.parameters())
 
-    module_list += list(model_encoder_excit.conv.parameters())
+    module_list += list(model_encoder_excit.conv.parameters()) + list(model_encoder_excit.conv_s_c.parameters())
     module_list += list(model_encoder_excit.gru.parameters()) + list(model_encoder_excit.out.parameters())
 
     if (args.spkidtr_dim > 0):
@@ -914,8 +919,8 @@ def main():
                         + list(model_spkidtr.embed_spk.parameters())
 
     module_list += list(model_spk.in_red.parameters()) + list(model_spk.conv.parameters())
+    module_list += list(model_spk.conv_s_c.parameters())
     module_list += list(model_spk.gru.parameters()) + list(model_spk.out.parameters())
-    module_list += list(model_spk.embed_spk.parameters())
 
     module_list += list(model_classifier.conv_lat.parameters()) + list(model_classifier.conv_feat.parameters())
     module_list += list(model_classifier.conv_spk_aux.parameters()) + list(model_classifier.conv_feat_aux.parameters())
@@ -985,8 +990,8 @@ def main():
     n_data = len(feat_list)
     if n_data >= 225:
         batch_size_utt = round(n_data/150)
-        if batch_size_utt > 45:
-            batch_size_utt = 45
+        if batch_size_utt > 30:
+            batch_size_utt = 30
     else:
         batch_size_utt = 1
     logging.info("number of training_data -- batch_size = %d -- %d " % (n_data, batch_size_utt))
@@ -995,6 +1000,10 @@ def main():
                     wav_list=wav_list, pad_wav_transform=pad_wav_transform, wav_transform=wav_transform, pad_wav_org_transform=pad_wav_org_transform,
                         cf_dim=args.cf_dim, upsampling_factor=args.upsampling_factor, n_bands=args.n_bands)
     dataloader = DataLoader(dataset, batch_size=batch_size_utt, shuffle=True, num_workers=args.n_workers)
+    n_iter_batch = n_data // batch_size_utt
+    if n_data % batch_size_utt > 0:
+        n_iter_batch += 1
+    logging.info(f'n_iter_batch {n_iter_batch}')
     #generator = train_generator(dataloader, device, args.batch_size, n_cv, args.upsampling_factor, limit_count=1, n_bands=args.n_bands)
     #generator = train_generator(dataloader, device, args.batch_size, n_cv, args.upsampling_factor, limit_count=20, n_bands=args.n_bands)
     generator = train_generator(dataloader, device, args.batch_size, n_cv, args.upsampling_factor, limit_count=None, n_bands=args.n_bands)
@@ -1043,15 +1052,19 @@ def main():
     for i in range(n_spk):
         gv_mean[i] = read_hdf5(stats_list[i], "/gv_melsp_mean")
 
-    density_deltas_ = args.densities.split('-')
-    logging.info(density_deltas_)
-    density_deltas = [None]*len(density_deltas_)
-    for i in range(len(density_deltas_)):
-        density_deltas[i] = (1-float(density_deltas_[i]))/args.n_stage
+    density_deltas_enc_ = args.densities_enc.split('-')
+    density_deltas_dec_ = args.densities_dec.split('-')
+    density_deltas_enc = [None]*len(density_deltas_enc_)
+    density_deltas_dec = [None]*len(density_deltas_dec_)
+    for i in range(len(density_deltas_enc_)):
+        density_deltas_enc[i] = (1-float(density_deltas_enc_[i]))/args.n_stage
+    for i in range(len(density_deltas_dec_)):
+        density_deltas_dec[i] = (1-float(density_deltas_dec_[i]))/args.n_stage
     t_deltas = [None]*args.n_stage
     t_starts = [None]*args.n_stage
     t_ends = [None]*args.n_stage
-    densities = [None]*args.n_stage
+    densities_enc = [None]*args.n_stage
+    densities_dec = [None]*args.n_stage
     t_delta = args.t_end - args.t_start + 1
     if args.n_stage > 3:
         t_deltas[0] = round((1/2)*0.2*t_delta)
@@ -1059,9 +1072,12 @@ def main():
         t_deltas[0] = round(0.2*t_delta)
     t_starts[0] = args.t_start
     t_ends[0] = args.t_start + t_deltas[0] - 1
-    densities[0] = [None]*len(density_deltas)
-    for j in range(len(density_deltas)):
-        densities[0][j] = 1-density_deltas[j]
+    densities_enc[0] = [None]*len(density_deltas_enc)
+    densities_dec[0] = [None]*len(density_deltas_dec)
+    for j in range(len(density_deltas_enc)):
+        densities_enc[0][j] = 1-density_deltas_enc[j]
+    for j in range(len(density_deltas_dec)):
+        densities_dec[0][j] = 1-density_deltas_dec[j]
     for i in range(1,args.n_stage):
         if i < args.n_stage-1:
             if args.n_stage > 3:
@@ -1078,19 +1094,25 @@ def main():
             t_deltas[i] = round(0.5*t_delta)
         t_starts[i] = t_ends[i-1] + 1
         t_ends[i] = t_starts[i] + t_deltas[i] - 1
-        densities[i] = [None]*len(density_deltas)
+        densities_enc[i] = [None]*len(density_deltas_enc)
+        densities_dec[i] = [None]*len(density_deltas_dec)
         if i < args.n_stage-1:
-            for j in range(len(density_deltas)):
-                densities[i][j] = densities[i-1][j]-density_deltas[j]
+            for j in range(len(density_deltas_enc)):
+                densities_enc[i][j] = densities_enc[i-1][j]-density_deltas_enc[j]
+            for j in range(len(density_deltas_dec)):
+                densities_dec[i][j] = densities_dec[i-1][j]-density_deltas_dec[j]
         else:
-            for j in range(len(density_deltas)):
-                densities[i][j] = float(density_deltas_[j])
+            for j in range(len(density_deltas_enc)):
+                densities_enc[i][j] = float(density_deltas_enc_[j])
+            for j in range(len(density_deltas_dec)):
+                densities_dec[i][j] = float(density_deltas_dec_[j])
     logging.info(t_delta)
     logging.info(t_deltas)
     logging.info(t_starts)
     logging.info(t_ends)
     logging.info(args.interval)
-    logging.info(densities)
+    logging.info(densities_enc)
+    logging.info(densities_dec)
     #idx_stage = args.n_stage - 1
     #logging.info(idx_stage)
     idx_stage = 0
@@ -4585,13 +4607,13 @@ def main():
                     if idx_stage < args.n_stage-1 and iter_idx + 1 == t_starts[idx_stage+1]:
                         idx_stage += 1
                     if idx_stage > 0:
-                        sparsify(model_encoder_melsp, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities[idx_stage], densities_p=densities[idx_stage-1])
-                        sparsify(model_encoder_excit, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities[idx_stage], densities_p=densities[idx_stage-1])
-                        sparsify(model_decoder_melsp, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities[idx_stage], densities_p=densities[idx_stage-1])
+                        sparsify(model_encoder_melsp, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities_enc[idx_stage], densities_p=densities_enc[idx_stage-1])
+                        sparsify(model_encoder_excit, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities_enc[idx_stage], densities_p=densities_enc[idx_stage-1])
+                        sparsify(model_decoder_melsp, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities_dec[idx_stage], densities_p=densities_dec[idx_stage-1])
                     else:
-                        sparsify(model_encoder_melsp, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities[idx_stage])
-                        sparsify(model_encoder_excit, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities[idx_stage])
-                        sparsify(model_decoder_melsp, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities[idx_stage])
+                        sparsify(model_encoder_melsp, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities_enc[idx_stage])
+                        sparsify(model_encoder_excit, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities_enc[idx_stage])
+                        sparsify(model_decoder_melsp, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities_dec[idx_stage])
 
                 text_log = "batch loss_select %lf " % (batch_loss.item())
                 logging.info("%s (%.3f sec)" % (text_log, time.time() - start))
@@ -5050,13 +5072,13 @@ def main():
             if idx_stage < args.n_stage-1 and iter_idx + 1 == t_starts[idx_stage+1]:
                 idx_stage += 1
             if idx_stage > 0:
-                sparsify(model_encoder_melsp, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities[idx_stage], densities_p=densities[idx_stage-1])
-                sparsify(model_encoder_excit, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities[idx_stage], densities_p=densities[idx_stage-1])
-                sparsify(model_decoder_melsp, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities[idx_stage], densities_p=densities[idx_stage-1])
+                sparsify(model_encoder_melsp, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities_enc[idx_stage], densities_p=densities_enc[idx_stage-1])
+                sparsify(model_encoder_excit, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities_enc[idx_stage], densities_p=densities_enc[idx_stage-1])
+                sparsify(model_decoder_melsp, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities_dec[idx_stage], densities_p=densities_dec[idx_stage-1])
             else:
-                sparsify(model_encoder_melsp, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities[idx_stage])
-                sparsify(model_encoder_excit, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities[idx_stage])
-                sparsify(model_decoder_melsp, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities[idx_stage])
+                sparsify(model_encoder_melsp, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities_enc[idx_stage])
+                sparsify(model_encoder_excit, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities_enc[idx_stage])
+                sparsify(model_decoder_melsp, iter_idx + 1, t_starts[idx_stage], t_ends[idx_stage], args.interval, densities_dec[idx_stage])
 
         text_log = "batch loss [%d] %d %d %d %d %.3f %.3f " % (c_idx+1, x_ss, x_bs, f_ss, f_bs, batch_loss_sc_feat_in.item(), batch_loss_sc_feat_magsp_in.item())
         for i in range(args.n_half_cyc):

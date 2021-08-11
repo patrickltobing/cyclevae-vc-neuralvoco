@@ -268,6 +268,8 @@ def main():
                         type=int, help="kernel size of dilated causal convolution")
     parser.add_argument("--right_size", default=0,
                         type=int, help="kernel size of dilated causal convolution")
+    parser.add_argument("--s_dim", default=256,
+                        type=int, help="kernel size of dilated causal convolution")
     parser.add_argument("--mid_dim", default=32,
                         type=int, help="kernel size of dilated causal convolution")
     # network training setting
@@ -447,6 +449,7 @@ def main():
         right_size=args.right_size,
         n_bands=args.n_bands,
         pad_first=True,
+        s_dim=args.s_dim,
         mid_dim=args.mid_dim,
         scale_in_flag=scale_in_flag,
         red_dim=red_dim,
@@ -569,12 +572,17 @@ def main():
         logging.error("--feats should be directory or list.")
         sys.exit(1)
     assert len(wav_list) == len(feat_list)
+    n_train_data = len(wav_list)
     batch_size_utt = 8
-    logging.info("number of training_data -- batch_size = %d -- %d" % (len(feat_list), batch_size_utt))
+    logging.info("number of training_data -- batch_size = %d -- %d" % (n_train_data, batch_size_utt))
     dataset = FeatureDatasetNeuVoco(wav_list, feat_list, pad_wav_transform, pad_feat_transform, args.upsampling_factor, 
                     args.string_path, wav_transform=wav_transform, n_bands=args.n_bands, with_excit=with_excit, cf_dim=args.cf_dim, spcidx=True,
                         pad_left=model_waveform.pad_left, pad_right=model_waveform.pad_right, string_path_ft=args.string_path_ft, wlat_flag=args.wlat_flag)
     dataloader = DataLoader(dataset, batch_size=batch_size_utt, shuffle=True, num_workers=args.n_workers)
+    n_iter_batch = n_train_data // batch_size_utt
+    if n_train_data % batch_size_utt > 0:
+        n_iter_batch += 1
+    logging.info(f'n_iter_batch {n_iter_batch}')
     #generator = data_generator(dataloader, device, args.batch_size, args.upsampling_factor, limit_count=1, n_bands=args.n_bands, wlat_flag=args.wlat_flag)
     #generator = data_generator(dataloader, device, args.batch_size, args.upsampling_factor, limit_count=20, n_bands=args.n_bands, wlat_flag=args.wlat_flag)
     generator = data_generator(dataloader, device, args.batch_size, args.upsampling_factor, limit_count=None, n_bands=args.n_bands, wlat_flag=args.wlat_flag)

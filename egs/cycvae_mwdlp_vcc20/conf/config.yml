@@ -25,16 +25,27 @@ mel_dim: 80
 alpha: 0.85
 
 ## GRU hidden units encoder, decoder spec, decoder excit
-hidden_units_enc: 512
-hidden_units_dec: 640
+## use 0.75 density for 512-640 GRUs (low-end)
+#hidden_units_enc: 512
+#hidden_units_dec: 640
+## use 0.25 density for 896-1024 GRUs (high-end)
+hidden_units_enc: 896
+hidden_units_dec: 1024
+
 hidden_units_lf0: 128
 
 ## GRU hidden units wavernn
+## for low-end device use 864
 #hidden_units_wave: 864
-#hidden_units_wave: 896
-hidden_units_wave: 1184
+## for high-end device use 1024/1184
+hidden_units_wave: 1024
+#hidden_units_wave: 1184
 
 hidden_units_wave_2: 32
+
+## Output dimension of FC layer before GRU for wavernn
+s_dim: 256
+#s_dim: 320
 
 ## Output dimension of DualFC before final FC layer
 mid_dim: 16
@@ -84,14 +95,12 @@ causal_conv_lf0: true
 causal_conv_wave: false
 ## if right_size > 0 (skewed conv encoder, i.e., future frame is limited), set causal_conv dec/lf0 to true [low-latency/real-time proc.]
 
-## use dim-reduction for cont. spk. embed from 1-hot code (only for cyclevae spec-excit)
+## use dim-reduction for cont. spk. embed from 1-hot code
 #spkidtr_dim: 0
 spkidtr_dim: 2
-## to freely interpolate between 2-dim cont. spk-space
+## to interpolate between 2-dim cont. spk-space
 
-## dimension of each of data-driven time-invariant and time-variant speaker-embeddings
-#emb_spk_dim: 256
-emb_spk_dim: 512
+## number of factorization for speaker embedding
 n_weight_emb: 4
 
 ## learning rate
@@ -110,11 +119,11 @@ step_count_wave: 4350000
 n_workers: 1
 #n_workers: 2
 
-mdl_name_vc: cycmelspxlf0capspkvae-gauss-smpl_sparse_weightemb_v3
-mdl_name_ft: cycmelspspkvae-gauss-smpl_sparse_weightemb_mwdlp_smpl_v3
-mdl_name_sp: cycmelspspkvae-ftdec-gauss-smpl_sparse_wemb_mwdlp_smpl_v3
+mdl_name_vc: cycmelspxlf0capspkvae-gauss-smpl_sparse_weightemb_v2
+mdl_name_ft: cycmelspspkvae-gauss-smpl_sparse_weightemb_mwdlp_smpl_v2
+mdl_name_sp: cycmelspspkvae-ftdec-gauss-smpl_sparse_wemb_mwdlp_smpl_v2
 
-mdl_name_wave: wavernn_dualgru_compact_lpc_mband_10bit_cf_stft_emb
+mdl_name_wave: wavernn_dualgru_compact_lpc_mband_10bit_cf_stft_emb_v2
 
 ## sparsification scheduling settings for cyclevae
 #t_start_cycvae: 1
@@ -123,7 +132,12 @@ t_start_cycvae: 5000
 t_end_cycvae: 245000
 #interval_cycvae: 1
 interval_cycvae: 10
-densities_cycvae: 0.685-0.685-0.88
+## use below for 0.75 density using 512 and 640 GRUs (low-end)
+#densities_cycvae_enc: 0.685-0.685-0.88
+#densities_cycvae_dec: 0.685-0.685-0.88
+## use below for 0.25 density using 896 and 1024 GRUs (high-end)
+densities_cycvae_enc: 0.225-0.225-0.3
+densities_cycvae_dec: 0.225-0.225-0.3
 n_stage_cycvae: 4
 
 ## sparsification scheduling settings for wavernn

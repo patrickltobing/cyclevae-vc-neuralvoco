@@ -173,19 +173,20 @@ class SkewedConv1d(nn.Module):
             self.padding = self.right_size
             self.skew_left = False
             self.padding_1 = self.padding-self.left_size
-        self.out_dim = self.in_dim*self.rec_field
+        self.out_dim = self.in_dim
+        self.out_dim = 128
         if nonlinear:
             if not self.pad_first:
-                module_list = [nn.Conv1d(self.in_dim, self.in_dim*self.rec_field, self.kernel_size, padding=self.padding),\
+                module_list = [nn.Conv1d(self.in_dim, self.out_dim, self.kernel_size, padding=self.padding),\
                                 nn.PReLU(out_chn)]
             else:
-                module_list = [nn.Conv1d(self.in_dim, self.in_dim*self.rec_field, self.kernel_size), nn.PReLU(out_chn)]
+                module_list = [nn.Conv1d(self.in_dim, self.out_dim, self.kernel_size), nn.PReLU(out_chn)]
             self.conv = nn.Sequential(*module_list)
         else:
             if not self.pad_first:
-                self.conv = nn.Conv1d(self.in_dim, self.in_dim*self.rec_field, self.kernel_size, padding=self.padding)
+                self.conv = nn.Conv1d(self.in_dim, self.out_dim, self.kernel_size, padding=self.padding)
             else:
-                self.conv = nn.Conv1d(self.in_dim, self.in_dim*self.rec_field, self.kernel_size)
+                self.conv = nn.Conv1d(self.in_dim, self.out_dim, self.kernel_size)
 
     def forward(self, x):
         """Forward calculation
@@ -221,7 +222,8 @@ class TwoSidedDilConv1d(nn.Module):
         self.padding = int((self.rec_field-1)/2)
         self.pad_first = pad_first
         module_list = []
-        self.out_dim = self.in_dim*(self.kernel_size**self.layers)
+        self.out_dim = self.in_dim
+        self.out_dim = 128
         if nonlinear:
             for i in range(self.layers):
                 if i > 0:
@@ -239,15 +241,15 @@ class TwoSidedDilConv1d(nn.Module):
         else:
             for i in range(self.layers):
                 if i > 0:
-                    module_list += [nn.Conv1d(self.in_dim*(self.kernel_size**(i)), \
-                                    self.in_dim*(self.kernel_size**(i+1)), self.kernel_size, \
+                    module_list += [nn.Conv1d(self.in_dim,
+                                    self.out_dim, self.kernel_size, \
                                         dilation=self.kernel_size**i)]
                 else:
                     if not self.pad_first:
-                        module_list += [nn.Conv1d(self.in_dim, self.in_dim*(self.kernel_size**(i+1)), \
+                        module_list += [nn.Conv1d(self.in_dim, self.out_dim, \
                                         self.kernel_size, padding=self.padding)]
                     else:
-                        module_list += [nn.Conv1d(self.in_dim, self.in_dim*(self.kernel_size**(i+1)), self.kernel_size)]
+                        module_list += [nn.Conv1d(self.in_dim, self.out_dim, self.kernel_size)]
         self.conv = nn.Sequential(*module_list)
 
     def forward(self, x):
@@ -275,6 +277,8 @@ class CausalDilConv1d(nn.Module):
         self.padding = sum(self.padding_list)
         self.rec_field = self.padding + 1
         self.pad_first = pad_first
+        self.out_dim = self.in_dim
+        self.out_dim = 128
         module_list = []
         if nonlinear:
             for i in range(self.layers):
@@ -293,15 +297,15 @@ class CausalDilConv1d(nn.Module):
         else:
             for i in range(self.layers):
                 if i > 0:
-                    module_list += [nn.Conv1d(self.in_dim*(sum(self.padding_list[:i])+1), \
-                                    self.in_dim*(sum(self.padding_list[:i+1])+1), self.kernel_size, \
+                    module_list += [nn.Conv1d(self.in_dim,
+                                    self.out_dim, self.kernel_size, \
                                         dilation=self.kernel_size**i)]
                 else:
                     if not self.pad_first:
-                        module_list += [nn.Conv1d(self.in_dim, self.in_dim*(sum(self.padding_list[:i+1])+1), \
+                        module_list += [nn.Conv1d(self.in_dim, self.out_din,
                                         self.kernel_size, padding=self.padding)]
                     else:
-                        module_list += [nn.Conv1d(self.in_dim, self.in_dim*(sum(self.padding_list[:i+1])+1), \
+                        module_list += [nn.Conv1d(self.in_dim, self.out_dim,
                                         self.kernel_size)]
         self.conv = nn.Sequential(*module_list)
 
@@ -739,6 +743,7 @@ class GRU_VAE_ENCODER(nn.Module):
         self.right_size = right_size
         self.pad_first = pad_first
         self.use_weight_norm = use_weight_norm
+        self.s_dim = 320
         self.cont = cont
         if self.cont:
             self.out_dim = self.lat_dim*2
@@ -771,16 +776,17 @@ class GRU_VAE_ENCODER(nn.Module):
                                         right_size=self.right_size, pad_first=self.pad_first)
             self.pad_left = self.conv.left_size
             self.pad_right = self.conv.right_size
-        self.gru_in_dim = self.in_dim*self.conv.rec_field
+        conv_s_c = [nn.Conv1d(self.conv.out_dim, self.s_dim, 1), nn.ReLU()]
+        self.conv_s_c = nn.Sequential(*conv_s_c)
         if self.do_prob > 0:
             self.conv_drop = nn.Dropout(p=self.do_prob)
 
         # GRU layer(s)
         if self.do_prob > 0 and self.hidden_layers > 1:
-            self.gru = nn.GRU(self.gru_in_dim, self.hidden_units, self.hidden_layers,
+            self.gru = nn.GRU(self.s_dim, self.hidden_units, self.hidden_layers,
                                 dropout=self.do_prob, batch_first=True)
         else:
-            self.gru = nn.GRU(self.gru_in_dim, self.hidden_units, self.hidden_layers,
+            self.gru = nn.GRU(self.s_dim, self.hidden_units, self.hidden_layers,
                                 batch_first=True)
         if self.do_prob > 0:
             self.gru_drop = nn.Dropout(p=self.do_prob)
@@ -798,9 +804,9 @@ class GRU_VAE_ENCODER(nn.Module):
 
     def forward(self, x, h=None, do=False, sampling=True, outpad_right=0):
         if self.scale_in_flag:
-            x_in = self.conv(self.scale_in(x.transpose(1,2))).transpose(1,2)
+            x_in = self.conv_s_c(self.conv(self.scale_in(x.transpose(1,2)))).transpose(1,2)
         else:
-            x_in = self.conv(self.conv_mid(x.transpose(1,2))).transpose(1,2)
+            x_in = self.conv_s_c(self.conv(self.conv_mid(x.transpose(1,2)))).transpose(1,2)
         # Input s layers
         if self.do_prob > 0 and do:
             s = self.conv_drop(x_in) # B x C x T --> B x T x C
@@ -918,6 +924,7 @@ class GRU_SPEC_DECODER(nn.Module):
         self.do_prob = do_prob
         self.causal_conv = causal_conv
         self.use_weight_norm = use_weight_norm
+        self.s_dim = 320
         self.pad_first = pad_first
         self.right_size = right_size
         self.pdf = pdf
@@ -975,15 +982,17 @@ class GRU_SPEC_DECODER(nn.Module):
                                         right_size=self.right_size, pad_first=self.pad_first)
             self.pad_left = self.conv.left_size
             self.pad_right = self.conv.right_size
+        conv_s_c = [nn.Conv1d(self.conv.out_dim, self.s_dim, 1), nn.ReLU()]
+        self.conv_s_c = nn.Sequential(*conv_s_c)
         if self.do_prob > 0:
             self.conv_drop = nn.Dropout(p=self.do_prob)
 
         # GRU layer(s)
         if self.do_prob > 0 and self.hidden_layers > 1:
-            self.gru = nn.GRU(self.in_dim*self.conv.rec_field, self.hidden_units, self.hidden_layers,
+            self.gru = nn.GRU(self.s_dim, self.hidden_units, self.hidden_layers,
                                 dropout=self.do_prob, batch_first=True)
         else:
-            self.gru = nn.GRU(self.in_dim*self.conv.rec_field, self.hidden_units, self.hidden_layers,
+            self.gru = nn.GRU(self.s_dim, self.hidden_units, self.hidden_layers,
                                 batch_first=True)
         if self.do_prob > 0:
             self.gru_drop = nn.Dropout(p=self.do_prob)
@@ -1056,34 +1065,34 @@ class GRU_SPEC_DECODER(nn.Module):
         if self.red_dim is not None and (not self.red_dim_upd or (self.red_dim_upd and org_in)):
             if ret_mid_feat:
                 melsp_relu = self.in_red(z.transpose(1,2)).transpose(1,2)
-                e = melsp_conv = self.conv(melsp_relu.transpose(1,2)).transpose(1,2)
+                e = melsp_conv = self.conv_s_c(self.conv(melsp_relu.transpose(1,2))).transpose(1,2)
                 if self.pad_right > 0:
                     melsp_relu = melsp_relu[:,self.pad_left:-self.pad_right]
                 else:
                     melsp_relu = melsp_relu[:,self.pad_left:]
             else:
                 if self.do_prob > 0 and (do or do_conv):
-                    e = self.conv_drop(self.conv(self.in_red(z.transpose(1,2))).transpose(1,2)) # B x C x T --> B x T x C
+                    e = self.conv_drop(self.conv_s_c(self.conv(self.in_red(z.transpose(1,2)))).transpose(1,2)) # B x C x T --> B x T x C
                 else:
-                    e = self.conv(self.in_red(z.transpose(1,2))).transpose(1,2) # B x C x T --> B x T x C
+                    e = self.conv_s_c(self.conv(self.in_red(z.transpose(1,2)))).transpose(1,2) # B x C x T --> B x T x C
         elif self.red_dim_upd is not None:
             if ret_mid_feat:
                 melsp_relu = self.in_red_upd(z.transpose(1,2)).transpose(1,2)
-                e = melsp_conv = self.conv(melsp_relu.transpose(1,2)).transpose(1,2)
+                e = melsp_conv = self.conv_s_c(self.conv(melsp_relu.transpose(1,2))).transpose(1,2)
                 if self.pad_right > 0:
                     melsp_relu = melsp_relu[:,self.pad_left:-self.pad_right]
                 else:
                     melsp_relu = melsp_relu[:,self.pad_left:]
             else:
                 if self.do_prob > 0 and (do or do_conv):
-                    e = self.conv_drop(self.conv(self.in_red_upd(z.transpose(1,2))).transpose(1,2)) # B x C x T --> B x T x C
+                    e = self.conv_drop(self.conv_s_c(self.conv(self.in_red_upd(z.transpose(1,2)))).transpose(1,2)) # B x C x T --> B x T x C
                 else:
-                    e = self.conv(self.in_red_upd(z.transpose(1,2))).transpose(1,2) # B x C x T --> B x T x C
+                    e = self.conv_s_c(self.conv(self.in_red_upd(z.transpose(1,2)))).transpose(1,2) # B x C x T --> B x T x C
         else:
             if self.do_prob > 0 and (do or do_conv):
-                e = self.conv_drop(self.conv(z.transpose(1,2)).transpose(1,2)) # B x C x T --> B x T x C
+                e = self.conv_drop(self.conv_s_c(self.conv(z.transpose(1,2))).transpose(1,2)) # B x C x T --> B x T x C
             else:
-                e = self.conv(z.transpose(1,2)).transpose(1,2) # B x C x T --> B x T x C
+                e = self.conv_s_c(self.conv(z.transpose(1,2))).transpose(1,2) # B x C x T --> B x T x C
         if outpad_right > 0:
             # GRU e layers
             if h is None:
@@ -1476,7 +1485,7 @@ class GRU_LAT_FEAT_CLASSIFIER(nn.Module):
 class GRU_SPK(nn.Module):
     def __init__(self, n_spk=14, feat_dim=64, hidden_layers=1, hidden_units=32, do_prob=0, n_weight_emb=None,
             kernel_size=3, dilation_size=1,  use_weight_norm=True, scale_in_flag=False, red_dim=None, weight_fact=2,
-                cap_dim=None, right_size=0, pad_first=True, causal_conv=True):
+                dim_out=None, right_size=0, pad_first=True, causal_conv=True):
         super(GRU_SPK, self).__init__()
         self.n_spk = n_spk
         self.feat_dim = feat_dim
@@ -1492,9 +1501,14 @@ class GRU_SPK(nn.Module):
         self.kernel_size = kernel_size
         self.dilation_size = dilation_size
         self.causal_conv = causal_conv
+        if dim_out is not None:
+            self.dim_out = dim_out
+        else:
+            self.dim_out = self.n_spk
         self.pad_first = pad_first
         self.right_size = right_size
         self.red_dim = red_dim
+        self.s_dim = 320
         self.n_weight_emb = n_weight_emb
         self.weight_fact = weight_fact
 
@@ -1524,15 +1538,17 @@ class GRU_SPK(nn.Module):
                                         right_size=self.right_size, pad_first=self.pad_first)
             self.pad_left = self.conv.left_size
             self.pad_right = self.conv.right_size
+        conv_s_c = [nn.Conv1d(self.conv.out_dim, self.s_dim, 1), nn.ReLU()]
+        self.conv_s_c = nn.Sequential(*conv_s_c)
         if self.do_prob > 0:
             self.conv_drop = nn.Dropout(p=self.do_prob)
 
         # GRU layer(s)
         if self.do_prob > 0 and self.hidden_layers > 1:
-            self.gru = nn.GRU(self.in_dim*self.conv.rec_field, self.hidden_units, self.hidden_layers,
+            self.gru = nn.GRU(self.s_dim, self.hidden_units, self.hidden_layers,
                                 dropout=self.do_prob, batch_first=True)
         else:
-            self.gru = nn.GRU(self.in_dim*self.conv.rec_field, self.hidden_units, self.hidden_layers,
+            self.gru = nn.GRU(self.s_dim, self.hidden_units, self.hidden_layers,
                                 batch_first=True)
         if self.do_prob > 0:
             self.gru_drop = nn.Dropout(p=self.do_prob)
@@ -1543,7 +1559,7 @@ class GRU_SPK(nn.Module):
             self.dim_weight_emb = self.n_spk//(self.n_weight_emb//self.weight_fact)
             self.embed_spk = nn.Embedding(self.n_weight_emb, self.dim_weight_emb)
         else:
-            self.out = nn.Conv1d(self.hidden_units, self.n_spk, 1)
+            self.out = nn.Conv1d(self.hidden_units, self.dim_out, 1)
 
         # apply weight norm
         if self.use_weight_norm:
@@ -1561,14 +1577,14 @@ class GRU_SPK(nn.Module):
         # Conv layers
         if self.red_dim is not None:
             if self.do_prob > 0 and do:
-                z = self.conv_drop(self.conv(self.in_red(z.transpose(1,2))).transpose(1,2)) # B x C x T --> B x T x C
+                z = self.conv_drop(self.conv_s_c(self.conv(self.in_red(z.transpose(1,2)))).transpose(1,2)) # B x C x T --> B x T x C
             else:
-                z = self.conv(self.in_red(z.transpose(1,2))).transpose(1,2) # B x C x T --> B x T x C
+                z = self.conv_s_c(self.conv(self.in_red(z.transpose(1,2)))).transpose(1,2) # B x C x T --> B x T x C
         else:
             if self.do_prob > 0 and do:
-                z = self.conv_drop(self.conv(z.transpose(1,2)).transpose(1,2)) # B x C x T --> B x T x C
+                z = self.conv_drop(self.conv_s_c(self.conv(z.transpose(1,2))).transpose(1,2)) # B x C x T --> B x T x C
             else:
-                z = self.conv(z.transpose(1,2)).transpose(1,2) # B x C x T --> B x T x C
+                z = self.conv_s_c(self.conv(z.transpose(1,2))).transpose(1,2) # B x C x T --> B x T x C
         # GRU layers
         if outpad_right > 0:
             if h is None:
@@ -1756,6 +1772,7 @@ class GRU_EXCIT_DECODER(nn.Module):
         self.dilation_size = dilation_size
         self.do_prob = do_prob
         self.causal_conv = causal_conv
+        self.s_dim = 320
         self.use_weight_norm = use_weight_norm
         self.pad_first = pad_first
         self.right_size = right_size
@@ -1784,15 +1801,17 @@ class GRU_EXCIT_DECODER(nn.Module):
                                         right_size=self.right_size, pad_first=self.pad_first)
             self.pad_left = self.conv.left_size
             self.pad_right = self.conv.right_size
+        conv_s_c = [nn.Conv1d(self.conv.out_dim, self.s_dim, 1), nn.ReLU()]
+        self.conv_s_c = nn.Sequential(*conv_s_c)
         if self.do_prob > 0:
             self.conv_drop = nn.Dropout(p=self.do_prob)
 
         # GRU layer(s)
         if self.do_prob > 0 and self.hidden_layers > 1:
-            self.gru = nn.GRU(self.in_dim*self.conv.rec_field, self.hidden_units, self.hidden_layers,
+            self.gru = nn.GRU(self.s_dim, self.hidden_units, self.hidden_layers,
                                 dropout=self.do_prob, batch_first=True)
         else:
-            self.gru = nn.GRU(self.in_dim*self.conv.rec_field, self.hidden_units, self.hidden_layers,
+            self.gru = nn.GRU(self.s_dim, self.hidden_units, self.hidden_layers,
                                 batch_first=True)
         if self.do_prob > 0:
             self.gru_drop = nn.Dropout(p=self.do_prob)
@@ -1828,14 +1847,14 @@ class GRU_EXCIT_DECODER(nn.Module):
         # Input e layers
         if self.red_dim is not None:
             if self.do_prob > 0 and do:
-                e = self.conv_drop(self.conv(self.in_red(z.transpose(1,2))).transpose(1,2)) # B x C x T --> B x T x C
+                e = self.conv_drop(self.conv_s_c(self.conv(self.in_red(z.transpose(1,2)))).transpose(1,2)) # B x C x T --> B x T x C
             else:
-                e = self.conv(self.in_red(z.transpose(1,2))).transpose(1,2) # B x C x T --> B x T x C
+                e = self.conv_s_c(self.conv(self.in_red(z.transpose(1,2)))).transpose(1,2) # B x C x T --> B x T x C
         else:
             if self.do_prob > 0 and do:
-                e = self.conv_drop(self.conv(z.transpose(1,2)).transpose(1,2)) # B x C x T --> B x T x C
+                e = self.conv_drop(self.conv_s_c(self.conv(z.transpose(1,2))).transpose(1,2)) # B x C x T --> B x T x C
             else:
-                e = self.conv(z.transpose(1,2)).transpose(1,2) # B x C x T --> B x T x C
+                e = self.conv_s_c(self.conv(z.transpose(1,2))).transpose(1,2) # B x C x T --> B x T x C
         if outpad_right > 0:
             # GRU e layers
             if h is None:
@@ -1887,7 +1906,7 @@ class GRU_EXCIT_DECODER(nn.Module):
 
 
 class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
-    def __init__(self, feat_dim=80, upsampling_factor=120, hidden_units=640, hidden_units_2=32, n_quantize=65536,
+    def __init__(self, feat_dim=80, upsampling_factor=120, hidden_units=640, hidden_units_2=32, n_quantize=65536, s_dim=256,
             kernel_size=7, dilation_size=1, do_prob=0, causal_conv=False, use_weight_norm=True, lpc=6, remove_scale_in_weight_norm=True,
                 right_size=2, n_bands=5, excit_dim=0, pad_first=False, mid_out_flag=True, red_dim=None, spk_dim=None, res_gru=None, frm_upd_flag=False,
                     scale_in_aux_dim=None, n_spk=None, scale_in_flag=True, mid_dim=None, aux_dim=None, res_flag=False, res_smpl_flag=False, conv_in_flag=False,
@@ -1906,7 +1925,7 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
         self.dilation_size = dilation_size
         self.do_prob = do_prob
         self.causal_conv = causal_conv
-        self.s_dim = 320
+        self.s_dim = s_dim
         self.wav_dim = 64
         self.wav_dim_bands = self.wav_dim * self.n_bands
         self.use_weight_norm = use_weight_norm
@@ -1964,7 +1983,7 @@ class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
                                         right_size=self.right_size, pad_first=self.pad_first)
             self.pad_left = self.conv.left_size
             self.pad_right = self.conv.right_size
-        conv_s_c = [nn.Conv1d(self.in_dim*self.conv.rec_field, self.s_dim, 1), nn.ReLU()]
+        conv_s_c = [nn.Conv1d(self.conv.out_dim, self.s_dim, 1), nn.ReLU()]
         self.conv_s_c = nn.Sequential(*conv_s_c)
 
         if self.do_prob > 0:

@@ -328,7 +328,7 @@ void compute_sparse_gru(const SparseGRULayer *gru, float *state, const float *in
 void compute_conv1d_linear_enc_melsp(const Conv1DLayer *layer, float *output, float *mem, const float *input)
 {
    //int stride;
-   float tmp[FEATURE_CONV_ENC_MELSP_OUT_SIZE]; //set to input_size*kernel_size
+   float tmp[FEATURE_CONV_ENC_MELSP_INPUT_SIZE]; //set to input_size*kernel_size
    //celt_assert(input != output);
    RNN_COPY(tmp, mem, FEATURE_CONV_ENC_MELSP_STATE_SIZE); //get state_size of last frame (in*(kernel_size-1))
    RNN_COPY(&tmp[FEATURE_CONV_ENC_MELSP_STATE_SIZE], input, FEATURE_DIM_MELSP); //append current input frame
@@ -340,7 +340,7 @@ void compute_conv1d_linear_enc_melsp(const Conv1DLayer *layer, float *output, fl
    // compute conv
    for (int i=0;i<FEATURE_CONV_ENC_MELSP_OUT_SIZE;i++)
       output[i] = layer->bias[i];
-   sgemv_accum16(output, layer->input_weights, FEATURE_CONV_ENC_MELSP_OUT_SIZE, FEATURE_CONV_ENC_MELSP_OUT_SIZE,
+   sgemv_accum16(output, layer->input_weights, FEATURE_CONV_ENC_MELSP_OUT_SIZE, FEATURE_CONV_ENC_MELSP_INPUT_SIZE,
                     FEATURE_CONV_ENC_MELSP_OUT_SIZE, tmp);
    //no activation (linear)
    RNN_COPY(mem, &tmp[FEATURE_DIM_MELSP], FEATURE_CONV_ENC_MELSP_STATE_SIZE); //set state size for next frame
@@ -350,7 +350,7 @@ void compute_conv1d_linear_enc_melsp(const Conv1DLayer *layer, float *output, fl
 void compute_conv1d_linear_enc_excit(const Conv1DLayer *layer, float *output, float *mem, const float *input)
 {
    //int stride;
-   float tmp[FEATURE_CONV_ENC_EXCIT_OUT_SIZE]; //set to input_size*kernel_size
+   float tmp[FEATURE_CONV_ENC_EXCIT_INPUT_SIZE]; //set to input_size*kernel_size
    //celt_assert(input != output);
    RNN_COPY(tmp, mem, FEATURE_CONV_ENC_EXCIT_STATE_SIZE); //get state_size of last frame (in*(kernel_size-1))
    RNN_COPY(&tmp[FEATURE_CONV_ENC_EXCIT_STATE_SIZE], input, FEATURE_DIM_MELSP); //append current input frame
@@ -362,7 +362,7 @@ void compute_conv1d_linear_enc_excit(const Conv1DLayer *layer, float *output, fl
    // compute conv
    for (int i=0;i<FEATURE_CONV_ENC_EXCIT_OUT_SIZE;i++)
       output[i] = layer->bias[i];
-   sgemv_accum16(output, layer->input_weights, FEATURE_CONV_ENC_EXCIT_OUT_SIZE, FEATURE_CONV_ENC_EXCIT_OUT_SIZE,
+   sgemv_accum16(output, layer->input_weights, FEATURE_CONV_ENC_EXCIT_OUT_SIZE, FEATURE_CONV_ENC_EXCIT_INPUT_SIZE,
                     FEATURE_CONV_ENC_EXCIT_OUT_SIZE, tmp);
    //no activation (linear)
    RNN_COPY(mem, &tmp[FEATURE_DIM_MELSP], FEATURE_CONV_ENC_EXCIT_STATE_SIZE); //set state size for next frame
@@ -372,7 +372,7 @@ void compute_conv1d_linear_enc_excit(const Conv1DLayer *layer, float *output, fl
 void compute_conv1d_linear_spk(const Conv1DLayer *layer, float *output, float *mem, const float *input)
 {
    //int stride;
-   float tmp[FEATURE_CONV_SPK_OUT_SIZE]; //set to input_size*kernel_size
+   float tmp[FEATURE_CONV_SPK_INPUT_SIZE]; //set to input_size*kernel_size
    //celt_assert(input != output);
    RNN_COPY(tmp, mem, FEATURE_CONV_SPK_STATE_SIZE); //get state_size of last frame (in*(kernel_size-1))
    RNN_COPY(&tmp[FEATURE_CONV_SPK_STATE_SIZE], input, FEATURE_RED_DIM); //append current input frame
@@ -384,7 +384,7 @@ void compute_conv1d_linear_spk(const Conv1DLayer *layer, float *output, float *m
    // compute conv
    for (int i=0;i<FEATURE_CONV_SPK_OUT_SIZE;i++)
       output[i] = layer->bias[i];
-   sgemv_accum16(output, layer->input_weights, FEATURE_CONV_SPK_OUT_SIZE, FEATURE_CONV_SPK_OUT_SIZE,
+   sgemv_accum16(output, layer->input_weights, FEATURE_CONV_SPK_OUT_SIZE, FEATURE_CONV_SPK_INPUT_SIZE,
                     FEATURE_CONV_SPK_OUT_SIZE, tmp);
    //no activation (linear)
    RNN_COPY(mem, &tmp[FEATURE_RED_DIM], FEATURE_CONV_SPK_STATE_SIZE); //set state size for next frame
@@ -394,7 +394,7 @@ void compute_conv1d_linear_spk(const Conv1DLayer *layer, float *output, float *m
 void compute_conv1d_linear_dec_melsp(const Conv1DLayer *layer, float *output, float *mem, const float *input)
 {
    //int stride;
-   float tmp[FEATURE_CONV_DEC_MELSP_OUT_SIZE]; //set to input_size*kernel_size
+   float tmp[FEATURE_CONV_DEC_MELSP_INPUT_SIZE]; //set to input_size*kernel_size
    //celt_assert(input != output);
    RNN_COPY(tmp, mem, FEATURE_CONV_DEC_MELSP_STATE_SIZE); //get state_size of last frame (in*(kernel_size-1))
    RNN_COPY(&tmp[FEATURE_CONV_DEC_MELSP_STATE_SIZE], input, FEATURE_RED_DIM); //append current input frame
@@ -406,7 +406,7 @@ void compute_conv1d_linear_dec_melsp(const Conv1DLayer *layer, float *output, fl
    // compute conv
    for (int i=0;i<FEATURE_CONV_DEC_MELSP_OUT_SIZE;i++)
       output[i] = layer->bias[i];
-   sgemv_accum16(output, layer->input_weights, FEATURE_CONV_DEC_MELSP_OUT_SIZE, FEATURE_CONV_DEC_MELSP_OUT_SIZE,
+   sgemv_accum16(output, layer->input_weights, FEATURE_CONV_DEC_MELSP_OUT_SIZE, FEATURE_CONV_DEC_MELSP_INPUT_SIZE,
                     FEATURE_CONV_DEC_MELSP_OUT_SIZE, tmp);
    //no activation (linear)
    RNN_COPY(mem, &tmp[FEATURE_RED_DIM], FEATURE_CONV_DEC_MELSP_STATE_SIZE); //set state size for next frame
@@ -416,7 +416,7 @@ void compute_conv1d_linear_dec_melsp(const Conv1DLayer *layer, float *output, fl
 void compute_conv1d_linear_frame_in(const Conv1DLayer *layer, float *output, float *mem, const float *input)
 {
    //int stride;
-   float tmp[FEATURE_CONV_OUT_SIZE]; //set to input_size*kernel_size
+   float tmp[FEATURE_CONV_INPUT_SIZE]; //set to input_size*kernel_size
    //celt_assert(input != output);
    RNN_COPY(tmp, mem, FEATURE_CONV_STATE_SIZE); //get state_size of last frame (in*(kernel_size-1))
    RNN_COPY(&tmp[FEATURE_CONV_STATE_SIZE], input, FEATURE_RED_DIM); //append current input frame
@@ -428,7 +428,7 @@ void compute_conv1d_linear_frame_in(const Conv1DLayer *layer, float *output, flo
    // compute conv
    for (int i=0;i<FEATURE_CONV_OUT_SIZE;i++)
       output[i] = layer->bias[i];
-   sgemv_accum16(output, layer->input_weights, FEATURE_CONV_OUT_SIZE, FEATURE_CONV_OUT_SIZE,
+   sgemv_accum16(output, layer->input_weights, FEATURE_CONV_OUT_SIZE, FEATURE_CONV_INPUT_SIZE,
                     FEATURE_CONV_OUT_SIZE, tmp);
    //no activation (linear)
    RNN_COPY(mem, &tmp[FEATURE_RED_DIM], FEATURE_CONV_STATE_SIZE); //set state size for next frame

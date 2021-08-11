@@ -319,7 +319,7 @@ void compute_sparse_gru(const SparseGRULayer *gru, float *state, const float *in
 //PLT_Jun21
 void compute_conv1d_linear_frame_in(const Conv1DLayer* layer, float* output, float* mem, const float* input)
 {
-    float tmp[FEATURE_CONV_OUT_SIZE]; //set to input_size*kernel_size
+    float tmp[FEATURE_CONV_INPUT_SIZE]; //set to input_size*kernel_size
     //celt_assert(input != output);
     RNN_COPY(tmp, mem, FEATURE_CONV_STATE_SIZE); //get state_size of last frame (in*(kernel_size-1))
     RNN_COPY(&tmp[FEATURE_CONV_STATE_SIZE], input, FEATURES_DIM); //append current input frame
@@ -331,7 +331,8 @@ void compute_conv1d_linear_frame_in(const Conv1DLayer* layer, float* output, flo
     // compute conv
     for (int i = 0; i < FEATURE_CONV_OUT_SIZE; i++)
         output[i] = layer->bias[i];
-    sgemv_accum16(output, layer->input_weights, FEATURE_CONV_OUT_SIZE, FEATURE_CONV_OUT_SIZE, FEATURE_CONV_OUT_SIZE, tmp);
+    sgemv_accum16(output, layer->input_weights, FEATURE_CONV_OUT_SIZE, FEATURE_CONV_INPUT_SIZE,
+                    FEATURE_CONV_OUT_SIZE, tmp);
     //no activation (linear)
     RNN_COPY(mem, &tmp[FEATURES_DIM], FEATURE_CONV_STATE_SIZE); //set state size for next frame
 }

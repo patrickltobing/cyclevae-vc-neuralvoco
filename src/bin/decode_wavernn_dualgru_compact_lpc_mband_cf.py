@@ -25,7 +25,6 @@ import matplotlib.pyplot as plt
 from utils import find_files
 from utils import read_txt, read_hdf5, shape_hdf5
 from vcneuvoco import GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF
-#from vcneuvoco_ import GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF
 
 import torch.nn.functional as F
 
@@ -254,6 +253,7 @@ def main():
                     right_size=config.right_size,
                     n_bands=config.n_bands,
                     pad_first=True,
+                    s_dim=config.s_dim,
                     mid_dim=config.mid_dim,
                     emb_flag=True,
                     lpc=config.lpc)

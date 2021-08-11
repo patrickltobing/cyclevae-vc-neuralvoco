@@ -36,8 +36,6 @@ from utils import read_hdf5
 from utils import read_txt
 from vcneuvoco import GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF, encode_mu_law
 from vcneuvoco import decode_mu_law_torch, MultiResolutionSTFTLoss
-#from vcneuvoco_ import GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF, encode_mu_law
-#from vcneuvoco_ import decode_mu_law_torch, MultiResolutionSTFTLoss
 #from radam import RAdam
 import torch_optimizer as optim
 
@@ -270,6 +268,8 @@ def main():
                         type=int, help="kernel size of dilated causal convolution")
     parser.add_argument("--right_size", default=0,
                         type=int, help="kernel size of dilated causal convolution")
+    parser.add_argument("--s_dim", default=256,
+                        type=int, help="kernel size of dilated causal convolution")
     parser.add_argument("--mid_dim", default=32,
                         type=int, help="kernel size of dilated causal convolution")
     # network training setting
@@ -418,6 +418,7 @@ def main():
         n_bands=args.n_bands,
         pad_first=True,
         mid_dim=args.mid_dim,
+        s_dim=args.s_dim,
         emb_flag=True,
         do_prob=args.do_prob)
     logging.info(model_waveform)
@@ -567,12 +568,17 @@ def main():
         logging.error("--feats should be directory or list.")
         sys.exit(1)
     assert len(wav_list) == len(feat_list)
+    n_train_data = len(wav_list)
     batch_size_utt = 8
-    logging.info("number of training_data -- batch_size = %d -- %d" % (len(feat_list), batch_size_utt))
+    logging.info("number of training_data -- batch_size = %d -- %d" % (n_train_data, batch_size_utt))
     dataset = FeatureDatasetNeuVoco(wav_list, feat_list, pad_wav_transform, pad_feat_transform, args.upsampling_factor, 
                     args.string_path, wav_transform=wav_transform, n_bands=args.n_bands, with_excit=with_excit, cf_dim=args.cf_dim, spcidx=True,
                         pad_left=model_waveform.pad_left, pad_right=model_waveform.pad_right, worgx_band_flag=True, worgx_flag=True, pad_wav_org_transform=pad_wav_org_transform)
     dataloader = DataLoader(dataset, batch_size=batch_size_utt, shuffle=True, num_workers=args.n_workers)
+    n_iter_batch = n_train_data // batch_size_utt
+    if n_train_data % batch_size_utt > 0:
+        n_iter_batch += 1
+    logging.info(f'n_iter_batch {n_iter_batch}')
     #generator = data_generator(dataloader, device, args.batch_size, args.upsampling_factor, limit_count=1, n_bands=args.n_bands)
     #generator = data_generator(dataloader, device, args.batch_size, args.upsampling_factor, limit_count=5, n_bands=args.n_bands)
     #generator = data_generator(dataloader, device, args.batch_size, args.upsampling_factor, limit_count=20, n_bands=args.n_bands)

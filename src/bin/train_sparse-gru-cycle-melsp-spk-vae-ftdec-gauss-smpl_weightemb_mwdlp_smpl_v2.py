@@ -503,8 +503,9 @@ def main():
                         type=int, help="batch size (if set 0, utterance batch will be used)")
     parser.add_argument("--right_size_wave", default=0,
                         type=int, help="kernel size of dilated causal convolution")
-    parser.add_argument("--mid_dim", default=32,
+    parser.add_argument("--s_dim", default=256,
                         type=int, help="kernel size of dilated causal convolution")
+    parser.add_argument("--mid_dim", default=32, type=int, help="kernel size of dilated causal convolution")
     parser.add_argument("--n_stage", default=4,
                         type=int, help="number of sparsification stages")
     parser.add_argument("--t_start", default=6000,
@@ -513,7 +514,7 @@ def main():
                         type=int, help="iter idx to finish densitiy sparsify")
     parser.add_argument("--interval", default=10,
                         type=int, help="interval in finishing densitiy sparsify")
-    parser.add_argument("--densities", default="0.018-0.018-0.24",
+    parser.add_argument("--densities", default="0.225-0.225-0.3",
                         type=str, help="final densitiy of reset, update, new hidden gate matrices")
     parser.add_argument("--fftl", default=2048,
                         type=int, help="kernel size of dilated causal convolution")
@@ -606,11 +607,13 @@ def main():
     args.interval = args.interval // args.n_half_cyc
     args.step_count = args.step_count // args.n_half_cyc
     logging.info(f'{args.t_start} {args.t_end} {args.interval} {args.step_count}')
-    args.factor = 0.35
+    args.factor = 0.3
     args.t_start = max(math.ceil(args.t_start * args.factor),1)
     args.t_end = max(math.ceil(args.t_end * args.factor),1)
     args.interval = max(math.ceil(args.interval * args.factor),1)
     args.step_count = max(math.ceil(args.t_end * 3.8),1)
+    args.emb_spk_dim_tv = args.lat_dim + args.lat_dim_e
+    args.emb_spk_dim_ti = ((args.emb_spk_dim_tv*2) // args.n_weight_emb)*args.n_weight_emb
     logging.info(f'{args.t_start} {args.t_end} {args.interval} {args.step_count}')
     torch.save(args, args.expdir + "/model.conf")
 
@@ -630,8 +633,8 @@ def main():
     model_decoder_melsp = GRU_SPEC_DECODER(
         feat_dim=args.lat_dim+args.lat_dim_e,
         out_dim=args.mel_dim,
-        n_spk=(args.emb_spk_dim//args.n_weight_emb)*args.n_weight_emb,
-        aux_dim=(args.emb_spk_dim//args.n_weight_emb)*args.n_weight_emb,
+        n_spk=args.emb_spk_dim_ti,
+        aux_dim=args.emb_spk_dim_tv,
         hidden_layers=args.hidden_layers_dec,
         hidden_units=args.hidden_units_dec,
         kernel_size=args.kernel_size_dec,
@@ -656,13 +659,13 @@ def main():
     logging.info(model_encoder_excit)
     model_spkidtr = SPKID_TRANSFORM_LAYER(
         n_spk=n_spk,
-        emb_dim=args.emb_spk_dim,
+        emb_dim=args.emb_spk_dim_ti,
         n_weight_emb=args.n_weight_emb,
         conv_emb_flag=True,
         spkidtr_dim=args.spkidtr_dim)
     logging.info(model_spkidtr)
     model_classifier = GRU_LAT_FEAT_CLASSIFIER(
-        spk_aux_dim=(args.emb_spk_dim//args.n_weight_emb)*args.n_weight_emb,
+        spk_aux_dim=args.emb_spk_dim_tv,
         feat_dim=args.mel_dim,
         feat_aux_dim=args.fftl//2+1,
         n_spk=n_spk,
@@ -670,7 +673,8 @@ def main():
         hidden_layers=1)
     logging.info(model_classifier) 
     model_spk = GRU_SPK(
-        n_spk=(args.emb_spk_dim//args.n_weight_emb)*args.n_weight_emb,
+        n_spk=args.emb_spk_dim_ti,
+        dim_out=args.emb_spk_dim_tv,
         feat_dim=args.lat_dim+args.lat_dim_e,
         hidden_units=32,
         kernel_size=args.kernel_size_spk,
@@ -679,8 +683,6 @@ def main():
         pad_first=True,
         right_size=args.right_size_spk,
         red_dim=args.mel_dim,
-        n_weight_emb=args.n_weight_emb,
-        weight_fact=1,
         do_prob=args.do_prob)
     logging.info(model_spk)
     model_waveform = GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(
@@ -697,6 +699,7 @@ def main():
         n_bands=args.n_bands,
         pad_first=True,
         emb_flag=True,
+        s_dim=args.s_dim,
         mid_dim=args.mid_dim)
     logging.info(model_waveform)
     criterion_gauss = GaussLoss(dim=args.mel_dim)
@@ -835,11 +838,12 @@ def main():
         param.requires_grad = False
 
     module_list = list(model_decoder_melsp.in_red_upd.parameters()) + list(model_decoder_melsp.conv.parameters())
+    module_list += list(model_decoder_melsp.conv_s_c.parameters())
     module_list += list(model_decoder_melsp.gru.parameters()) + list(model_decoder_melsp.out.parameters())
 
     module_list += list(model_spk.in_red.parameters()) + list(model_spk.conv.parameters())
+    module_list += list(model_spk.conv_s_c.parameters())
     module_list += list(model_spk.gru.parameters()) + list(model_spk.out.parameters())
-    module_list += list(model_spk.embed_spk.parameters())
 
     module_list += list(model_classifier.conv_feat.parameters()) + list(model_classifier.conv_feat_aux.parameters())
     module_list += list(model_classifier.conv_spk_aux.parameters())
@@ -907,8 +911,8 @@ def main():
     n_data = len(feat_list)
     if n_data >= 225:
         batch_size_utt = round(n_data/150)
-        if batch_size_utt > 90:
-            batch_size_utt = 90
+        if batch_size_utt > 60:
+            batch_size_utt = 60
     else:
         batch_size_utt = 1
     logging.info("number of training_data -- batch_size = %d -- %d " % (n_data, batch_size_utt))
@@ -917,6 +921,10 @@ def main():
                     wav_list=wav_list, pad_wav_transform=pad_wav_transform, wav_transform=wav_transform, pad_wav_org_transform=pad_wav_org_transform,
                         cf_dim=args.cf_dim, upsampling_factor=args.upsampling_factor, n_bands=args.n_bands)
     dataloader = DataLoader(dataset, batch_size=batch_size_utt, shuffle=True, num_workers=args.n_workers)
+    n_iter_batch = n_data // batch_size_utt
+    if n_data % batch_size_utt > 0:
+        n_iter_batch += 1
+    logging.info(f'n_iter_batch {n_iter_batch}')
     #generator = train_generator(dataloader, device, args.batch_size, n_cv, args.upsampling_factor, limit_count=1, n_bands=args.n_bands)
     #generator = train_generator(dataloader, device, args.batch_size, n_cv, args.upsampling_factor, limit_count=20, n_bands=args.n_bands)
     generator = train_generator(dataloader, device, args.batch_size, n_cv, args.upsampling_factor, limit_count=None, n_bands=args.n_bands)
@@ -3127,8 +3135,7 @@ def main():
                 if model_waveform.use_weight_norm:
                     torch.nn.utils.remove_weight_norm(model_waveform.scale_in)
                 save_checkpoint(args.expdir, model_encoder_melsp, model_decoder_melsp, model_encoder_excit, model_spkidtr, model_spk,
-                    model_classifier, model_waveform,
-                    min_eval_loss_melsp_dB[0], min_eval_loss_melsp_dB_std[0], min_eval_loss_melsp_cv[0],
+                    model_classifier, model_waveform, min_eval_loss_melsp_dB[0], min_eval_loss_melsp_dB_std[0], min_eval_loss_melsp_cv[0],
                     min_eval_loss_melsp[0], min_eval_loss_gauss_cv[0], min_eval_loss_gauss[0],
                     min_eval_loss_melsp_dB_src_trg, min_eval_loss_melsp_dB_src_trg_std, min_eval_loss_gv_src_trg,
                     min_eval_loss_ce_avg[0], min_eval_loss_ce_avg_std[0], min_eval_loss_err_avg[0], min_eval_loss_err_avg_std[0],

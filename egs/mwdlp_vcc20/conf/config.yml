@@ -25,11 +25,17 @@ mel_dim: 80
 alpha: 0.85
 
 ## GRU hidden units wavernn
+## for low-end device use 864
 #hidden_units_wave: 864
-#hidden_units_wave: 896
+## for high-end device use 1024/1184
+#hidden_units_wave: 1024
 hidden_units_wave: 1184
 
 hidden_units_wave_2: 32
+
+## Output dimension of FC layer before GRU for wavernn
+s_dim: 256
+#s_dim: 320
 
 ## Output dimension of DualFC before final FC layer
 mid_dim: 16
@@ -61,7 +67,7 @@ step_count_wave: 4350000
 n_workers: 1
 #n_workers: 2
 
-mdl_name_wave: wavernn_dualgru_compact_lpc_mband_10bit_cf_stft_emb
+mdl_name_wave: wavernn_dualgru_compact_lpc_mband_10bit_cf_stft_emb_v2
 
 ## sparsification scheduling settings for wavernn
 #t_start: 1

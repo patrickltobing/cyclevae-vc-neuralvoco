@@ -31,6 +31,8 @@ $ cd ..
 - 3.1
     - Finalize VC and MWDLP Python implementations (impl.)
     - Bug fixes on C impl. to match the output of Python impl.
+    - Fix input segmental convolution to output 128 dimension to reduce parameters load
+    - Add one more FC layer after segmental convolution for VC module as in original MWDLP
 
 
 ## Steps to build the models:

@@ -209,6 +209,7 @@ densities=`awk '{if ($1 == "densities:") print $2}' conf/config.yml`
 n_stage=`awk '{if ($1 == "n_stage:") print $2}' conf/config.yml`
 lpc=`awk '{if ($1 == "lpc:") print $2}' conf/config.yml`
 causal_conv_wave=`awk '{if ($1 == "causal_conv_wave:") print $2}' conf/config.yml`
+s_dim=`awk '{if ($1 == "s_dim:") print $2}' conf/config.yml`
 mid_dim=`awk '{if ($1 == "mid_dim:") print $2}' conf/config.yml`
 
 
@@ -966,8 +967,8 @@ else
 fi
 
 
-if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf_stft_emb" ]; then
-    setting_wave=${mdl_name_wave}_${data_name}_lr${lr}_bs${batch_size_wave}_huw${hidden_units_wave}_hu2w${hidden_units_wave_2}_ksw${kernel_size_wave}_dsw${dilation_size_wave}_do${do_prob}_st${step_count_wave}_mel${mel_dim}_ts${t_start}_te${t_end}_i${interval}_d${densities}_ns${n_stage}_lpc${lpc}_rs${right_size_wave}_nb${n_bands}_m${mid_dim}
+if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf_stft_emb_v2" ]; then
+    setting_wave=${mdl_name_wave}_${data_name}_lr${lr}_bs${batch_size_wave}_huw${hidden_units_wave}_hu2w${hidden_units_wave_2}_ksw${kernel_size_wave}_dsw${dilation_size_wave}_do${do_prob}_st${step_count_wave}_mel${mel_dim}_ts${t_start}_te${t_end}_i${interval}_d${densities}_ns${n_stage}_lpc${lpc}_rs${right_size_wave}_nb${n_bands}_s${s_dim}_m${mid_dim}
 fi
 
 
@@ -996,18 +997,110 @@ if [ `echo ${stage} | grep 4` ];then
     fi
 
     # order of files on feats-wav_ns pair has to be the same
-    feats=data/${trn}/feats.scp
     feats_eval=data/${dev}/feats.scp
-    waveforms=data/${trn}/wav_ns.scp
     waveforms_eval=data/${dev}/wav_ns.scp
-    if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf_stft_emb" ];then
+    n_spk=${#spks[@]}
+    n_tr_sum=18000
+    n_tr=`expr $n_tr_sum / ${n_spk}`
+    if [ `expr $n_tr_sum % ${n_spk}` -gt 0 ]; then
+        n_tr=`expr ${n_tr} + 1`
+    fi
+    echo $n_tr
+    if true; then
+        feats_sort_list=data/${trn}/feats_sort.scp
+        wav_sort_list=data/${trn}/wav_ns_sort.scp
+        if [ ! -f ${wav_sort_list} ] || [ ! -f ${feats_sort_list}  ]; then
+            spk_list="$(IFS="@"; echo "${spks[*]}")"
+        #if true; then
+            ${cuda_cmd} ${expdir_wave}/log/get_max_frame.log \
+                sort_frame_list.py \
+                    --feats data/${trn}/feats.scp \
+                    --waveforms data/${trn}/wav_ns.scp \
+                    --spk_list ${spk_list} \
+                    --expdir ${expdir_wave} \
+                    --n_jobs ${n_jobs}
+        fi
+        feats=${expdir_wave}/feats_tr_cut.scp
+        waveforms=${expdir_wave}/wavs_tr_cut.scp
+        if [ ! -f ${waveforms} ] || [ ! -f ${feats} ]; then
+        #if true; then
+            rm -f ${feats} ${waveforms}
+            n_utt_spks=()
+            sum_utt_spks=0
+            flag_utt_spk_max=true
+            count_utt_spk_gt_max=0
+            for spk in ${spks[@]}; do
+                n_utt_spk=`cat ${feats_sort_list} | grep "\/${spk}\/" | wc -l`
+                if [ $n_utt_spk -gt $n_tr ]; then
+                    sum_utt_spks=`expr $sum_utt_spks + $n_tr`
+                    flag_utt_spk_max=false
+                    count_utt_spk_gt_max=$(( $count_utt_spk_gt_max + 1 ))
+                    n_utt_spks+=(${n_tr})
+                    echo $spk $n_tr $sum_utt_spks
+                else
+                    sum_utt_spks=`expr $sum_utt_spks + $n_utt_spk`
+                    n_utt_spks+=(${n_utt_spk})
+                    echo $spk $n_utt_spk $n_tr $sum_utt_spks
+                fi
+            done
+            if [ $sum_utt_spks -lt $n_tr_sum ] && ! ${flag_utt_spk_max} ; then
+                flag=false
+                rem_sum=$(( $n_tr_sum - $sum_utt_spks ))
+                rem_sum_spk=$(( $rem_sum / $count_utt_spk_gt_max ))
+                n_tr=$(( $n_tr + $rem_sum_spk ))
+            else
+                flag=true
+            fi
+            while ! $flag; do
+                n_utt_spks=()
+                sum_utt_spks=0
+                flag_utt_spk_max=true
+                count_utt_spk_gt_max=0
+                for spk in ${spks[@]}; do
+                    n_utt_spk=`cat ${feats_sort_list} | grep "\/${spk}\/" | wc -l`
+                    if [ $n_utt_spk -gt $n_tr ]; then
+                        sum_utt_spks=`expr $sum_utt_spks + $n_tr`
+                        flag_utt_spk_max=false
+                        count_utt_spk_gt_max=$(( $count_utt_spk_gt_max + 1 ))
+                        n_utt_spks+=(${n_tr})
+                        echo $spk $n_tr $sum_utt_spks
+                    else
+                        sum_utt_spks=`expr $sum_utt_spks + $n_utt_spk`
+                        n_utt_spks+=(${n_utt_spk})
+                        echo $spk $n_utt_spk $n_tr $sum_utt_spks
+                    fi
+                done
+                if [ $sum_utt_spks -lt $n_tr_sum ] && ! ${flag_utt_spk_max} ; then
+                    flag=false
+                    rem_sum=$(( $n_tr_sum - $sum_utt_spks ))
+                    rem_sum_spk=$(( $rem_sum / $count_utt_spk_gt_max ))
+                    if [ $rem_sum_spk -eq 0 ]; then
+                        rem_sum_spk=1
+                    fi
+                    n_tr=$(( $n_tr + $rem_sum_spk ))
+                else
+                    flag=true
+                fi
+            done
+            idx_utt_spk=0
+            for spk in ${spks[@]}; do
+                n_utt_spk=${n_utt_spks[${idx_utt_spk}]}
+                echo tr $spk $n_utt_spk
+                cat ${feats_sort_list} | grep "\/${spk}\/" | head -n ${n_utt_spk} | sort >> ${feats}
+                cat ${wav_sort_list} | grep "\/${spk}\/" | head -n ${n_utt_spk} | sort >> ${waveforms}
+                idx_utt_spk=$(( $idx_utt_spk + 1 ))
+            done
+        fi
+    fi
+
+    if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf_stft_emb_v2" ];then
         if [ $idx_resume_wave -gt 0 ]; then
             echo ""
             echo "mwdlp model is in training, please use less/vim to monitor the training log: ${expdir_wave}/log/train_resume-${idx_resume_wave}.log"
             echo ""
             echo "while opening the log file, please use phrase 'sme' or 'average' to quickly search for the summary on each epoch"
             ${cuda_cmd} ${expdir_wave}/log/train_resume-${idx_resume_wave}.log \
-                train_nstages-sparse-wavernn_dualgru_compact_lpc_mband_10bit_cf_smpl_orgx_emb.py \
+                train_nstages-sparse-wavernn_dualgru_compact_lpc_mband_10bit_cf_smpl_orgx_emb_v2.py \
                     --waveforms ${waveforms} \
                     --waveforms_eval $waveforms_eval \
                     --feats ${feats} \
@@ -1036,6 +1129,7 @@ if [ `echo ${stage} | grep 4` ];then
                     --n_bands ${n_bands} \
                     --string_path ${string_path} \
                     --fs ${fs} \
+                    --s_dim ${s_dim} \
                     --mid_dim ${mid_dim} \
                     --resume ${expdir_wave}/checkpoint-${idx_resume_wave}.pkl \
                     --GPU_device ${GPU_device}
@@ -1045,7 +1139,7 @@ if [ `echo ${stage} | grep 4` ];then
             echo ""
             echo "while opening the log file, please use phrase 'sme' or 'average' to quickly search for the summary on each epoch"
             ${cuda_cmd} ${expdir_wave}/log/train.log \
-                train_nstages-sparse-wavernn_dualgru_compact_lpc_mband_10bit_cf_smpl_orgx_emb.py \
+                train_nstages-sparse-wavernn_dualgru_compact_lpc_mband_10bit_cf_smpl_orgx_emb_v2.py \
                     --waveforms ${waveforms} \
                     --waveforms_eval $waveforms_eval \
                     --feats ${feats} \
@@ -1074,6 +1168,7 @@ if [ `echo ${stage} | grep 4` ];then
                     --n_bands ${n_bands} \
                     --string_path ${string_path} \
                     --fs ${fs} \
+                    --s_dim ${s_dim} \
                     --mid_dim ${mid_dim} \
                     --GPU_device ${GPU_device}
         fi
@@ -1104,7 +1199,7 @@ fi
 # STAGE 5 {{{
 if [ `echo ${stage} | grep 5` ] || [ `echo ${stage} | grep 6` ];then
 for spk_src in ${spks_dec[@]};do
-    if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf_stft_emb" ]; then
+    if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf_stft_emb_v2" ]; then
         outdir=${expdir_wave}/${mdl_name_wave}-${data_name}_dev-${hidden_units_wave}-${step_count_wave}-${lpc}-${n_bands}-${min_idx_wave}
         #outdir=${expdir_wave}/${mdl_name_wave}-${data_name}_tst-${hidden_units_wave}-${step_count_wave}-${lpc}-${n_bands}-${min_idx_wave}
     fi
@@ -1126,7 +1221,7 @@ if [ `echo ${stage} | grep 5` ];then
     cat $feats | grep "\/${spk_src}\/" | sort | head -n ${n_wav_decode} > ${feats_scp}
 
     # decode
-    if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf_stft_emb" ]; then
+    if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf_stft_emb_v2" ]; then
         echo ""
         #echo "now synthesizing ${spk_src}, log here:  ${expdir_wave}/log/decode_tst_${min_idx_wave}_${spk_src}.log"
         #${cuda_cmd} ${expdir_wave}/log/decode_tst_${min_idx_wave}_${spk_src}.log \
