@@ -25,8 +25,8 @@
    NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
    SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-/* Modified by Patrick Lumban Tobing (Nagoya University) on Sept./Dec. 2020 - Mar./Jul. 2021,
-   marked by PLT_<Sep20/Dec20/Jan21/Mar21/Jul21> */
+/* Modified by Patrick Lumban Tobing (Nagoya University) on Sept. 2020 - Aug. 2021,
+   marked by PLT_<MonthYear> */
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -51,8 +51,6 @@
 #endif
 //#define RAND_MAX_FLT_MIN_FLT_MIN (RAND_MAX + FLT_MIN + FLT_MIN)
 
-#define SOFTMAX_HACK
-
 #ifdef __AVX__
 #include "vec_avx.h"
 #elif __ARM_NEON__
@@ -68,23 +66,25 @@ static OPUS_INLINE float relu(float x)
 }
 
 
-//PLT_Mar21
-void sgemv_accum16_(float *out, const float *weights, int rows, int cols, int col_stride, const float *x)
+//PLT_Aug21
+void sgemv_accum16_(float *out, const float *weights, int rows, int cols, const float *x)
 {
- sgemv_accum16(out, weights, rows, cols, col_stride, x);
+ sgemv_accum16(out, weights, rows, cols, x);
 }
 
-void sgemv_accum(float *out, const float *weights, int rows, int cols, int col_stride, const float *x)
+//PLT_Aug21
+void sgemv_accum(float *out, const float *weights, int rows, int cols, const float *x)
 {
- int i, j;
+ int i, j, k;
  for (i=0;i<rows;i++)
  {
-    for (j=0;j<cols;j++) {
-       out[i] += weights[j*col_stride + i]*x[j];
+    for (j=0,k=i;j<cols;j++,k+=rows) {
+       out[i] += weights[k]*x[j];
    }
  }
 }
 
+//PLT_Aug21
 void compute_activation(float *output, float *input, int N, int activation)
 {
    int i;
@@ -103,20 +103,6 @@ void compute_activation(float *output, float *input, int N, int activation)
    } else if (activation == ACTIVATION_RELU) {
       for (i=0;i<N;i++)
          output[i] = relu(input[i]);
-   } else if (activation == ACTIVATION_SOFTMAX) {
-#ifdef SOFTMAX_HACK
-      for (i=0;i<N;i++)
-         output[i] = input[i];
-#else
-      float sum = 0;
-      softmax(output, input, N);
-      for (i=0;i<N;i++) {
-         sum += output[i];
-      }
-      sum = 1.f/(sum+1e-30);
-      for (i=0;i<N;i++)
-         output[i] = sum*output[i];
-#endif
    } else {
       //celt_assert(activation == ACTIVATION_LINEAR);
       for (i=0;i<N;i++)
@@ -124,6 +110,7 @@ void compute_activation(float *output, float *input, int N, int activation)
    }
 }
 
+//PLT_Aug21
 void compute_dense(const DenseLayer *layer, float *output, const float *input)
 {
    int i, N;
@@ -136,11 +123,11 @@ void compute_dense(const DenseLayer *layer, float *output, const float *input)
    for (i=0;i<N;i++)
       output[i] = layer->bias[i];
    // sgemv_accum16(output, layer->input_weights, N, M, stride, input);
-   sgemv_accum16(output, layer->input_weights, N, layer->nb_inputs, N, input);
+   sgemv_accum16(output, layer->input_weights, N, layer->nb_inputs, input);
    compute_activation(output, output, N, layer->activation);
 }
 
-//PLT_Dec20
+//PLT_Aug21
 void compute_dense_linear(const DenseLayer *layer, float *output, const float *input)
 {
    int i, N;
@@ -153,12 +140,12 @@ void compute_dense_linear(const DenseLayer *layer, float *output, const float *i
    for (i=0;i<N;i++)
       output[i] = layer->bias[i];
    // sgemv_accum16(output, layer->input_weights, N, M, stride, input);
-   sgemv_accum16(output, layer->input_weights, N, layer->nb_inputs, N, input);
+   sgemv_accum16(output, layer->input_weights, N, layer->nb_inputs, input);
 }
 
-//PLT_Mar21
+//PLT_Aug21
 void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *fc_layer,
-    const float *prev_logits, float *output, const float *input, const int *last_output)
+    const float *prev_logits, float *output, const float *input, const short *last_output)
 {
     //int i, j, k, l, m, n, last_idx;
     int i, j, k, n, last_idx;
@@ -168,7 +155,7 @@ void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *f
     //compute dualfc output vectors
     for (i=0;i<MDENSE_OUT_DUALFC_2_MBANDS;i++)
        vec_out[i] = layer->bias[i];
-    sgemv_accum16(vec_out, layer->input_weights, MDENSE_OUT_DUALFC_2_MBANDS, RNN_SUB_NEURONS, MDENSE_OUT_DUALFC_2_MBANDS, input);
+    sgemv_accum16(vec_out, layer->input_weights, MDENSE_OUT_DUALFC_2_MBANDS, RNN_SUB_NEURONS, input);
     compute_activation(vec_out, vec_out, MDENSE_OUT_DUALFC_2_MBANDS, layer->activation);
     //combine dualfc channels
     // [[[K,K,32]_1,...,[K,K,32]_NB]_1,[[K,K,32]_1,...,[K,K,32]_NB]_2]
@@ -225,7 +212,7 @@ void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *f
     }
 }
 
-//PLT_Mar21
+//PLT_Aug21
 void compute_mdense_mwdlp10_nodlpc(const MDenseLayerMWDLP10 *layer, const DenseLayer *fc_layer, float *output,
     const float *input)
 {
@@ -236,7 +223,7 @@ void compute_mdense_mwdlp10_nodlpc(const MDenseLayerMWDLP10 *layer, const DenseL
     //mid-logits by dualfc
     for (i=0;i<MID_OUT_MBANDS_2;i++)
        vec_out[i] = layer->bias[i];
-    sgemv_accum16(vec_out, layer->input_weights, MID_OUT_MBANDS_2, RNN_SUB_NEURONS, MID_OUT_MBANDS_2, input);
+    sgemv_accum16(vec_out, layer->input_weights, MID_OUT_MBANDS_2, RNN_SUB_NEURONS, input);
     compute_activation(vec_out, vec_out, MID_OUT_MBANDS_2, layer->activation);
     //combine dualfc channels
     sgev_dualfc8(dualfc_out, layer->factors, MDENSE_OUT_DUALFC_2_MBANDS, vec_out);
@@ -249,7 +236,7 @@ void compute_mdense_mwdlp10_nodlpc(const MDenseLayerMWDLP10 *layer, const DenseL
     compute_activation(output, output, SQRT_QUANTIZE_MBANDS, layer->activation_logits);
 }
 
-//PLT_Sep20
+//PLT_Aug21
 void compute_gru3(const GRULayer *gru, float *state, const float *input)
 {
    int i;
@@ -271,7 +258,7 @@ void compute_gru3(const GRULayer *gru, float *state, const float *input)
    RNN_COPY(zrh, input, RNN_SUB_NEURONS_3);
    for (i=0;i<RNN_SUB_NEURONS_3;i++)
       recur[i] = gru->bias[i];
-   sgemv_accum16(recur, gru->recurrent_weights, RNN_SUB_NEURONS_3, RNN_SUB_NEURONS, RNN_SUB_NEURONS_3, state);
+   sgemv_accum16(recur, gru->recurrent_weights, RNN_SUB_NEURONS_3, RNN_SUB_NEURONS, state);
    for (i=0;i<RNN_SUB_NEURONS_2;i++)
       zrh[i] += recur[i];
    compute_activation(zrh, zrh, RNN_SUB_NEURONS_2, ACTIVATION_SIGMOID);
@@ -284,13 +271,13 @@ void compute_gru3(const GRULayer *gru, float *state, const float *input)
       state[i] = r[i]*state[i] + (1-r[i])*h[i];
 }
 
-//PLT_Sep20
-void compute_sparse_gru(const SparseGRULayer *gru, float *state, const float *input)
+//PLT_Aug21
+void compute_sparse_gru(const SparseGRULayer *gru, float *zrh, float *recur, float *state, const float *input)
 {
    int i, j, k;
    //int N;
-   float zrh[RNN_MAIN_NEURONS_3];
-   float recur[RNN_MAIN_NEURONS_3];
+   //float zrh[RNN_MAIN_NEURONS_3];
+   //float recur[RNN_MAIN_NEURONS_3];
    float *z;
    float *r;
    float *h;
@@ -324,7 +311,7 @@ void compute_sparse_gru(const SparseGRULayer *gru, float *state, const float *in
       state[i] = r[i]*state[i] + (1-r[i])*h[i];
 }
 
-//PLT_Jun21
+//PLT_Aug21
 void compute_conv1d_linear_enc_melsp(const Conv1DLayer *layer, float *output, float *mem, const float *input)
 {
    //int stride;
@@ -340,13 +327,12 @@ void compute_conv1d_linear_enc_melsp(const Conv1DLayer *layer, float *output, fl
    // compute conv
    for (int i=0;i<FEATURE_CONV_ENC_MELSP_OUT_SIZE;i++)
       output[i] = layer->bias[i];
-   sgemv_accum16(output, layer->input_weights, FEATURE_CONV_ENC_MELSP_OUT_SIZE, FEATURE_CONV_ENC_MELSP_INPUT_SIZE,
-                    FEATURE_CONV_ENC_MELSP_OUT_SIZE, tmp);
+   sgemv_accum16(output, layer->input_weights, FEATURE_CONV_ENC_MELSP_OUT_SIZE, FEATURE_CONV_ENC_MELSP_INPUT_SIZE, tmp);
    //no activation (linear)
    RNN_COPY(mem, &tmp[FEATURE_DIM_MELSP], FEATURE_CONV_ENC_MELSP_STATE_SIZE); //set state size for next frame
 }
 
-//PLT_Jun21
+//PLT_Aug21
 void compute_conv1d_linear_enc_excit(const Conv1DLayer *layer, float *output, float *mem, const float *input)
 {
    //int stride;
@@ -362,13 +348,12 @@ void compute_conv1d_linear_enc_excit(const Conv1DLayer *layer, float *output, fl
    // compute conv
    for (int i=0;i<FEATURE_CONV_ENC_EXCIT_OUT_SIZE;i++)
       output[i] = layer->bias[i];
-   sgemv_accum16(output, layer->input_weights, FEATURE_CONV_ENC_EXCIT_OUT_SIZE, FEATURE_CONV_ENC_EXCIT_INPUT_SIZE,
-                    FEATURE_CONV_ENC_EXCIT_OUT_SIZE, tmp);
+   sgemv_accum16(output, layer->input_weights, FEATURE_CONV_ENC_EXCIT_OUT_SIZE, FEATURE_CONV_ENC_EXCIT_INPUT_SIZE, tmp);
    //no activation (linear)
    RNN_COPY(mem, &tmp[FEATURE_DIM_MELSP], FEATURE_CONV_ENC_EXCIT_STATE_SIZE); //set state size for next frame
 }
 
-//PLT_Jun21
+//PLT_Aug21
 void compute_conv1d_linear_spk(const Conv1DLayer *layer, float *output, float *mem, const float *input)
 {
    //int stride;
@@ -384,13 +369,12 @@ void compute_conv1d_linear_spk(const Conv1DLayer *layer, float *output, float *m
    // compute conv
    for (int i=0;i<FEATURE_CONV_SPK_OUT_SIZE;i++)
       output[i] = layer->bias[i];
-   sgemv_accum16(output, layer->input_weights, FEATURE_CONV_SPK_OUT_SIZE, FEATURE_CONV_SPK_INPUT_SIZE,
-                    FEATURE_CONV_SPK_OUT_SIZE, tmp);
+   sgemv_accum16(output, layer->input_weights, FEATURE_CONV_SPK_OUT_SIZE, FEATURE_CONV_SPK_INPUT_SIZE, tmp);
    //no activation (linear)
    RNN_COPY(mem, &tmp[FEATURE_RED_DIM], FEATURE_CONV_SPK_STATE_SIZE); //set state size for next frame
 }
 
-//PLT_Jun21
+//PLT_Aug21
 void compute_conv1d_linear_dec_melsp(const Conv1DLayer *layer, float *output, float *mem, const float *input)
 {
    //int stride;
@@ -406,13 +390,12 @@ void compute_conv1d_linear_dec_melsp(const Conv1DLayer *layer, float *output, fl
    // compute conv
    for (int i=0;i<FEATURE_CONV_DEC_MELSP_OUT_SIZE;i++)
       output[i] = layer->bias[i];
-   sgemv_accum16(output, layer->input_weights, FEATURE_CONV_DEC_MELSP_OUT_SIZE, FEATURE_CONV_DEC_MELSP_INPUT_SIZE,
-                    FEATURE_CONV_DEC_MELSP_OUT_SIZE, tmp);
+   sgemv_accum16(output, layer->input_weights, FEATURE_CONV_DEC_MELSP_OUT_SIZE, FEATURE_CONV_DEC_MELSP_INPUT_SIZE, tmp);
    //no activation (linear)
    RNN_COPY(mem, &tmp[FEATURE_RED_DIM], FEATURE_CONV_DEC_MELSP_STATE_SIZE); //set state size for next frame
 }
 
-//PLT_Jun21
+//PLT_Aug21
 void compute_conv1d_linear_frame_in(const Conv1DLayer *layer, float *output, float *mem, const float *input)
 {
    //int stride;
@@ -428,8 +411,7 @@ void compute_conv1d_linear_frame_in(const Conv1DLayer *layer, float *output, flo
    // compute conv
    for (int i=0;i<FEATURE_CONV_OUT_SIZE;i++)
       output[i] = layer->bias[i];
-   sgemv_accum16(output, layer->input_weights, FEATURE_CONV_OUT_SIZE, FEATURE_CONV_INPUT_SIZE,
-                    FEATURE_CONV_OUT_SIZE, tmp);
+   sgemv_accum16(output, layer->input_weights, FEATURE_CONV_OUT_SIZE, FEATURE_CONV_INPUT_SIZE, tmp);
    //no activation (linear)
    RNN_COPY(mem, &tmp[FEATURE_RED_DIM], FEATURE_CONV_STATE_SIZE); //set state size for next frame
 }
@@ -444,7 +426,7 @@ int sample_from_pdf_mwdlp(const float *pdf, int N, RNGState *rng_state)
     float tmp[SQRT_QUANTIZE], cdf[SQRT_QUANTIZE], sum, norm;
     for (i=0;i<N;i++)
         tmp[i] = pdf[i];
-    softmax(tmp, tmp, N);
+    vec_exp(tmp, tmp, N);
     for (i=0,sum=0;i<N;i++)
         sum += tmp[i];
     norm = 1.f/sum;
@@ -463,7 +445,7 @@ int sample_from_pdf_mwdlp(const float *pdf, int N, RNGState *rng_state)
     float tmp[SQRT_QUANTIZE], cdf[SQRT_QUANTIZE], sum, norm;
     for (i=0;i<N;i++)
         tmp[i] = pdf[i];
-    softmax(tmp, tmp, N);
+    vec_exp(tmp, tmp, N);
     for (i=0,sum=0;i<N;i++)
         sum += tmp[i];
     norm = 1.f/sum;
@@ -495,12 +477,12 @@ void compute_denormalize(const NormStats *norm_stats, float *input_output)
     input_output[i] = input_output[i] * norm_stats->std[i] + norm_stats->mean[i];
 }
 
-//PLT_Jan21
-void compute_sparse_gru_enc_melsp(const SparseFrameGRULayer *gru, float *state, const float *input)
+//PLT_Aug21
+void compute_sparse_gru_enc_melsp(const SparseFrameGRULayer *gru, float *zrh, float *recur, float *state, const float *input)
 {
    int i, j, k;
-   float zrh[RNN_ENC_MELSP_NEURONS_3];
-   float recur[RNN_ENC_MELSP_NEURONS_3];
+   //float zrh[RNN_ENC_MELSP_NEURONS_3];
+   //float recur[RNN_ENC_MELSP_NEURONS_3];
    float *z;
    float *r;
    float *h;
@@ -517,7 +499,7 @@ void compute_sparse_gru_enc_melsp(const SparseFrameGRULayer *gru, float *state, 
       for (i=0,j=k*RNN_ENC_MELSP_NEURONS;i<RNN_ENC_MELSP_NEURONS;i++)
          recur[j + i] += gru->diag_weights[j + i]*state[i];
    sparse_sgemv_accum16(recur, gru->recurrent_weights, RNN_ENC_MELSP_NEURONS_3, gru->idx, state);
-   sgemv_accum16(zrh, gru->input_weights, RNN_ENC_MELSP_NEURONS_3, FEATURE_CONV_ENC_MELSP_OUT_SIZE, RNN_ENC_MELSP_NEURONS_3, input);
+   sgemv_accum16(zrh, gru->input_weights, RNN_ENC_MELSP_NEURONS_3, FEATURE_DENSE_ENC_MELSP_OUT_SIZE, input);
 
    for (i=0;i<RNN_ENC_MELSP_NEURONS_2;i++)
       zrh[i] += recur[i]; //z_t and r_t computed in a similar way : sigmoid(in_t + W_z*h_{t-1})
@@ -533,12 +515,12 @@ void compute_sparse_gru_enc_melsp(const SparseFrameGRULayer *gru, float *state, 
       state[i] = r[i]*state[i] + (1-r[i])*h[i]; //h_t = z_t o h_{t-1} + (1-z_t) o n_t
 }
 
-//PLT_Jan21
-void compute_sparse_gru_enc_excit(const SparseFrameGRULayer *gru, float *state, const float *input)
+//PLT_Aug21
+void compute_sparse_gru_enc_excit(const SparseFrameGRULayer *gru, float *zrh, float *recur, float *state, const float *input)
 {
    int i, j, k;
-   float zrh[RNN_ENC_EXCIT_NEURONS_3];
-   float recur[RNN_ENC_EXCIT_NEURONS_3];
+   //float zrh[RNN_ENC_EXCIT_NEURONS_3];
+   //float recur[RNN_ENC_EXCIT_NEURONS_3];
    float *z;
    float *r;
    float *h;
@@ -555,7 +537,7 @@ void compute_sparse_gru_enc_excit(const SparseFrameGRULayer *gru, float *state, 
       for (i=0,j=k*RNN_ENC_EXCIT_NEURONS;i<RNN_ENC_EXCIT_NEURONS;i++)
          recur[j + i] += gru->diag_weights[j + i]*state[i];
    sparse_sgemv_accum16(recur, gru->recurrent_weights, RNN_ENC_EXCIT_NEURONS_3, gru->idx, state);
-   sgemv_accum16(zrh, gru->input_weights, RNN_ENC_EXCIT_NEURONS_3, FEATURE_CONV_ENC_EXCIT_OUT_SIZE, RNN_ENC_EXCIT_NEURONS_3, input);
+   sgemv_accum16(zrh, gru->input_weights, RNN_ENC_EXCIT_NEURONS_3, FEATURE_DENSE_ENC_EXCIT_OUT_SIZE, input);
 
    for (i=0;i<RNN_ENC_EXCIT_NEURONS_2;i++)
       zrh[i] += recur[i]; //z_t and r_t computed in a similar way : sigmoid(in_t + W_z*h_{t-1})
@@ -571,7 +553,7 @@ void compute_sparse_gru_enc_excit(const SparseFrameGRULayer *gru, float *state, 
       state[i] = r[i]*state[i] + (1-r[i])*h[i]; //h_t = z_t o h_{t-1} + (1-z_t) o n_t
 }
 
-//PLT_Dec20
+//PLT_Aug21
 void compute_gru_spk(const FrameGRULayer *gru, float *state, const float *input)
 {
    int i;
@@ -589,8 +571,8 @@ void compute_gru_spk(const FrameGRULayer *gru, float *state, const float *input)
       recur[i] = gru->recurrent_bias[i];
       zrh[i] = gru->input_bias[i];
    }
-   sgemv_accum16(recur, gru->recurrent_weights, RNN_SPK_NEURONS_3, RNN_SPK_NEURONS, RNN_SPK_NEURONS_3, state);
-   sgemv_accum16(zrh, gru->input_weights, RNN_SPK_NEURONS_3, FEATURE_CONV_SPK_OUT_SIZE, RNN_SPK_NEURONS_3, input);
+   sgemv_accum16(recur, gru->recurrent_weights, RNN_SPK_NEURONS_3, RNN_SPK_NEURONS, state);
+   sgemv_accum16(zrh, gru->input_weights, RNN_SPK_NEURONS_3, FEATURE_DENSE_SPK_OUT_SIZE, input);
 
    for (i=0;i<RNN_SPK_NEURONS_2;i++)
       zrh[i] += recur[i]; //z_t and r_t computed in a similar way : sigmoid(in_t + W_z*h_{t-1})
@@ -606,12 +588,12 @@ void compute_gru_spk(const FrameGRULayer *gru, float *state, const float *input)
       state[i] = r[i]*state[i] + (1-r[i])*h[i]; //h_t = z_t o h_{t-1} + (1-z_t) o n_t
 }
 
-//PLT_Jul21
-void compute_sparse_gru_dec_melsp(const SparseFrameGRULayer *gru, float *state, const float *input)
+//PLT_Aug21
+void compute_sparse_gru_dec_melsp(const SparseFrameGRULayer *gru, float *zrh, float *recur, float *state, const float *input)
 {
    int i, j, k;
-   float zrh[RNN_DEC_MELSP_NEURONS_3];
-   float recur[RNN_DEC_MELSP_NEURONS_3];
+   //float zrh[RNN_DEC_MELSP_NEURONS_3];
+   //float recur[RNN_DEC_MELSP_NEURONS_3];
    float *z;
    float *r;
    float *h;
@@ -628,7 +610,7 @@ void compute_sparse_gru_dec_melsp(const SparseFrameGRULayer *gru, float *state, 
       for (i=0,j=k*RNN_DEC_MELSP_NEURONS;i<RNN_DEC_MELSP_NEURONS;i++)
          recur[j + i] += gru->diag_weights[j + i]*state[i];
    sparse_sgemv_accum16(recur, gru->recurrent_weights, RNN_DEC_MELSP_NEURONS_3, gru->idx, state);
-   sgemv_accum16(zrh, gru->input_weights, RNN_DEC_MELSP_NEURONS_3, FEATURE_CONV_DEC_MELSP_OUT_SIZE, RNN_DEC_MELSP_NEURONS_3, input);
+   sgemv_accum16(zrh, gru->input_weights, RNN_DEC_MELSP_NEURONS_3, FEATURE_DENSE_DEC_MELSP_OUT_SIZE, input);
 
    for (i=0;i<RNN_DEC_MELSP_NEURONS_2;i++)
       zrh[i] += recur[i]; //z_t and r_t computed in a similar way : sigmoid(in_t + W_z*h_{t-1})
@@ -682,7 +664,7 @@ void compute_sampling_gauss(float *mu, const float *std, int dim, RNGState *rng_
 #endif
 }
 
-// PLT_Dec20
+// PLT_Aug21
 void compute_spkidtr(const DenseLayer * in_emb_layer, const DenseLayer * in_layer, const DenseLayer * out_layer,
     float* output, float* coeff, const float* input)
 {
@@ -697,7 +679,7 @@ void compute_spkidtr(const DenseLayer * in_emb_layer, const DenseLayer * in_laye
         //   printf("[%d] %f ", i, tmp_in[i]);
     }
     //printf("\n");
-    sgemv_accum16(tmp_in, in_emb_layer->input_weights, FC_IN_SPK_CODE_OUT_SIZE, in_emb_layer->nb_inputs, FC_IN_SPK_CODE_OUT_SIZE, input);
+    sgemv_accum16(tmp_in, in_emb_layer->input_weights, FC_IN_SPK_CODE_OUT_SIZE, in_emb_layer->nb_inputs, input);
     //for (i=0;i<N;i++) {
     //   printf("[%d] %f ", i, tmp_in[i]);
     //}
@@ -716,7 +698,7 @@ void compute_spkidtr(const DenseLayer * in_emb_layer, const DenseLayer * in_laye
         //   printf("[%d] %f ", i, tmp[i]);
     }
     //printf("\n");
-    sgemv_accum16(tmp, in_layer->input_weights, FC_IN_SPK_CODE_TRANSFORM_OUT_SIZE, in_layer->nb_inputs, FC_IN_SPK_CODE_TRANSFORM_OUT_SIZE, tmp_in);
+    sgemv_accum16(tmp, in_layer->input_weights, FC_IN_SPK_CODE_TRANSFORM_OUT_SIZE, in_layer->nb_inputs, tmp_in);
     //printf("2-dim %f %f\n", tmp[0], tmp[1]);
     compute_activation(tmp, tmp, FC_IN_SPK_CODE_TRANSFORM_OUT_SIZE, in_layer->activation);
     //printf("2-dim tanh %f %f\n", tmp[0], tmp[1]);
@@ -729,7 +711,7 @@ void compute_spkidtr(const DenseLayer * in_emb_layer, const DenseLayer * in_laye
         //   printf("[%d] %f ", i, output[i]);
     }
     //printf("\n");
-    sgemv_accum16(coeff, out_layer->input_weights, FC_OUT_SPK_CODE_TRANSFORM_OUT_SIZE, out_layer->nb_inputs, FC_OUT_SPK_CODE_TRANSFORM_OUT_SIZE, tmp);
+    sgemv_accum16(coeff, out_layer->input_weights, FC_OUT_SPK_CODE_TRANSFORM_OUT_SIZE, out_layer->nb_inputs, tmp);
     compute_activation(coeff, coeff, FC_OUT_SPK_CODE_TRANSFORM_OUT_SIZE, out_layer->activation);
 
     printf("%d-dim spk-embed-coeff:", FEATURE_N_WEIGHT_EMBED_SPK);
@@ -742,7 +724,7 @@ void compute_spkidtr(const DenseLayer * in_emb_layer, const DenseLayer * in_laye
     printf("\n");
 }
 
-//PLT_Dec20
+//PLT_Aug21
 void compute_spkidtr_coord(const DenseLayer* layer, float* output, float* coeff, const float* input)
 {
     int i, N, j, k;
@@ -750,7 +732,7 @@ void compute_spkidtr_coord(const DenseLayer* layer, float* output, float* coeff,
     N = layer->nb_neurons;
     for (i = 0; i < N; i++)
         coeff[i] = layer->bias[i];
-    sgemv_accum16(coeff, layer->input_weights, N, layer->nb_inputs, N, input);
+    sgemv_accum16(coeff, layer->input_weights, N, layer->nb_inputs, input);
     compute_activation(coeff, coeff, N, layer->activation);
 
     printf("%d-dim spk-embed-coeff:", FEATURE_N_WEIGHT_EMBED_SPK);

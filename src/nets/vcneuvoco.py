@@ -1906,7 +1906,7 @@ class GRU_EXCIT_DECODER(nn.Module):
 
 
 class GRU_WAVE_DECODER_DUALGRU_COMPACT_MBAND_CF(nn.Module):
-    def __init__(self, feat_dim=80, upsampling_factor=120, hidden_units=640, hidden_units_2=32, n_quantize=65536, s_dim=256,
+    def __init__(self, feat_dim=80, upsampling_factor=120, hidden_units=640, hidden_units_2=32, n_quantize=65536, s_dim=320,
             kernel_size=7, dilation_size=1, do_prob=0, causal_conv=False, use_weight_norm=True, lpc=6, remove_scale_in_weight_norm=True,
                 right_size=2, n_bands=5, excit_dim=0, pad_first=False, mid_out_flag=True, red_dim=None, spk_dim=None, res_gru=None, frm_upd_flag=False,
                     scale_in_aux_dim=None, n_spk=None, scale_in_flag=True, mid_dim=None, aux_dim=None, res_flag=False, res_smpl_flag=False, conv_in_flag=False,

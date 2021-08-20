@@ -23,8 +23,8 @@
    NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
    SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-/* Modified by Patrick Lumban Tobing (Nagoya University) on Dec. 2020 - Jul. 2021,
-   marked by PLT_<Dec20/Jan21/Mar21/Jul21> */
+/* Modified by Patrick Lumban Tobing (Nagoya University) on Dec. 2020 - Aug. 2021,
+   marked by PLT_<MonthYear> */
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -54,9 +54,8 @@ static void print_vector(float *x, int N)
 #endif
 
 
-//PLT_Dec20
-static void run_frame_network_mwdlp10(MWDLP10NNetState *net, float *gru_a_condition, float *gru_b_condition, 
-    float *gru_c_condition, const float *features, int flag_last_frame)
+//PLT_Aug21
+static void run_frame_network_mwdlp10(MWDLP10NNetState *net, const float *features, int flag_last_frame)
 {
     //clock_t t;
     //t = clock();
@@ -86,126 +85,113 @@ static void run_frame_network_mwdlp10(MWDLP10NNetState *net, float *gru_a_condit
     //printf("conv_mwdlp %f ms\n", time_taken);
     compute_dense(&feature_dense, condition, conv_out);
     //compute condition (input_vector_cond*input_matrix_cond+input_bias) for each gru_a, b, and c; fixed for one frame
-    compute_dense_linear(&gru_a_dense_feature, gru_a_condition, condition);
-    compute_dense_linear(&gru_b_dense_feature, gru_b_condition, condition);
-    compute_dense_linear(&gru_c_dense_feature, gru_c_condition, condition);
+    compute_dense_linear(&gru_a_dense_feature, net->gru_a_condition, condition);
+    compute_dense_linear(&gru_b_dense_feature, net->gru_b_condition, condition);
+    compute_dense_linear(&gru_c_dense_feature, net->gru_c_condition, condition);
     //time_taken = (((double)(clock()-t))/CLOCKS_PER_SEC)*1000;
     //printf("frame_mwdlp %f ms\n", time_taken);
 }
 
 
-//PLT_Mar21
+//PLT_Aug21
 static void run_sample_network_mwdlp10_coarse(MWDLP10NNetState *net, const EmbeddingLayer *a_embed_coarse,
-    const EmbeddingLayer *a_embed_fine, const EmbeddingLayer *prev_logits_coarse, float *pdf,
-        const float *gru_a_condition, const float *gru_b_condition, int *last_coarse, int *last_fine)
-        //const float *gru_a_condition, const float *gru_b_condition, int *last_coarse, int *last_fine,
+    const EmbeddingLayer *a_embed_fine, const EmbeddingLayer *prev_logits_coarse, float *pdf, short *last_coarse, short *last_fine)
+        //const float *gru_a_input, const float *gru_b_input, int *last_coarse, int *last_fine,
         //    float *ddlpc)
 {
     int i, j, idx_bands, idx_coarse, idx_fine;
-    float gru_a_input[RNN_MAIN_NEURONS_3];
-    float gru_b_input[RNN_SUB_NEURONS_3];
     //copy input conditioning * GRU_input_cond_weights + input_bias contribution (a)
-    RNN_COPY(gru_a_input, gru_a_condition, RNN_MAIN_NEURONS_3);
+    RNN_COPY(net->gru_a_input, net->gru_a_condition, RNN_MAIN_NEURONS_3);
     //compute last coarse / last fine embedding * GRU_input_embed_weights contribution (a)
     for (i=0;i<N_MBANDS;i++) {
         // stored embedding: n_bands x 32 x hidden_size_main
         for (j=0,idx_bands=i*RNN_MAIN_NEURONS_3_SQRT_QUANTIZE,
                     idx_coarse=idx_bands+last_coarse[i]*RNN_MAIN_NEURONS_3,
                         idx_fine=idx_bands+last_fine[i]*RNN_MAIN_NEURONS_3;j<RNN_MAIN_NEURONS_3;j++)
-            gru_a_input[j] += a_embed_coarse->embedding_weights[idx_coarse + j]
+            net->gru_a_input[j] += a_embed_coarse->embedding_weights[idx_coarse + j]
                                 + a_embed_fine->embedding_weights[idx_fine + j];
     }
     //compute sparse gru_a
-    compute_sparse_gru(&sparse_gru_a, net->gru_a_state, gru_a_input);
+    compute_sparse_gru(&sparse_gru_a, net->gru_a_zrh, net->gru_a_recur, net->gru_a_state, net->gru_a_input);
     //copy input conditioning * GRU_input_cond_weights + bias contribution (b)
-    RNN_COPY(gru_b_input, gru_b_condition, RNN_SUB_NEURONS_3);
+    RNN_COPY(net->gru_b_input, net->gru_b_condition, RNN_SUB_NEURONS_3);
     //compute gru_a state contribution to gru_b
-    sgemv_accum16_(gru_b_input, (&gru_b_dense_feature_state)->input_weights, RNN_SUB_NEURONS_3, RNN_MAIN_NEURONS,
-        RNN_SUB_NEURONS_3, net->gru_a_state);
+    sgemv_accum16_(net->gru_b_input, (&gru_b_dense_feature_state)->input_weights, RNN_SUB_NEURONS_3, RNN_MAIN_NEURONS, net->gru_a_state);
     //compute gru_b and coarse_output
-    compute_gru3(&gru_b, net->gru_b_state, gru_b_input);
+    compute_gru3(&gru_b, net->gru_b_state, net->gru_b_input);
     compute_mdense_mwdlp10(&dual_fc_coarse, &fc_out_coarse, prev_logits_coarse->embedding_weights, pdf, net->gru_b_state, last_coarse);
     //compute_mdense_mwdlp10(&dual_fc_coarse, &fc_out_coarse, prev_logits_coarse->embedding_weights, pdf, net->gru_b_state, last_coarse, ddlpc);
 }
 
 
-//PLT_Mar21
+//PLT_Aug21
 static void run_sample_network_mwdlp10_fine(MWDLP10NNetState *net, const EmbeddingLayer *c_embed_coarse,
-    const EmbeddingLayer *prev_logits_fine, float *pdf, const float *gru_c_condition, int *coarse, int *last_fine)
-    //const EmbeddingLayer *prev_logits_fine, float *pdf, const float *gru_c_condition, int *coarse, int *last_fine,
+    const EmbeddingLayer *prev_logits_fine, float *pdf, short *coarse, short *last_fine)
+    //const EmbeddingLayer *prev_logits_fine, float *pdf, const float *gru_c_input, short *coarse, short *last_fine,
     //    float *ddlpc)
 {
     int i, j, idx_coarse;
-    float gru_c_input[RNN_SUB_NEURONS_3];
     //copy input conditioning * GRU_input_cond_weights + input_bias contribution (c)
-    RNN_COPY(gru_c_input, gru_c_condition, RNN_SUB_NEURONS_3);
+    RNN_COPY(net->gru_c_input, net->gru_c_condition, RNN_SUB_NEURONS_3);
     //compute current coarse embedding * GRU_input_embed_weights contribution (c)
     for (i=0;i<N_MBANDS;i++) {
         // stored embedding: n_bands x 32 x hidden_size_sub
         for (j=0,idx_coarse=i*RNN_SUB_NEURONS_3_SQRT_QUANTIZE+coarse[i]*RNN_SUB_NEURONS_3;j<RNN_SUB_NEURONS_3;j++)
-            gru_c_input[j] += c_embed_coarse->embedding_weights[idx_coarse + j];
+            net->gru_c_input[j] += c_embed_coarse->embedding_weights[idx_coarse + j];
     }
     //compute gru_b state contribution to gru_c
-    sgemv_accum16_(gru_c_input, (&gru_c_dense_feature_state)->input_weights, RNN_SUB_NEURONS_3, RNN_SUB_NEURONS,
-        RNN_SUB_NEURONS_3, net->gru_b_state);
+    sgemv_accum16_(net->gru_c_input, (&gru_c_dense_feature_state)->input_weights, RNN_SUB_NEURONS_3, RNN_SUB_NEURONS, net->gru_b_state);
     //compute gru_c and fine_output
-    compute_gru3(&gru_c, net->gru_c_state, gru_c_input);
+    compute_gru3(&gru_c, net->gru_c_state, net->gru_c_input);
     compute_mdense_mwdlp10(&dual_fc_fine, &fc_out_fine, prev_logits_fine->embedding_weights, pdf, net->gru_c_state, last_fine);
     //compute_mdense_mwdlp10(&dual_fc_fine, &fc_out_fine, prev_logits_fine->embedding_weights, pdf, net->gru_c_state, last_fine, ddlpc);
 }
 
 
-//PLT_Mar21
+//PLT_Aug21
 static void run_sample_network_mwdlp10_coarse_nodlpc(MWDLP10NNetState *net, const EmbeddingLayer *a_embed_coarse,
-    const EmbeddingLayer *a_embed_fine, float *pdf, const float *gru_a_condition, const float *gru_b_condition,
-        int *last_coarse, int *last_fine)
+    const EmbeddingLayer *a_embed_fine, float *pdf, short *last_coarse, short *last_fine)
 {
     int i, j, idx_bands, idx_coarse, idx_fine;
-    float gru_a_input[RNN_MAIN_NEURONS_3];
-    float gru_b_input[RNN_SUB_NEURONS_3];
     //copy input conditioning * GRU_input_cond_weights + input_bias contribution (a)
-    RNN_COPY(gru_a_input, gru_a_condition, RNN_MAIN_NEURONS_3);
+    RNN_COPY(net->gru_a_input, net->gru_a_condition, RNN_MAIN_NEURONS_3);
     //compute last coarse / last fine embedding * GRU_input_embed_weights contribution (a)
     for (i=0;i<N_MBANDS;i++) {
         // stored embedding: n_bands x 32 x hidden_size_main
         for (j=0,idx_bands=i*RNN_MAIN_NEURONS_3_SQRT_QUANTIZE,
                     idx_coarse=idx_bands+last_coarse[i]*RNN_MAIN_NEURONS_3,
                         idx_fine=idx_bands+last_fine[i]*RNN_MAIN_NEURONS_3;j<RNN_MAIN_NEURONS_3;j++)
-            gru_a_input[j] += a_embed_coarse->embedding_weights[idx_coarse + j]
+            net->gru_a_input[j] += a_embed_coarse->embedding_weights[idx_coarse + j]
                                 + a_embed_fine->embedding_weights[idx_fine + j];
     }
     //compute sparse gru_a
-    compute_sparse_gru(&sparse_gru_a, net->gru_a_state, gru_a_input);
+    compute_sparse_gru(&sparse_gru_a, net->gru_a_state, net->gru_a_zrh, net->gru_a_recur, net->gru_a_input);
     //copy input conditioning * GRU_input_cond_weights + bias contribution (b)
-    RNN_COPY(gru_b_input, gru_b_condition, RNN_SUB_NEURONS_3);
+    RNN_COPY(net->gru_b_input, net->gru_b_condition, RNN_SUB_NEURONS_3);
     //compute gru_a state contribution to gru_b
-    sgemv_accum16_(gru_b_input, (&gru_b_dense_feature_state)->input_weights, RNN_SUB_NEURONS_3, RNN_MAIN_NEURONS,
-        RNN_SUB_NEURONS_3, net->gru_a_state);
+    sgemv_accum16_(net->gru_b_input, (&gru_b_dense_feature_state)->input_weights, RNN_SUB_NEURONS_3, RNN_MAIN_NEURONS, net->gru_a_state);
     //compute gru_b and coarse_output
-    compute_gru3(&gru_b, net->gru_b_state, gru_b_input);
+    compute_gru3(&gru_b, net->gru_b_state, net->gru_b_input);
     compute_mdense_mwdlp10_nodlpc(&dual_fc_coarse, &fc_out_coarse, pdf, net->gru_b_state);
 }
 
 
-//PLT_Mar21
-static void run_sample_network_mwdlp10_fine_nodlpc(MWDLP10NNetState *net, const EmbeddingLayer *c_embed_coarse, float *pdf,
-    const float *gru_c_condition, int *coarse)
+//PLT_Aug21
+static void run_sample_network_mwdlp10_fine_nodlpc(MWDLP10NNetState *net, const EmbeddingLayer *c_embed_coarse, float *pdf, short *coarse)
 {
     int i, j, idx_coarse;
-    float gru_c_input[RNN_SUB_NEURONS_3];
     //copy input conditioning * GRU_input_cond_weights + input_bias contribution (c)
-    RNN_COPY(gru_c_input, gru_c_condition, RNN_SUB_NEURONS_3);
+    RNN_COPY(net->gru_c_input, net->gru_c_condition, RNN_SUB_NEURONS_3);
     //compute current coarse embedding * GRU_input_embed_weights contribution (c)
     for (i=0;i<N_MBANDS;i++) {
         // stored embedding: n_bands x 32 x hidden_size_sub
         for (j=0,idx_coarse=i*RNN_SUB_NEURONS_3_SQRT_QUANTIZE+coarse[i]*RNN_SUB_NEURONS_3;j<RNN_SUB_NEURONS_3;j++)
-            gru_c_input[j] += c_embed_coarse->embedding_weights[idx_coarse + j];
+            net->gru_c_input[j] += c_embed_coarse->embedding_weights[idx_coarse + j];
     }
     //compute gru_b state contribution to gru_c
-    sgemv_accum16_(gru_c_input, (&gru_c_dense_feature_state)->input_weights, RNN_SUB_NEURONS_3, RNN_SUB_NEURONS,
-        RNN_SUB_NEURONS_3, net->gru_b_state);
+    sgemv_accum16_(net->gru_c_input, (&gru_c_dense_feature_state)->input_weights, RNN_SUB_NEURONS_3, RNN_SUB_NEURONS, net->gru_b_state);
     //compute gru_c and fine_output
-    compute_gru3(&gru_c, net->gru_c_state, gru_c_input);
+    compute_gru3(&gru_c, net->gru_c_state, net->gru_c_input);
     compute_mdense_mwdlp10_nodlpc(&dual_fc_fine, &fc_out_fine, pdf, net->gru_c_state);
 }
 
@@ -267,19 +253,17 @@ MWDLP10NET_EXPORT void mwdlp10net_destroy(MWDLP10NetState *mwdlp10net)
 }
 
 
-//PLT_Jul21
+//PLT_Aug21
 MWDLP10NET_EXPORT void mwdlp10net_synthesize(MWDLP10NetState *mwdlp10net, const float *features,
-    short *output, int *n_output, int flag_last_frame)
+    int *n_output, int flag_last_frame)
     //short *output, int *n_output, int flag_last_frame, float *out_ddlpc_coarse, float *out_ddlpc_fine, short *pcm_band)
 {
     int i, j, k, l, m;
-    int coarse[N_MBANDS];
-    int fine[N_MBANDS];
-    float pdf[SQRT_QUANTIZE_MBANDS];
-    float gru_a_condition[RNN_MAIN_NEURONS_3];
-    float gru_b_condition[RNN_SUB_NEURONS_3];
-    float gru_c_condition[RNN_SUB_NEURONS_3];
     //float ddlpc[LPC_ORDER_MBANDS];
+    float *pdf = &mwdlp10net->pdf[0];
+    short *coarse = &mwdlp10net->coarse[0];
+    short *fine = &mwdlp10net->fine[0];
+    short *output = &mwdlp10net->output[0];
     const EmbeddingLayer *a_embed_coarse = &gru_a_embed_coarse;
     const EmbeddingLayer *a_embed_fine = &gru_a_embed_fine;
     const EmbeddingLayer *c_embed_coarse = &gru_c_embed_coarse;
@@ -287,10 +271,10 @@ MWDLP10NET_EXPORT void mwdlp10net_synthesize(MWDLP10NetState *mwdlp10net, const 
     const EmbeddingLayer *prev_logits_f = &prev_logits_fine;
     MWDLP10NNetState *nnet = &mwdlp10net->nnet;
     RNGState *rng_state = &mwdlp10net->rng_state;
-    int *last_coarse_mb_pt = &mwdlp10net->last_coarse[N_MBANDS];
-    int *last_coarse_0_pt = &mwdlp10net->last_coarse[0];
-    int *last_fine_mb_pt = &mwdlp10net->last_fine[N_MBANDS];
-    int *last_fine_0_pt = &mwdlp10net->last_fine[0];
+    short *last_coarse_mb_pt = &mwdlp10net->last_coarse[N_MBANDS];
+    short *last_coarse_0_pt = &mwdlp10net->last_coarse[0];
+    short *last_fine_mb_pt = &mwdlp10net->last_fine[N_MBANDS];
+    short *last_fine_0_pt = &mwdlp10net->last_fine[0];
     float tmp_out;
     float *pqmf_state_0_pt = &mwdlp10net->pqmf_state[0];
     float *pqmf_state_mbsqr_pt = &mwdlp10net->pqmf_state[N_MBANDS_SQR];
@@ -313,17 +297,16 @@ MWDLP10NET_EXPORT void mwdlp10net_synthesize(MWDLP10NetState *mwdlp10net, const 
         return;
     }
     if (!flag_last_frame) {
-        run_frame_network_mwdlp10(nnet, gru_a_condition, gru_b_condition, gru_c_condition, features, 0);
+        run_frame_network_mwdlp10(nnet, features, 0);
         for (i=0,m=0,*n_output=0;i<N_SAMPLE_BANDS;i++) {
             //coarse
-            run_sample_network_mwdlp10_coarse(nnet, a_embed_coarse, a_embed_fine, prev_logits_c, pdf,
-                    gru_a_condition, gru_b_condition, mwdlp10net->last_coarse, mwdlp10net->last_fine);
+            run_sample_network_mwdlp10_coarse(nnet, a_embed_coarse, a_embed_fine, prev_logits_c, pdf, mwdlp10net->last_coarse, mwdlp10net->last_fine);
                     //gru_a_condition, gru_b_condition, mwdlp10net->last_coarse, mwdlp10net->last_fine, ddlpc);
             //RNN_COPY(&out_ddlpc_coarse[i*LPC_ORDER_MBANDS], ddlpc, LPC_ORDER_MBANDS);
             for (j=0;j<N_MBANDS;j++)
                 coarse[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE, rng_state);
             //fine
-            run_sample_network_mwdlp10_fine(nnet, c_embed_coarse, prev_logits_f, pdf, gru_c_condition, coarse, mwdlp10net->last_fine);
+            run_sample_network_mwdlp10_fine(nnet, c_embed_coarse, prev_logits_f, pdf, coarse, mwdlp10net->last_fine);
             //run_sample_network_mwdlp10_fine(nnet, c_embed_coarse, prev_logits_f, pdf, gru_c_condition, coarse, mwdlp10net->last_fine, ddlpc);
             //RNN_COPY(&out_ddlpc_fine[i*LPC_ORDER_MBANDS], ddlpc, LPC_ORDER_MBANDS);
             //printf("\n");
@@ -350,7 +333,7 @@ MWDLP10NET_EXPORT void mwdlp10net_synthesize(MWDLP10NetState *mwdlp10net, const 
                     for (j=0;j<N_MBANDS;j++,m++) {
                         tmp_out = 0;
                         //pqmf_synth
-                        sgemv_accum(&tmp_out, pqmf_synth_filter, 1, TAPS_MBANDS, 1,
+                        sgemv_accum(&tmp_out, pqmf_synth_filter, 1, TAPS_MBANDS,
                             &mwdlp10net->pqmf_state[j*N_MBANDS]);
                         //clamp
                         if (tmp_out < -1) tmp_out = -1;
@@ -375,7 +358,7 @@ MWDLP10NET_EXPORT void mwdlp10net_synthesize(MWDLP10NetState *mwdlp10net, const 
                     for (j=0;j<FIRST_N_OUTPUT;j++,m++) {
                         tmp_out = 0;
                         //pqmf_synth
-                        sgemv_accum(&tmp_out, pqmf_synth_filter, 1, TAPS_MBANDS, 1,
+                        sgemv_accum(&tmp_out, pqmf_synth_filter, 1, TAPS_MBANDS,
                             &mwdlp10net->first_pqmf_state[j*N_MBANDS]);
                         //clamp
                         if (tmp_out < -1) tmp_out = -1;
@@ -395,7 +378,7 @@ MWDLP10NET_EXPORT void mwdlp10net_synthesize(MWDLP10NetState *mwdlp10net, const 
                     for (k=0;k<N_MBANDS;k++,m++) {
                         tmp_out = 0;
                         //pqmf_synth
-                        sgemv_accum(&tmp_out, pqmf_synth_filter, 1, TAPS_MBANDS, 1,
+                        sgemv_accum(&tmp_out, pqmf_synth_filter, 1, TAPS_MBANDS,
                             &mwdlp10net->pqmf_state[k*N_MBANDS]);
                         //clamp
                         if (tmp_out < -1) tmp_out = -1;
@@ -419,18 +402,16 @@ MWDLP10NET_EXPORT void mwdlp10net_synthesize(MWDLP10NetState *mwdlp10net, const 
         //replicate_pad_right segmental_conv
         float *last_frame = &nnet->feature_conv_state[FEATURE_CONV_STATE_SIZE_1]; //for replicate pad_right
         for (l=0,m=0,*n_output=0;l<FEATURE_CONV_DELAY;l++) {
-            run_frame_network_mwdlp10(nnet, gru_a_condition, gru_b_condition, gru_c_condition, last_frame, 1);
+            run_frame_network_mwdlp10(nnet, last_frame, 1);
             for (i=0;i<N_SAMPLE_BANDS;i++) {
                 //coarse
-                run_sample_network_mwdlp10_coarse(nnet, a_embed_coarse, a_embed_fine, prev_logits_c, pdf,
-                        gru_a_condition, gru_b_condition, mwdlp10net->last_coarse, mwdlp10net->last_fine);
+                run_sample_network_mwdlp10_coarse(nnet, a_embed_coarse, a_embed_fine, prev_logits_c, pdf, mwdlp10net->last_coarse, mwdlp10net->last_fine);
                         //gru_a_condition, gru_b_condition, mwdlp10net->last_coarse, mwdlp10net->last_fine, ddlpc);
                 //RNN_COPY(&out_ddlpc_coarse[i*LPC_ORDER_MBANDS], ddlpc, LPC_ORDER_MBANDS);
                 for (j=0;j<N_MBANDS;j++)
                     coarse[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE, rng_state);
                 //fine
-                run_sample_network_mwdlp10_fine(nnet, c_embed_coarse, prev_logits_f, pdf, gru_c_condition, coarse,
-                    mwdlp10net->last_fine);
+                run_sample_network_mwdlp10_fine(nnet, c_embed_coarse, prev_logits_f, pdf, coarse, mwdlp10net->last_fine);
                     //mwdlp10net->last_fine, ddlpc);
                 //RNN_COPY(&out_ddlpc_fine[i*LPC_ORDER_MBANDS], ddlpc, LPC_ORDER_MBANDS);
                 for (j=0;j<N_MBANDS;j++) {
@@ -453,7 +434,7 @@ MWDLP10NET_EXPORT void mwdlp10net_synthesize(MWDLP10NetState *mwdlp10net, const 
                 for (j=0;j<N_MBANDS;j++,m++) {
                     tmp_out = 0;
                     //pqmf_synth
-                    sgemv_accum(&tmp_out, pqmf_synth_filter, 1, TAPS_MBANDS, 1, &mwdlp10net->pqmf_state[j*N_MBANDS]);
+                    sgemv_accum(&tmp_out, pqmf_synth_filter, 1, TAPS_MBANDS, &mwdlp10net->pqmf_state[j*N_MBANDS]);
                     //clamp
                     if (tmp_out < -1) tmp_out = -1;
                     else if (tmp_out > 0.999969482421875) tmp_out = 0.999969482421875;
@@ -475,7 +456,7 @@ MWDLP10NET_EXPORT void mwdlp10net_synthesize(MWDLP10NetState *mwdlp10net, const 
         for  (i=0;i<PQMF_DELAY;i++,m++) {
             tmp_out = 0;
             //pqmf_synth
-            sgemv_accum(&tmp_out, pqmf_synth_filter, 1, TAPS_MBANDS, 1, &mwdlp10net->last_pqmf_state[i*N_MBANDS]);
+            sgemv_accum(&tmp_out, pqmf_synth_filter, 1, TAPS_MBANDS, &mwdlp10net->last_pqmf_state[i*N_MBANDS]);
             //clamp
             if (tmp_out < -1) tmp_out = -1;
             else if (tmp_out > 0.999969482421875) tmp_out = 0.999969482421875;
@@ -494,25 +475,23 @@ MWDLP10NET_EXPORT void mwdlp10net_synthesize(MWDLP10NetState *mwdlp10net, const 
 }
 
 
-//PLT_Jul21
+//PLT_Aug21
 MWDLP10NET_EXPORT void mwdlp10net_synthesize_nodlpc(MWDLP10NetState *mwdlp10net, const float *features,
-    short *output, int *n_output, int flag_last_frame)
+    int *n_output, int flag_last_frame)
     //short *output, int *n_output, int flag_last_frame, short *pcm_band)
 {
     int i, j, k, l, m;
     //int coarse[N_MBANDS];
     //int fine[N_MBANDS];
-    float pdf[SQRT_QUANTIZE_MBANDS];
-    float gru_a_condition[RNN_MAIN_NEURONS_3];
-    float gru_b_condition[RNN_SUB_NEURONS_3];
-    float gru_c_condition[RNN_SUB_NEURONS_3];
+    float *pdf = &mwdlp10net->pdf[0];
+    short *output = &mwdlp10net->output[0];
     const EmbeddingLayer *a_embed_coarse = &gru_a_embed_coarse;
     const EmbeddingLayer *a_embed_fine = &gru_a_embed_fine;
     const EmbeddingLayer *c_embed_coarse = &gru_c_embed_coarse;
     MWDLP10NNetState *nnet = &mwdlp10net->nnet;
     RNGState *rng_state = &mwdlp10net->rng_state;
-    int *last_coarse_0_pt = &mwdlp10net->last_coarse[0];
-    int *last_fine_0_pt = &mwdlp10net->last_fine[0];
+    short *last_coarse_0_pt = &mwdlp10net->last_coarse[0];
+    short *last_fine_0_pt = &mwdlp10net->last_fine[0];
     float tmp_out;
     float *pqmf_state_0_pt = &mwdlp10net->pqmf_state[0];
     float *pqmf_state_mbsqr_pt = &mwdlp10net->pqmf_state[N_MBANDS_SQR];
@@ -535,15 +514,14 @@ MWDLP10NET_EXPORT void mwdlp10net_synthesize_nodlpc(MWDLP10NetState *mwdlp10net,
         return;
     }
     if (!flag_last_frame) {
-        run_frame_network_mwdlp10(nnet, gru_a_condition, gru_b_condition, gru_c_condition, features, 0);
+        run_frame_network_mwdlp10(nnet, features, 0);
         for (i=0,m=0,*n_output=0;i<N_SAMPLE_BANDS;i++) {
             //coarse
-            run_sample_network_mwdlp10_coarse_nodlpc(nnet, a_embed_coarse, a_embed_fine, pdf,
-                    gru_a_condition, gru_b_condition, last_coarse_0_pt, last_fine_0_pt);
+            run_sample_network_mwdlp10_coarse_nodlpc(nnet, a_embed_coarse, a_embed_fine, pdf, last_coarse_0_pt, last_fine_0_pt);
             for (j=0;j<N_MBANDS;j++)
                 last_coarse_0_pt[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE, rng_state);
             //fine
-            run_sample_network_mwdlp10_fine_nodlpc(nnet, c_embed_coarse, pdf, gru_c_condition, last_coarse_0_pt);
+            run_sample_network_mwdlp10_fine_nodlpc(nnet, c_embed_coarse, pdf, last_coarse_0_pt);
             //printf("\n");
             for (j=0;j<N_MBANDS;j++) {
                 last_fine_0_pt[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE, rng_state);
@@ -566,7 +544,7 @@ MWDLP10NET_EXPORT void mwdlp10net_synthesize_nodlpc(MWDLP10NetState *mwdlp10net,
                     for (j=0;j<N_MBANDS;j++,m++) {
                         tmp_out = 0;
                         //pqmf_synth
-                        sgemv_accum(&tmp_out, pqmf_synth_filter, 1, TAPS_MBANDS, 1,
+                        sgemv_accum(&tmp_out, pqmf_synth_filter, 1, TAPS_MBANDS,
                             &mwdlp10net->pqmf_state[j*N_MBANDS]);
                         //clamp
                         if (tmp_out < -1) tmp_out = -1;
@@ -591,7 +569,7 @@ MWDLP10NET_EXPORT void mwdlp10net_synthesize_nodlpc(MWDLP10NetState *mwdlp10net,
                     for (j=0;j<FIRST_N_OUTPUT;j++,m++) {
                         tmp_out = 0;
                         //pqmf_synth
-                        sgemv_accum(&tmp_out, pqmf_synth_filter, 1, TAPS_MBANDS, 1,
+                        sgemv_accum(&tmp_out, pqmf_synth_filter, 1, TAPS_MBANDS,
                             &mwdlp10net->first_pqmf_state[j*N_MBANDS]);
                         //clamp
                         if (tmp_out < -1) tmp_out = -1;
@@ -611,7 +589,7 @@ MWDLP10NET_EXPORT void mwdlp10net_synthesize_nodlpc(MWDLP10NetState *mwdlp10net,
                     for (k=0;k<N_MBANDS;k++,m++) {
                         tmp_out = 0;
                         //pqmf_synth
-                        sgemv_accum(&tmp_out, pqmf_synth_filter, 1, TAPS_MBANDS, 1,
+                        sgemv_accum(&tmp_out, pqmf_synth_filter, 1, TAPS_MBANDS,
                             &mwdlp10net->pqmf_state[k*N_MBANDS]);
                         //clamp
                         if (tmp_out < -1) tmp_out = -1;
@@ -635,15 +613,14 @@ MWDLP10NET_EXPORT void mwdlp10net_synthesize_nodlpc(MWDLP10NetState *mwdlp10net,
         //replicate_pad_right segmental_conv
         float *last_frame = &nnet->feature_conv_state[FEATURE_CONV_STATE_SIZE_1]; //for replicate pad_right
         for (l=0,m=0,*n_output=0;l<FEATURE_CONV_DELAY;l++) {
-            run_frame_network_mwdlp10(nnet, gru_a_condition, gru_b_condition, gru_c_condition, last_frame, 1);
+            run_frame_network_mwdlp10(nnet, last_frame, 1);
             for (i=0;i<N_SAMPLE_BANDS;i++) {
                 //coarse
-                run_sample_network_mwdlp10_coarse_nodlpc(nnet, a_embed_coarse, a_embed_fine, pdf,
-                        gru_a_condition, gru_b_condition, last_coarse_0_pt, last_fine_0_pt);
+                run_sample_network_mwdlp10_coarse_nodlpc(nnet, a_embed_coarse, a_embed_fine, pdf, last_coarse_0_pt, last_fine_0_pt);
                 for (j=0;j<N_MBANDS;j++)
                     last_coarse_0_pt[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE, rng_state);
                 //fine
-                run_sample_network_mwdlp10_fine_nodlpc(nnet, c_embed_coarse, pdf, gru_c_condition, last_coarse_0_pt);
+                run_sample_network_mwdlp10_fine_nodlpc(nnet, c_embed_coarse, pdf, last_coarse_0_pt);
                 for (j=0;j<N_MBANDS;j++) {
                     last_fine_0_pt[j] = sample_from_pdf_mwdlp(&pdf[j*SQRT_QUANTIZE], SQRT_QUANTIZE, rng_state);
                     //float,[-1,1),upsample-bands(x n_bands)
@@ -662,7 +639,7 @@ MWDLP10NET_EXPORT void mwdlp10net_synthesize_nodlpc(MWDLP10NetState *mwdlp10net,
                 for (j=0;j<N_MBANDS;j++,m++) {
                     tmp_out = 0;
                     //pqmf_synth
-                    sgemv_accum(&tmp_out, pqmf_synth_filter, 1, TAPS_MBANDS, 1, &mwdlp10net->pqmf_state[j*N_MBANDS]);
+                    sgemv_accum(&tmp_out, pqmf_synth_filter, 1, TAPS_MBANDS, &mwdlp10net->pqmf_state[j*N_MBANDS]);
                     //clamp
                     if (tmp_out < -1) tmp_out = -1;
                     else if (tmp_out > 0.999969482421875) tmp_out = 0.999969482421875;
@@ -684,7 +661,7 @@ MWDLP10NET_EXPORT void mwdlp10net_synthesize_nodlpc(MWDLP10NetState *mwdlp10net,
         for  (i=0;i<PQMF_DELAY;i++,m++) {
             tmp_out = 0;
             //pqmf_synth
-            sgemv_accum(&tmp_out, pqmf_synth_filter, 1, TAPS_MBANDS, 1, &mwdlp10net->last_pqmf_state[i*N_MBANDS]);
+            sgemv_accum(&tmp_out, pqmf_synth_filter, 1, TAPS_MBANDS, &mwdlp10net->last_pqmf_state[i*N_MBANDS]);
             //clamp
             if (tmp_out < -1) tmp_out = -1;
             else if (tmp_out > 0.999969482421875) tmp_out = 0.999969482421875;

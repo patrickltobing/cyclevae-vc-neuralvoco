@@ -24,8 +24,8 @@
    NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
    SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-/* Modified by Patrick Lumban Tobing (Nagoya University) on Sept.-Dec. 2020 - Jul. 2021,
-   marked by PLT_<Sep20/Dec20/Mar21/Jul21> */
+/* Modified by Patrick Lumban Tobing (Nagoya University) on Sep. 2020 - Aug. 2021,
+   marked by PLT_<MonthYear> */
 
 #ifndef _NNET_H_
 #define _NNET_H_
@@ -36,10 +36,10 @@
 #define ACTIVATION_SIGMOID 1
 #define ACTIVATION_TANH    2
 #define ACTIVATION_RELU    3
-#define ACTIVATION_SOFTMAX 4
-#define ACTIVATION_EXP 5 //PLT_Sep20
-#define ACTIVATION_TANHSHRINK 6 //PLT_Sep20
-#define ACTIVATION_TANH_EXP 7 //PLT_Sep20
+//PLT_Sep20
+#define ACTIVATION_EXP 4
+#define ACTIVATION_TANHSHRINK 5
+#define ACTIVATION_TANH_EXP 6
 
 typedef struct {
   const float *bias;
@@ -112,21 +112,23 @@ typedef struct {
 #endif
 } RNGState;
 
-//PLT_Mar21
-void sgemv_accum16_(float *out, const float *weights, int rows, int cols, int col_stride, const float *x);
-void sgemv_accum(float *out, const float *weights, int rows, int cols, int col_stride, const float *x);
+//PLT_Aug21
+void sgemv_accum16_(float *out, const float *weights, int rows, int cols, const float *x);
+void sgemv_accum(float *out, const float *weights, int rows, int cols, const float *x);
 
-void compute_activation(float *output, float *input, int N, int activation);
+void compute_activation(float *vector, int N, int activation);
 
 void compute_dense(const DenseLayer *layer, float *output, const float *input);
 
 //PLT_Dec20
 void compute_dense_linear(const DenseLayer *layer, float *output, const float *input);
+//PLT_Aug21
+void compute_dense_linear_nta(const DenseLayer *layer, float *output, const float *input);
 
-//PLT_Mar21
+//PLT_Aug21
 void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *fc_layer, const float *prev_logits,
-    float *output, const float *input, const int *last_output);
-    //float *output, const float *input, const int *last_output, float* ddlpc);
+    float *output, const float *input, const short *last_output);
+    //float *output, const float *input, const short *last_output, float* ddlpc);
 
 //PLT_Mar21
 void compute_mdense_mwdlp10_nodlpc(const MDenseLayerMWDLP10 *layer, const DenseLayer *fc_layer, float *output,
@@ -134,13 +136,14 @@ void compute_mdense_mwdlp10_nodlpc(const MDenseLayerMWDLP10 *layer, const DenseL
 
 void compute_gru3(const GRULayer *gru, float *state, const float *input);
 
-void compute_sparse_gru(const SparseGRULayer *gru, float *state, const float *input);
+//PLT_Aug21
+void compute_sparse_gru(const SparseGRULayer *gru, float *zrh, float *recur, float *state, const float *input);
 
 //PLT_Jun21
 void compute_conv1d_linear_frame_in(const Conv1DLayer *layer, float *output, float *mem, const float *input);
 
-//PLT_Jul21
-int sample_from_pdf_mwdlp(const float *pdf, int N, RNGState *rng_state);
+//PLT_Aug21
+short sample_from_pdf_mwdlp(float *pdf, short N, RNGState *rng_state);
 
 //PLT_Dec20
 void compute_normalize(const NormStats *norm_stats, float *input_output);

@@ -248,6 +248,7 @@ def main():
         right_size=config.right_size,
         n_bands=config.n_bands,
         pad_first=True,
+        s_dim=config.s_dim,
         mid_dim=config.mid_dim,
         emb_flag=True,
         lpc=config.lpc)
@@ -837,8 +838,16 @@ def main():
 
     hf.write('typedef struct {\n')
     hf.write('  float feature_conv_state[FEATURE_CONV_STATE_SIZE];\n')
+    hf.write('  float gru_a_condition[SPARSE_GRU_A_STATE_SIZE*3];\n')
+    hf.write('  float gru_a_input[SPARSE_GRU_A_STATE_SIZE*3];\n')
+    hf.write('  float gru_a_zrh[SPARSE_GRU_A_STATE_SIZE*3];\n')
+    hf.write('  float gru_a_recur[SPARSE_GRU_A_STATE_SIZE*3];\n')
     hf.write('  float gru_a_state[SPARSE_GRU_A_STATE_SIZE];\n')
+    hf.write('  float gru_b_condition[GRU_B_STATE_SIZE*3];\n')
+    hf.write('  float gru_b_input[GRU_B_STATE_SIZE*3];\n')
     hf.write('  float gru_b_state[GRU_B_STATE_SIZE];\n')
+    hf.write('  float gru_c_condition[GRU_C_STATE_SIZE*3];\n')
+    hf.write('  float gru_c_input[GRU_C_STATE_SIZE*3];\n')
     hf.write('  float gru_c_state[GRU_C_STATE_SIZE];\n')
     hf.write('} MWDLP10NNetState;\n')
     
@@ -1263,8 +1272,8 @@ def main():
     bias = model_spk.out.bias.data.numpy()
     printVector(f, weights, name + '_weights')
     printVector(f, bias, name + '_bias')
-    #f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_TANHSHRINK\n}};\n\n'
-    f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_TANH_EXP\n}};\n\n'
+    #f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_TANH_EXP\n}};\n\n'
+    f.write('const DenseLayer {} = {{\n   {}_bias,\n   {}_weights,\n   {}, {}, ACTIVATION_TANHSHRINK\n}};\n\n'
             .format(name, name, name, weights.shape[0], weights.shape[1]))
     hf.write('#define {}_OUT_SIZE {}\n'.format(name.upper(), weights.shape[1]))
     hf.write('extern const DenseLayer {};\n\n'.format(name))
@@ -1369,10 +1378,16 @@ def main():
     hf.write('  float feature_conv_spk_state[FEATURE_CONV_SPK_STATE_SIZE];\n')
     hf.write('  float feature_conv_dec_excit_state[FEATURE_CONV_DEC_EXCIT_STATE_SIZE];\n')
     hf.write('  float feature_conv_dec_melsp_state[FEATURE_CONV_DEC_MELSP_STATE_SIZE];\n')
+    hf.write('  float gru_enc_melsp_zrh[SPARSE_GRU_ENC_MELSP_STATE_SIZE*3];\n')
+    hf.write('  float gru_enc_melsp_recur[SPARSE_GRU_ENC_MELSP_STATE_SIZE*3];\n')
     hf.write('  float gru_enc_melsp_state[SPARSE_GRU_ENC_MELSP_STATE_SIZE];\n')
+    hf.write('  float gru_enc_excit_zrh[SPARSE_GRU_ENC_EXCIT_STATE_SIZE*3];\n')
+    hf.write('  float gru_enc_excit_recur[SPARSE_GRU_ENC_EXCIT_STATE_SIZE*3];\n')
     hf.write('  float gru_enc_excit_state[SPARSE_GRU_ENC_EXCIT_STATE_SIZE];\n')
     hf.write('  float gru_spk_state[GRU_SPK_STATE_SIZE];\n')
     hf.write('  float gru_dec_excit_state[GRU_DEC_EXCIT_STATE_SIZE];\n')
+    hf.write('  float gru_dec_melsp_zrh[SPARSE_GRU_DEC_MELSP_STATE_SIZE*3];\n')
+    hf.write('  float gru_dec_melsp_recur[SPARSE_GRU_DEC_MELSP_STATE_SIZE*3];\n')
     hf.write('  float gru_dec_melsp_state[SPARSE_GRU_DEC_MELSP_STATE_SIZE];\n')
     hf.write('} CycleVAEMelspExcitSpkNNetState;\n')
 

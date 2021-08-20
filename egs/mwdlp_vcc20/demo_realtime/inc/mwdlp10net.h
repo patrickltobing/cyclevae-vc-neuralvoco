@@ -56,12 +56,12 @@ MWDLP10NET_EXPORT void mwdlp10net_destroy(MWDLP10NetState *mwdlp10net);
 
 //PLT_Jul21
 MWDLP10NET_EXPORT void mwdlp10net_synthesize(MWDLP10NetState *st, const float *features,
-    short *output, int *n_output, int flag_last_frame);
+    int *n_output, int flag_last_frame);
     //short *output, int *n_output, int flag_last_frame, float *out_ddlpc_coarse, float *out_ddlpc_fine, short *pcm_band);
 
 //PLT_Jul21
 MWDLP10NET_EXPORT void mwdlp10net_synthesize_nodlpc(MWDLP10NetState *st, const float *features,
-    short *output, int *n_output, int flag_last_frame);
+    int *n_output, int flag_last_frame);
     //short *output, int *n_output, int flag_last_frame, short *pcm_band);
 
 #endif

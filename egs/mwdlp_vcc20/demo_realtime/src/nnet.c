@@ -25,8 +25,8 @@
    NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
    SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-/* Modified by Patrick Lumban Tobing (Nagoya University) on Sept.-Dec. 2020 - Jul. 2021,
-   marked by PLT_<Sep20/Dec20/Mar21/Jul21> */
+/* Modified by Patrick Lumban Tobing (Nagoya University) on Dec. 2020 - Aug. 2021,
+   marked by PLT_<MonthYear> */
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -60,61 +60,43 @@ static OPUS_INLINE float relu(float x)
 }
 
 
-//PLT_Mar21
-void sgemv_accum16_(float *out, const float *weights, int rows, int cols, int col_stride, const float *x)
+//PLT_Aug21
+void sgemv_accum16_(float *out, const float *weights, int rows, int cols, const float *x)
 {
- sgemv_accum16(out, weights, rows, cols, col_stride, x);
+ sgemv_accum16(out, weights, rows, cols, x);
 }
 
-void sgemv_accum(float *out, const float *weights, int rows, int cols, int col_stride, const float *x)
+void sgemv_accum(float *out, const float *weights, int rows, int cols, const float *x)
 {
- int i, j;
+ int i, j, k;
  for (i=0;i<rows;i++)
  {
-    for (j=0;j<cols;j++) {
-       out[i] += weights[j*col_stride + i]*x[j];
+    for (j=0,k=i;j<cols;j++,k+=rows) {
+       out[i] += weights[k]*x[j];
    }
  }
 }
 
-void compute_activation(float *output, float *input, int N, int activation)
+void compute_activation(float *vector, int N, int activation)
 {
    int i;
    if (activation == ACTIVATION_SIGMOID) {
-      vec_sigmoid(output, input, N);
+      vec_sigmoid(vector, N);
    } else if (activation == ACTIVATION_TANH) {
-      vec_tanh(output, input, N);
+      vec_tanh(vector, N);
    } else if (activation == ACTIVATION_TANHSHRINK) { //PLT_Sep20
-      vec_tanhshrink(output, input, N);
+      vec_tanhshrink(vector, N);
    } else if (activation == ACTIVATION_EXP) { //PLT_Sep20
-      vec_exp(output, input, N);
+      vec_exp(vector, N);
    } else if (activation == ACTIVATION_TANH_EXP) {
-      vec_tanh_exp(output, input, N);
+      vec_tanh_exp(vector, N);
    } else if (activation == ACTIVATION_RELU) {
       for (i=0;i<N;i++)
-         output[i] = relu(input[i]);
-   } else if (activation == ACTIVATION_SOFTMAX) {
-#ifdef SOFTMAX_HACK
-      for (i=0;i<N;i++)
-         output[i] = input[i];
-#else
-      float sum = 0;
-      softmax(output, input, N);
-      for (i=0;i<N;i++) {
-         sum += output[i];
-      }
-      sum = 1.f/(sum+1e-30);
-      for (i=0;i<N;i++)
-         output[i] = sum*output[i];
-#endif
-   } else {
-      //celt_assert(activation == ACTIVATION_LINEAR);
-      for (i=0;i<N;i++)
-         output[i] = input[i];
+         vector[i] = relu(vector[i]);
    }
 }
 
-//PLT_Mar21
+//PLT_Aug21
 void compute_dense(const DenseLayer *layer, float *output, const float *input)
 {
    int i, N;
@@ -127,11 +109,11 @@ void compute_dense(const DenseLayer *layer, float *output, const float *input)
    for (i=0;i<N;i++)
       output[i] = layer->bias[i];
    // sgemv_accum16(output, layer->input_weights, N, M, stride, input);
-   sgemv_accum16(output, layer->input_weights, N, layer->nb_inputs, N, input);
-   compute_activation(output, output, N, layer->activation);
+   sgemv_accum16(output, layer->input_weights, N, layer->nb_inputs, input);
+   compute_activation(output, N, layer->activation);
 }
 
-//PLT_Dec20
+//PLT_Aug21
 void compute_dense_linear(const DenseLayer *layer, float *output, const float *input)
 {
    int i, N;
@@ -144,24 +126,25 @@ void compute_dense_linear(const DenseLayer *layer, float *output, const float *i
    for (i=0;i<N;i++)
       output[i] = layer->bias[i];
    // sgemv_accum16(output, layer->input_weights, N, M, stride, input);
-   sgemv_accum16(output, layer->input_weights, N, layer->nb_inputs, N, input);
+   sgemv_accum16(output, layer->input_weights, N, layer->nb_inputs, input);
 }
 
-//PLT_Mar21
+//PLT_Aug21
 void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *fc_layer,
-    const float *prev_logits, float *output, const float *input, const int *last_output)
-    //const float *prev_logits, float *output, const float *input, const int *last_output, float* ddlpc)
+    const float *prev_logits, float *output, const float *input, const short *last_output)
+    //const float *prev_logits, float *output, const float *input, const short *last_output, float* ddlpc)
 {
     //int i, j, k, l, m, n, last_idx;
-    int i, j, k, n, last_idx;
+    int i, j, k, n;
+    short last_idx;
     float vec_out[MDENSE_OUT_DUALFC_2_MBANDS], dualfc_out[MDENSE_OUT_DUALFC_MBANDS], fc_out[MDENSE_OUT_FC_MBANDS];
     float signs[LPC_ORDER_MBANDS], mags[LPC_ORDER_MBANDS];
 
     //compute dualfc output vectors
     for (i=0;i<MDENSE_OUT_DUALFC_2_MBANDS;i++)
        vec_out[i] = layer->bias[i];
-    sgemv_accum16(vec_out, layer->input_weights, MDENSE_OUT_DUALFC_2_MBANDS, RNN_SUB_NEURONS, MDENSE_OUT_DUALFC_2_MBANDS, input);
-    compute_activation(vec_out, vec_out, MDENSE_OUT_DUALFC_2_MBANDS, layer->activation);
+    sgemv_accum16(vec_out, layer->input_weights, MDENSE_OUT_DUALFC_2_MBANDS, RNN_SUB_NEURONS, input);
+    compute_activation(vec_out, MDENSE_OUT_DUALFC_2_MBANDS, layer->activation);
     //combine dualfc channels
     // [[[K,K,32]_1,...,[K,K,32]_NB]_1,[[K,K,32]_1,...,[K,K,32]_NB]_2]
     sgev_dualfc8(dualfc_out, layer->factors, MDENSE_OUT_DUALFC_2_MBANDS, vec_out);
@@ -195,9 +178,9 @@ void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *f
         j += SQRT_QUANTIZE;
         k += SQRT_QUANTIZE;
     }
-    compute_activation(signs, signs, LPC_ORDER_MBANDS, layer->activation_signs); //signs
-    compute_activation(mags, mags, LPC_ORDER_MBANDS, layer->activation_mags); //mags
-    compute_activation(output, output, SQRT_QUANTIZE_MBANDS, layer->activation_logits); //logits
+    compute_activation(signs, LPC_ORDER_MBANDS, layer->activation_signs); //signs
+    compute_activation(mags, LPC_ORDER_MBANDS, layer->activation_mags); //mags
+    compute_activation(output, SQRT_QUANTIZE_MBANDS, layer->activation_logits); //logits
 
     //refine logits with data-driven linear prediction procedure
     //for (n=0,k=0;n<N_MBANDS;n++) {
@@ -219,7 +202,7 @@ void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *f
     }
 }
 
-//PLT_Mar21
+//PLT_Aug21
 void compute_mdense_mwdlp10_nodlpc(const MDenseLayerMWDLP10 *layer, const DenseLayer *fc_layer, float *output,
     const float *input)
 {
@@ -230,8 +213,8 @@ void compute_mdense_mwdlp10_nodlpc(const MDenseLayerMWDLP10 *layer, const DenseL
     //mid-logits by dualfc
     for (i=0;i<MID_OUT_MBANDS_2;i++)
        vec_out[i] = layer->bias[i];
-    sgemv_accum16(vec_out, layer->input_weights, MID_OUT_MBANDS_2, RNN_SUB_NEURONS, MID_OUT_MBANDS_2, input);
-    compute_activation(vec_out, vec_out, MID_OUT_MBANDS_2, layer->activation);
+    sgemv_accum16(vec_out, layer->input_weights, MID_OUT_MBANDS_2, RNN_SUB_NEURONS, input);
+    compute_activation(vec_out, MID_OUT_MBANDS_2, layer->activation);
     //combine dualfc channels
     sgev_dualfc8(dualfc_out, layer->factors, MDENSE_OUT_DUALFC_2_MBANDS, vec_out);
 
@@ -240,10 +223,10 @@ void compute_mdense_mwdlp10_nodlpc(const MDenseLayerMWDLP10 *layer, const DenseL
         for (i=0,j=n*SQRT_QUANTIZE;i<SQRT_QUANTIZE;i++)
             output[j+i] = fc_layer->bias[i];
     sgemv_fclogits16(output, fc_layer->input_weights, SQRT_QUANTIZE, MID_OUT, N_MBANDS, dualfc_out);
-    compute_activation(output, output, SQRT_QUANTIZE_MBANDS, layer->activation_logits);
+    compute_activation(output, SQRT_QUANTIZE_MBANDS, layer->activation_logits);
 }
 
-//PLT_Sep20
+//PLT_Aug21
 void compute_gru3(const GRULayer *gru, float *state, const float *input)
 {
    int i;
@@ -265,25 +248,25 @@ void compute_gru3(const GRULayer *gru, float *state, const float *input)
    RNN_COPY(zrh, input, RNN_SUB_NEURONS_3);
    for (i=0;i<RNN_SUB_NEURONS_3;i++)
       recur[i] = gru->bias[i];
-   sgemv_accum16(recur, gru->recurrent_weights, RNN_SUB_NEURONS_3, RNN_SUB_NEURONS, RNN_SUB_NEURONS_3, state);
+   sgemv_accum16(recur, gru->recurrent_weights, RNN_SUB_NEURONS_3, RNN_SUB_NEURONS, state);
    for (i=0;i<RNN_SUB_NEURONS_2;i++)
       zrh[i] += recur[i];
-   compute_activation(zrh, zrh, RNN_SUB_NEURONS_2, ACTIVATION_SIGMOID);
+   compute_activation(zrh, RNN_SUB_NEURONS_2, ACTIVATION_SIGMOID);
    for (i=0;i<RNN_SUB_NEURONS;i++)
       h[i] += recur[RNN_SUB_NEURONS_2+i]*z[i];
       //h[i] += recur[RNN_SUB_NEURONS_2+i]*r[i];
-   compute_activation(h, h, RNN_SUB_NEURONS, gru->activation);
+   compute_activation(h, RNN_SUB_NEURONS, gru->activation);
    for (i=0;i<RNN_SUB_NEURONS;i++)
       state[i] = r[i]*state[i] + (1-r[i])*h[i];
 }
 
-//PLT_Sep20
-void compute_sparse_gru(const SparseGRULayer *gru, float *state, const float *input)
+//PLT_Aug21
+void compute_sparse_gru(const SparseGRULayer *gru, float *zrh, float *recur, float *state, const float *input)
 {
    int i, j, k;
    //int N;
-   float zrh[RNN_MAIN_NEURONS_3];
-   float recur[RNN_MAIN_NEURONS_3];
+   //float zrh[RNN_MAIN_NEURONS_3];
+   //float recur[RNN_MAIN_NEURONS_3];
    float *z;
    float *r;
    float *h;
@@ -307,16 +290,16 @@ void compute_sparse_gru(const SparseGRULayer *gru, float *state, const float *in
    //     printf("sg[%d] %f\n", i, recur[i]);
    for (i=0;i<RNN_MAIN_NEURONS_2;i++)
       zrh[i] += recur[i];
-   compute_activation(zrh, zrh, RNN_MAIN_NEURONS_2, ACTIVATION_SIGMOID);
+   compute_activation(zrh, RNN_MAIN_NEURONS_2, ACTIVATION_SIGMOID);
    for (i=0;i<RNN_MAIN_NEURONS;i++)
       h[i] += recur[RNN_MAIN_NEURONS_2+i]*z[i];
       //h[i] += recur[RNN_MAIN_NEURONS_2+i]*r[i];
-   compute_activation(h, h, RNN_MAIN_NEURONS, gru->activation);
+   compute_activation(h, RNN_MAIN_NEURONS, gru->activation);
    for (i=0;i<RNN_MAIN_NEURONS;i++)
       state[i] = r[i]*state[i] + (1-r[i])*h[i];
 }
 
-//PLT_Jun21
+//PLT_Aug21
 void compute_conv1d_linear_frame_in(const Conv1DLayer* layer, float* output, float* mem, const float* input)
 {
     float tmp[FEATURE_CONV_INPUT_SIZE]; //set to input_size*kernel_size
@@ -331,30 +314,27 @@ void compute_conv1d_linear_frame_in(const Conv1DLayer* layer, float* output, flo
     // compute conv
     for (int i = 0; i < FEATURE_CONV_OUT_SIZE; i++)
         output[i] = layer->bias[i];
-    sgemv_accum16(output, layer->input_weights, FEATURE_CONV_OUT_SIZE, FEATURE_CONV_INPUT_SIZE,
-                    FEATURE_CONV_OUT_SIZE, tmp);
+    sgemv_accum16(output, layer->input_weights, FEATURE_CONV_OUT_SIZE, FEATURE_CONV_INPUT_SIZE, tmp);
     //no activation (linear)
     RNN_COPY(mem, &tmp[FEATURES_DIM], FEATURE_CONV_STATE_SIZE); //set state size for next frame
 }
 
 //PLT_Jul21
-int sample_from_pdf_mwdlp(const float *pdf, int N, RNGState *rng_state)
+short sample_from_pdf_mwdlp(float *pdf, short N, RNGState *rng_state)
 {
-    int i;
+    short i;
     float r;
 #if defined(WINDOWS_SYS)
     UINT buffer = 0;
-    float tmp[SQRT_QUANTIZE], cdf[SQRT_QUANTIZE], sum, norm;
-    for (i=0;i<N;i++)
-        tmp[i] = pdf[i];
-    softmax(tmp, tmp, N);
+    float cdf[SQRT_QUANTIZE], sum, norm;
+    vec_exp(pdf, N);
     for (i=0,sum=0;i<N;i++)
-        sum += tmp[i];
+        sum += pdf[i];
     norm = 1.f/sum;
-    /* Convert tmp to a CDF (sum of all previous probs., init. with 0) */
+    /* Convert pdf to a CDF (sum of all previous probs., init. with 0) */
     cdf[0] = 0;
     for (i=1;i<N;i++)
-        cdf[i] = cdf[i-1] + norm*tmp[i-1];
+        cdf[i] = cdf[i-1] + norm*pdf[i-1];
     /* Do the sampling (from the cdf). */
     BCryptGenRandom(rng_state->rng_prov, (PUCHAR)(&buffer), sizeof(buffer), 0);
     r = (float)buffer / UINT_MAX;
@@ -363,17 +343,15 @@ int sample_from_pdf_mwdlp(const float *pdf, int N, RNGState *rng_state)
     return 0;
 #else
     long int rand_num = 0;
-    float tmp[SQRT_QUANTIZE], cdf[SQRT_QUANTIZE], sum, norm;
-    for (i=0;i<N;i++)
-        tmp[i] = pdf[i];
-    softmax(tmp, tmp, N);
+    float cdf[SQRT_QUANTIZE], sum, norm;
+    vec_exp(pdf, N);
     for (i=0,sum=0;i<N;i++)
-        sum += tmp[i];
+        sum += pdf[i];
     norm = 1.f/sum;
-    /* Convert tmp to a CDF (sum of all previous probs., init. with 0) */
+    /* Convert pdf to a CDF (sum of all previous probs., init. with 0) */
     cdf[0] = 0;
     for (i=1;i<N;i++)
-        cdf[i] = cdf[i-1] + norm*tmp[i-1];
+        cdf[i] = cdf[i-1] + norm*pdf[i-1];
     /* Do the sampling (from the cdf). */
     nrand48_r(rng_state->xsubi, rng_state->drand_buffer, &rand_num); // res ~ [0,2^31-1]
     r = (float) rand_num / NRAND48_MAX; //r ~ [0,1]

@@ -2589,7 +2589,7 @@ def main():
                 sparse_check_flag = True
             if (not sparse_min_flag and sparse_check_flag) or ((float(round(Decimal(str(eval_loss_gv_src_trg-min_eval_loss_gv_src_trg)),2)) <= 0.03) and \
                 (float(round(Decimal(str(min_eval_loss_melsp_cv[0]-min_eval_loss_melsp[0]-(eval_loss_melsp_cv[0]-eval_loss_melsp[0]))),2)) <= 0.03 or \
-                 float(round(Decimal(str(min_eval_loss_melsp_dB[0]-eval_loss_melsp_dB[0])),2)) >= 0.6) and \
+                 float(round(Decimal(str(min_eval_loss_melsp_dB[0]-eval_loss_melsp_dB[0])),2)) >= 0.27) and \
                 (float(round(Decimal(str(eval_loss_gauss[0]-min_eval_loss_gauss[0])),2)) <= 0.03 or \
                  float(round(Decimal(str(eval_loss_melsp_dB[0]-min_eval_loss_melsp_dB[0])),2)) <= 0.03) and \
                     (not pair_exist or (pair_exist and \

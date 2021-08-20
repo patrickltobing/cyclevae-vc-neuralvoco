@@ -722,8 +722,16 @@ def main():
 
     hf.write('typedef struct {\n')
     hf.write('  float feature_conv_state[FEATURE_CONV_STATE_SIZE];\n')
+    hf.write('  float gru_a_condition[SPARSE_GRU_A_STATE_SIZE*3];\n')
+    hf.write('  float gru_a_input[SPARSE_GRU_A_STATE_SIZE*3];\n')
+    hf.write('  float gru_a_zrh[SPARSE_GRU_A_STATE_SIZE*3];\n')
+    hf.write('  float gru_a_recur[SPARSE_GRU_A_STATE_SIZE*3];\n')
     hf.write('  float gru_a_state[SPARSE_GRU_A_STATE_SIZE];\n')
+    hf.write('  float gru_b_condition[GRU_B_STATE_SIZE*3];\n')
+    hf.write('  float gru_b_input[GRU_B_STATE_SIZE*3];\n')
     hf.write('  float gru_b_state[GRU_B_STATE_SIZE];\n')
+    hf.write('  float gru_c_condition[GRU_C_STATE_SIZE*3];\n')
+    hf.write('  float gru_c_input[GRU_C_STATE_SIZE*3];\n')
     hf.write('  float gru_c_state[GRU_C_STATE_SIZE];\n')
     hf.write('} MWDLP10NNetState;\n')
     

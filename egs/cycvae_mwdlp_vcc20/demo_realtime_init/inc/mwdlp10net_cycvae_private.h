@@ -146,13 +146,17 @@ LAST n-outputs [due to frame- and pqmf-delays, w/ right-side replicate- and zero
 struct MWDLP10CycleVAEMelspExcitSpkNetState {
     MWDLP10NNetState nnet;
     CycleVAEMelspExcitSpkNNetState cv_nnet;
-    float mu_law_10_table[N_QUANTIZE];
-    int last_coarse[LPC_ORDER_MBANDS+NO_DLPC_MBANDS];
-    int last_fine[LPC_ORDER_MBANDS+NO_DLPC_MBANDS];
     int cv_frame_count;
     int frame_count;
     int sample_count;
     int first_flag;
+    short last_coarse[LPC_ORDER_MBANDS+NO_DLPC_MBANDS];
+    short last_fine[LPC_ORDER_MBANDS+NO_DLPC_MBANDS];
+    float mu_law_10_table[N_QUANTIZE];
+    float pdf[SQRT_QUANTIZE_MBANDS];
+    short coarse[N_MBANDS];
+    short fine[N_MBANDS];
+    short output[MAX_N_OUTPUT]; //output is in short 2-byte (16-bit) format [-32768,32767]
     float deemph_mem;
     //upsample-bands,zero-pad-right,NBxNB
     float buffer_output[N_MBANDS_SQR];
@@ -175,12 +179,16 @@ struct MWDLP10CycleVAEMelspExcitSpkNetState {
 
 struct MWDLP10NetState {
     MWDLP10NNetState nnet;
-    float mu_law_10_table[N_QUANTIZE];
-    int last_coarse[LPC_ORDER_MBANDS+NO_DLPC_MBANDS];
-    int last_fine[LPC_ORDER_MBANDS+NO_DLPC_MBANDS];
     int frame_count;
     int sample_count;
     int first_flag;
+    short last_coarse[LPC_ORDER_MBANDS+NO_DLPC_MBANDS];
+    short last_fine[LPC_ORDER_MBANDS+NO_DLPC_MBANDS];
+    float mu_law_10_table[N_QUANTIZE];
+    float pdf[SQRT_QUANTIZE_MBANDS];
+    short coarse[N_MBANDS];
+    short fine[N_MBANDS];
+    short output[MAX_N_OUTPUT]; //output is in short 2-byte (16-bit) format [-32768,32767]
     float deemph_mem;
     //upsample-bands,zero-pad-right,NBxNB
     float buffer_output[N_MBANDS_SQR];
