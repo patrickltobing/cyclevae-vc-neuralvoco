@@ -23,8 +23,8 @@
    NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
    SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-/* Modified by Patrick Lumban Tobing (Nagoya University) on Dec. 2020,
-   marked by PLT_Dec20 */
+/* Modified by Patrick Lumban Tobing (Nagoya University) on Dec. 2020 - Aug 2021,
+   marked by PLT_<MonthYear> */
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -44,6 +44,10 @@
 #include "hpassfilt.h" //get high-pass filter coefficients w/ numpy from dump script
 #include "halfwin.h" //get ((N-1)/2) hanning window coefficients [because of periodic symmetry] w/ numpy from dump script
 #include "melfb.h" //get mel-filterbank w/ numpy from dump script
+
+//PLT_Aug21
+#include "freq_conf.h"
+#define M_PI 3.14159265358979323846
 
 
 //PLT_Dec20
@@ -149,7 +153,7 @@ void mel_spec_extract(DSPState *dsp, float *melsp)
     //cplx -> mag
     for (i=0;i<MAGSP_DIM;i++) {
         //need to multiply by 2.05*10^3 here to match the output of librosa STFT
-        dsp->magsp[i] = sqrt(pow((dsp->out_fft[i].r*2050), 2) + pow((dsp->out_fft[i].i*2050), 2));
+        dsp->magsp[i] = (float)sqrt(pow((dsp->out_fft[i].r*2050), 2) + pow((dsp->out_fft[i].i*2050), 2));
     //    printf("in_melsp_c %d %f\n", i, dsp->magsp[i]);
     }
     //printf("in_melsp_d\n");
@@ -162,9 +166,153 @@ void mel_spec_extract(DSPState *dsp, float *melsp)
           melsp[i] += dsp->magsp[j]*dsp->melfb[k];
       //    printf("in_melsp_g1 %d %d %d %f %f\n", i, j, k, dsp->magsp[j], dsp->melfb[k+j]);
       }
-      melsp[i] = log(1+10000*melsp[i]);
+      melsp[i] = (float)log(1+10000*melsp[i]);
       //melsp[i] *= 10000;
     }
     //melsp[i] = log(1+10000*melsp[i]);
     //printf("done_melsp\n");
+}
+
+
+//PLT_Aug21
+/*
+    pitch shift through modification of STFT spectra
+    modified from the following
+    http://blogs.zynaptiq.com/bernsee/pitch-shifting-using-the-ft/
+*/
+/****************************************************************************
+*
+* NAME: smbPitchShift.cpp
+* VERSION: 1.2
+* HOME URL: http://blogs.zynaptiq.com/bernsee
+* KNOWN BUGS: none
+*
+* SYNOPSIS: Routine for doing pitch shifting while maintaining
+* duration using the Short Time Fourier Transform.
+*
+* COPYRIGHT 1999-2015 Stephan M. Bernsee <s.bernsee [AT] zynaptiq [DOT] com>
+*
+*                       The Wide Open License (WOL)
+*
+* Permission to use, copy, modify, distribute and sell this software and its
+* documentation for any purpose is hereby granted without fee, provided that
+* the above copyright notice and this license appear in all source copies. 
+* THIS SOFTWARE IS PROVIDED "AS IS" WITHOUT EXPRESS OR IMPLIED WARRANTY OF
+* ANY KIND. See http://www.dspguru.com/wol.htm for more information.
+*
+*****************************************************************************/ 
+void mel_spec_warp_extract(DSPState *dsp, float *melsp, float pitchShift)
+{
+    double magn, phase, tmp, real, imag;
+    double freqPerBin, expct;
+    long i, j, k, qpd, index, fftFrameSize2;
+    long fftFrameSize;
+    double osamp, stepSize;
+
+    fftFrameSize = FFT_LENGTH;
+    fftFrameSize2 = fftFrameSize/2;
+    osamp = ((float) WINDOW_LENGTH) / FRAME_SHIFT; //2.75 (27.5 ms / 10 ms)
+    stepSize = fftFrameSize/osamp; //744.72727... (2048 / 2.75)
+    expct = 2.*M_PI*stepSize/(double)fftFrameSize; //2.28479...
+    freqPerBin = SAMPLING_FREQUENCY/(double)fftFrameSize; //11.71875 (24000/2048)
+
+    static float gLastPhase[HALF_FFT_LENGTH+1];
+    static float gSumPhase[HALF_FFT_LENGTH+1];
+    static float gAnaFreq[FFT_LENGTH];
+    static float gAnaMagn[FFT_LENGTH];
+    static float gSynFreq[FFT_LENGTH];
+    static float gSynMagn[FFT_LENGTH];
+
+    memset(gLastPhase, 0, (HALF_FFT_LENGTH+1)*sizeof(float));
+    memset(gSumPhase, 0, (HALF_FFT_LENGTH+1)*sizeof(float));
+    memset(gAnaFreq, 0, FFT_LENGTH*sizeof(float));
+    memset(gAnaMagn, 0, FFT_LENGTH*sizeof(float));
+
+    opus_fft(dsp->kfft, dsp->in_fft, dsp->out_fft, 0); //STFT
+
+    /* this is the analysis step */
+    for (k = 0; k <= fftFrameSize2; k++) {
+
+       /* de-interlace FFT buffer */
+       real = dsp->out_fft[k].r*2050;
+       imag = dsp->out_fft[k].i*2050;
+
+       /* compute magnitude and phase */
+       //magn = 2.*sqrt(real*real + imag*imag);
+       magn = sqrt(real*real + imag*imag);
+       phase = atan2(imag,real);
+
+       /* compute phase difference */
+       tmp = phase - gLastPhase[k];
+       gLastPhase[k] = (float)phase;
+
+       /* subtract expected phase difference */
+       tmp -= (double)k*expct;
+
+       /* map delta phase into +/- Pi interval */
+       qpd = (long)(tmp/M_PI);
+       if (qpd >= 0) qpd += qpd&1;
+       else qpd -= qpd&1;
+       tmp -= M_PI*(double)qpd;
+
+       /* get deviation from bin frequency from the +/- Pi interval */
+       tmp = osamp*tmp/(2.*M_PI);
+
+       /* compute the k-th partials' true frequency */
+       tmp = (double)k*freqPerBin + tmp*freqPerBin;
+
+       /* store magnitude and true frequency in analysis arrays */
+       gAnaMagn[k] = (float)magn;
+       gAnaFreq[k] = (float)tmp;
+    }
+
+    /* ***************** PROCESSING ******************* */
+    /* this does the actual pitch shifting */
+    memset(gSynMagn, 0, FFT_LENGTH*sizeof(float));
+    memset(gSynFreq, 0, FFT_LENGTH*sizeof(float));
+    for (k = 0; k <= fftFrameSize2; k++) { 
+        index = (long)(k*pitchShift);
+        if (index <= fftFrameSize2) { 
+            gSynMagn[index] += gAnaMagn[k]; 
+            gSynFreq[index] = gAnaFreq[k] * pitchShift; 
+        } 
+    }
+    
+    /* ***************** SYNTHESIS ******************* */
+    /* this is the synthesis step */
+    for (k = 0; k <= fftFrameSize2; k++) {
+
+        /* get magnitude and true frequency from synthesis arrays */
+        magn = gSynMagn[k];
+        tmp = gSynFreq[k];
+
+        /* subtract bin mid frequency */
+        tmp -= (double)k*freqPerBin;
+
+        /* get bin deviation from freq deviation */
+        tmp /= freqPerBin;
+
+        /* take osamp into account */
+        tmp = 2.*M_PI*tmp/osamp;
+
+        /* add the overlap phase advance back in */
+        tmp += (double)k*expct;
+
+        /* accumulate delta phase to get bin phase */
+        gSumPhase[k] += (float)tmp;
+        phase = gSumPhase[k];
+
+        /* get real and imag part and re-interleave */
+        real = magn*cos(phase);
+        imag = magn*sin(phase);
+
+        dsp->magsp[k] = (float)sqrt(real*real + imag*imag);
+    } 
+
+    for (i=0,k=0;i<MEL_DIM;i++) {
+      for (j=0,melsp[i]=0;j<MAGSP_DIM;j++,k++) {
+          melsp[i] += dsp->magsp[j]*dsp->melfb[k];
+      }
+      melsp[i] = (float)log(1+10000*melsp[i]);
+    }
 }

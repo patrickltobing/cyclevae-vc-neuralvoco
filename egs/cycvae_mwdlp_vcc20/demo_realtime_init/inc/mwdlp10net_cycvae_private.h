@@ -153,10 +153,6 @@ struct MWDLP10CycleVAEMelspExcitSpkNetState {
     short last_coarse[LPC_ORDER_MBANDS+NO_DLPC_MBANDS];
     short last_fine[LPC_ORDER_MBANDS+NO_DLPC_MBANDS];
     float mu_law_10_table[N_QUANTIZE];
-    float pdf[SQRT_QUANTIZE_MBANDS];
-    short coarse[N_MBANDS];
-    short fine[N_MBANDS];
-    short output[MAX_N_OUTPUT]; //output is in short 2-byte (16-bit) format [-32768,32767]
     float deemph_mem;
     //upsample-bands,zero-pad-right,NBxNB
     float buffer_output[N_MBANDS_SQR];
@@ -173,7 +169,9 @@ struct MWDLP10CycleVAEMelspExcitSpkNetState {
     float first_pqmf_state[PQMF_ORDER_MBANDS+FIRST_N_OUTPUT_MBANDS];
     //last in_state pqmf_synth filt.,(ORD+1)*NB+(ORD//2-1)*NB=ORD*NB+DELAY*NB
     float last_pqmf_state[PQMF_ORDER_MBANDS+PQMF_DELAY_MBANDS];
+#if defined(WINDOWS_SYS) || defined (GNU_EXT)
     RNGState rng_state;
+#endif
 };
 
 
@@ -185,10 +183,6 @@ struct MWDLP10NetState {
     short last_coarse[LPC_ORDER_MBANDS+NO_DLPC_MBANDS];
     short last_fine[LPC_ORDER_MBANDS+NO_DLPC_MBANDS];
     float mu_law_10_table[N_QUANTIZE];
-    float pdf[SQRT_QUANTIZE_MBANDS];
-    short coarse[N_MBANDS];
-    short fine[N_MBANDS];
-    short output[MAX_N_OUTPUT]; //output is in short 2-byte (16-bit) format [-32768,32767]
     float deemph_mem;
     //upsample-bands,zero-pad-right,NBxNB
     float buffer_output[N_MBANDS_SQR];
@@ -205,7 +199,9 @@ struct MWDLP10NetState {
     float first_pqmf_state[PQMF_ORDER_MBANDS+FIRST_N_OUTPUT_MBANDS];
     //last in_state pqmf_synth filt.,(ORD+1)*NB+(ORD//2-1)*NB=ORD*NB+DELAY*NB
     float last_pqmf_state[PQMF_ORDER_MBANDS+PQMF_DELAY_MBANDS];
+#if defined(WINDOWS_SYS) || defined (GNU_EXT)
     RNGState rng_state;
+#endif
 };
 
 

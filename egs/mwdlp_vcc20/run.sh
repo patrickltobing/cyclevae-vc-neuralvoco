@@ -209,6 +209,7 @@ densities=`awk '{if ($1 == "densities:") print $2}' conf/config.yml`
 n_stage=`awk '{if ($1 == "n_stage:") print $2}' conf/config.yml`
 lpc=`awk '{if ($1 == "lpc:") print $2}' conf/config.yml`
 causal_conv_wave=`awk '{if ($1 == "causal_conv_wave:") print $2}' conf/config.yml`
+seg_conv_flag_wave=`awk '{if ($1 == "seg_conv_flag_wave:") print $2}' conf/config.yml`
 s_dim=`awk '{if ($1 == "s_dim:") print $2}' conf/config.yml`
 mid_dim=`awk '{if ($1 == "mid_dim:") print $2}' conf/config.yml`
 
@@ -968,7 +969,7 @@ fi
 
 
 if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf_stft_emb_v2" ]; then
-    setting_wave=${mdl_name_wave}_${data_name}_lr${lr}_bs${batch_size_wave}_huw${hidden_units_wave}_hu2w${hidden_units_wave_2}_ksw${kernel_size_wave}_dsw${dilation_size_wave}_do${do_prob}_st${step_count_wave}_mel${mel_dim}_ts${t_start}_te${t_end}_i${interval}_d${densities}_ns${n_stage}_lpc${lpc}_rs${right_size_wave}_nb${n_bands}_s${s_dim}_m${mid_dim}
+    setting_wave=${mdl_name_wave}_${data_name}_lr${lr}_bs${batch_size_wave}_huw${hidden_units_wave}_hu2w${hidden_units_wave_2}_ksw${kernel_size_wave}_dsw${dilation_size_wave}_do${do_prob}_st${step_count_wave}_mel${mel_dim}_ts${t_start}_te${t_end}_i${interval}_d${densities}_ns${n_stage}_lpc${lpc}_rs${right_size_wave}_nb${n_bands}_s${s_dim}_m${mid_dim}_ss${seg_conv_flag_wave}
 fi
 
 
@@ -1000,7 +1001,7 @@ if [ `echo ${stage} | grep 4` ];then
     feats_eval=data/${dev}/feats.scp
     waveforms_eval=data/${dev}/wav_ns.scp
     n_spk=${#spks[@]}
-    n_tr_sum=18000
+    n_tr_sum=15000
     n_tr=`expr $n_tr_sum / ${n_spk}`
     if [ `expr $n_tr_sum % ${n_spk}` -gt 0 ]; then
         n_tr=`expr ${n_tr} + 1`
@@ -1129,6 +1130,7 @@ if [ `echo ${stage} | grep 4` ];then
                     --n_bands ${n_bands} \
                     --string_path ${string_path} \
                     --fs ${fs} \
+                    --seg_conv_flag_wave ${seg_conv_flag_wave} \
                     --s_dim ${s_dim} \
                     --mid_dim ${mid_dim} \
                     --resume ${expdir_wave}/checkpoint-${idx_resume_wave}.pkl \
@@ -1168,6 +1170,7 @@ if [ `echo ${stage} | grep 4` ];then
                     --n_bands ${n_bands} \
                     --string_path ${string_path} \
                     --fs ${fs} \
+                    --seg_conv_flag_wave ${seg_conv_flag_wave} \
                     --s_dim ${s_dim} \
                     --mid_dim ${mid_dim} \
                     --GPU_device ${GPU_device}

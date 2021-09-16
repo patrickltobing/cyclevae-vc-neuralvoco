@@ -28,7 +28,7 @@
   AVX implementation of vector operations, compile with -mavx
   AVX2/FMA implementation of vector operations, compile with -mavx2 -mfma
 */
-/* Modified by Patrick Lumban Tobing (Nagoya University) on Sept. 2020 - Aug. 2021,
+/* Modified by Patrick Lumban Tobing (Nagoya University) on Sep. 2020 - Sep. 2021,
    marked by PLT_<MonthYear> */
 
 #ifndef VEC_AVX_H
@@ -51,7 +51,7 @@
     latency (dependency):
     1 max ~4l -> 1 round ~8l -> 1 sub ~4l --> [3 fmadd ~12l -> 1 mul ~4l -> 1 fmadd ~4l -> 1 add ~4l] || [1 cvttps_epi32 0.5l -> add_epi32 1l -> 1 slli_epi32 ~1] -> 1 mul ~4l ~44 C latency
 */ 
-static inline __m256 exp256_ps(__m256 x, __m256 fx)
+static inline __m256 exp256_ps(__m256 x, __m256 *fx)
 {
     /* Modified code from this source: https://github.com/reyoung/avx_mathfun
 
@@ -88,12 +88,12 @@ static inline __m256 exp256_ps(__m256 x, __m256 fx)
     x = _mm256_max_ps(_mm256_min_ps(x, _mm256_set1_ps(88.3762626647949f)), _mm256_set1_ps(-88.3762626647949f));
 
     /* express exp(x) as exp(g + n*log(2)) */
-    fx = _mm256_round_ps(_mm256_mul_ps(x, _mm256_set1_ps(1.44269504088896341f)), _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
-    x = _mm256_sub_ps(x, _mm256_mul_ps(fx, _mm256_set1_ps(0.693147180559945f)));
+    *fx = _mm256_round_ps(_mm256_mul_ps(x, _mm256_set1_ps(1.44269504088896341f)), _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
+    x = _mm256_sub_ps(x, _mm256_mul_ps(*fx, _mm256_set1_ps(0.693147180559945f)));
 
     /* build 2^n */
-    return _mm256_mul_ps(_mm256_add_ps(_mm256_fmadd_ps(_mm256_fmadd_ps(_mm256_fmadd_ps(_mm256_fmadd_ps(_mm256_fmadd_ps(_mm256_fmadd_ps(_mm256_set1_ps(1.9875691500E-4), x, _mm256_set1_ps(1.3981999507E-3)), x, _mm256_set1_ps(8.3334519073E-3)), x, _mm256_set1_ps(4.1665795894E-2)), x, _mm256_set1_ps(1.6666665459E-1)), x, _mm256_set1_ps(5.0000001201E-1)), _mm256_mul_ps(x, x), x), _mm256_set1_ps(1.0f)),
-                            _mm256_castsi256_ps(_mm256_slli_epi32(_mm256_add_epi32(_mm256_cvttps_epi32(fx), _mm256_set1_epi32(0x7f)), 23)));
+    return _mm256_mul_ps(_mm256_add_ps(_mm256_fmadd_ps(_mm256_fmadd_ps(_mm256_fmadd_ps(_mm256_fmadd_ps(_mm256_fmadd_ps(_mm256_fmadd_ps(_mm256_set1_ps(1.9875691500E-4f), x, _mm256_set1_ps(1.3981999507E-3f)), x, _mm256_set1_ps(8.3334519073E-3f)), x, _mm256_set1_ps(4.1665795894E-2f)), x, _mm256_set1_ps(1.6666665459E-1f)), x, _mm256_set1_ps(5.0000001201E-1f)), _mm256_mul_ps(x, x), x), _mm256_set1_ps(1.0f)),
+                            _mm256_castsi256_ps(_mm256_slli_epi32(_mm256_add_epi32(_mm256_cvttps_epi32(*fx), _mm256_set1_epi32(0x7f)), 23)));
 }
 
 //PLT_Aug21
@@ -115,25 +115,38 @@ static inline __m256 exp256_ps(__m256 x, __m256 fx)
     latency (dependency):
     1 rcp ~4c -> 1 mul ~4c -> 1 sub ~4c -> 1 mul ~4c -> 1 add ~4c -> 1 mul ~4c -> 1 add ~4c --> ~28 C latency
 */
-static inline __m256 rcp256_r3_ps(__m256 x, __m256 a, __m256 r, const __m256 one)
+static inline __m256 rcp256_r3_ps(__m256 x, __m256 *a, __m256 *r, const __m256 one)
 {
-    a = _mm256_rcp_ps(x);
-    r = _mm256_sub_ps(one, _mm256_mul_ps(x, a));
-    return _mm256_add_ps(_mm256_mul_ps(_mm256_add_ps(_mm256_mul_ps(r, r), r), a), a); // (r^2 + r) * a + a
+    *a = _mm256_rcp_ps(x);
+    *r = _mm256_sub_ps(one, _mm256_mul_ps(x, *a));
+    return _mm256_add_ps(_mm256_mul_ps(_mm256_add_ps(_mm256_mul_ps(*r, *r), *r), *a), *a); // (r^2 + r) * a + a
 }
 
-//PLT_Aug21
-static inline void vec_exp(float* y, const float* x, int N)
+//PLT_Sep21
+static inline void vec_exp_softmax(float* y, const float* x, int N)
 {
     for (register int i = 0; i < N; i++) {
         if (x[i] > -102.87347) {
-            if (x[i] < 88.72283) y[i] = exp(x[i]);
-            else y[i] = 3.40279851902147610656242037972608745472E+38;
-        } else y[i] = 1.40129846432481707092372958328991613128026194187651577175706828388979108268586060148663818836212158203125E-45;
+            //care to set upper bound, as cdf is computed by accumulating the pdf
+            //take into account max element in cdf, e.g., 32 * x = upper bound INF in C, for 32 element,
+            //and x is the following upper bound per element
+            if (x[i] < 87.5834) y[i] = (float)exp(x[i]);
+            else y[i] = 1.0888949534801215284016807428472438784E+38f;
+            //if (x[i] < 82) y[i] = exp(x[i]);
+            //else y[i] = 4.09399696212745451138432050426544128E+35;
+        } else y[i] = 1.40129846432481707092372958328991613128026194187651577175706828388979108268586060148663818836212158203125E-45f;
     }
 }
 
-//PLT_Aug21
+//PLT_Sep21
+static inline void vec_exp(float* y, const float* x, int N)
+{
+    for (register int i = 0; i < N; i++) {
+        y[i] = (float)exp(x[i]);
+    }
+}
+
+//PLT_Sep21
 static inline void vec_tanh(float* y, const float* x, int N)
 {
     register int i;
@@ -145,11 +158,11 @@ static inline void vec_tanh(float* y, const float* x, int N)
     for (i = 0; i < N - 7; i += 8)
     {
         x8 = _mm256_loadu_ps(&x[i]);
-        Y = exp256_ps(x8, fx);
-        rcp_Y = rcp256_r3_ps(Y, a, r, one);
+        Y = exp256_ps(x8, &fx);
+        rcp_Y = rcp256_r3_ps(Y, &a, &r, one);
         _mm256_storeu_ps(&y[i], _mm256_blendv_ps(one,
                                     _mm256_blendv_ps(min_one,
-                                            _mm256_mul_ps(_mm256_sub_ps(Y, rcp_Y), rcp256_r3_ps(_mm256_add_ps(Y, rcp_Y), a, r, one)),
+                                            _mm256_mul_ps(_mm256_sub_ps(Y, rcp_Y), rcp256_r3_ps(_mm256_add_ps(Y, rcp_Y), &a, &r, one)),
                                                 _mm256_cmp_ps(x8, min_eps, _CMP_GT_OQ)),
                                                     _mm256_cmp_ps(x8, max_eps, _CMP_LT_OQ)));
     }
@@ -157,43 +170,39 @@ static inline void vec_tanh(float* y, const float* x, int N)
     {
         if (x[i] < 9.01092) {
             if (x[i] > -9.01092) {
-                y[i] = tanh(x[i]);
+                y[i] = (float)tanh(x[i]);
             } else y[i] = -1;
         } else y[i] = 1;
     }
 }
 
-//PLT_Aug21
+//PLT_Sep21
 static inline void vec_tanh_exp(float* y, const float* x, int N)
 {
     for (register int i = 0; i < N; i++)
     {
-        //x = 9.01092 v1 tanh(x) 1 max
-        //x = 8.31777 v2 (e^x-1/e^x) / (e^x+1/e^x) 1 max
-        //x = -8.31777 v2 -1 min
-        //x = -9.01092 v1 -1 min
         if (x[i] < 9.01092) { //v1
             if (x[i] > -9.01092) {
-                y[i] = tanh(x[i]);
+                y[i] = (float)tanh(x[i]);
             } else y[i] = -1;
         } else y[i] = 1;
     }
 }
 
-//PLT_Aug21
+//PLT_Sep21
 static inline void vec_tanhshrink(float* y, const float* x, int N)
 {
     for (register int i = 0; i < N; i++)
     {
         if (x[i] < 9.01092) {
             if (x[i] > -9.01092) {
-                y[i] = x[i]-tanh(x[i]);
+                y[i] = (float)(x[i]-tanh(x[i]));
             } else y[i] = x[i]+1;
         } else y[i] = x[i]-1;
     }
 }
 
-//PLT_Aug21
+//PLT_Sep21
 static inline void vec_sigmoid(float* y, const float* x, int N)
 {
     register int i;
@@ -217,13 +226,13 @@ static inline void vec_sigmoid(float* y, const float* x, int N)
         //x = -87.33656; avx_v4 + mask 0 min
         x8 = _mm256_loadu_ps(&x[i]);
         _mm256_storeu_ps(&y[i], _mm256_blendv_ps(zero,
-                                   rcp256_r3_ps(_mm256_add_ps(rcp256_r3_ps(exp256_ps(x8, fx), a, r, one), one), a, r, one),
+                                   rcp256_r3_ps(_mm256_add_ps(rcp256_r3_ps(exp256_ps(x8, &fx), &a, &r, one), one), &a, &r, one),
                                        _mm256_cmp_ps(x8, min_eps, _CMP_GT_OQ)));
     }
     for (; i < N; i++)
     {
         if (x[i] < 17.32868) {
-            if (x[i] > -103.97209) y[i] = 1 / (1 / exp(x[i]) + 1);
+            if (x[i] > -103.97209) y[i] = (float)(1 / (1 / exp(x[i]) + 1));
             else y[i] = 0;
         } else y[i] = 1;
     }
@@ -241,7 +250,7 @@ static inline void vec_sigmoid_exp(float* y, const float* x, int N)
         //x = -88.72284; v1 store exp 0 min
         //x = -103.97209; v1 0 min
         if (x[i] < 17.32868) { //v1 no store exp
-            if (x[i] > -103.97209) y[i] = 1 / (1 / exp(x[i]) + 1);
+            if (x[i] > -103.97209) y[i] = (float)(1 / (1 / exp(x[i]) + 1));
             else y[i] = 0;
         } else y[i] = 1;
     }

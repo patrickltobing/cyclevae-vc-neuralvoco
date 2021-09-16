@@ -226,6 +226,7 @@ int main(int argc, char **argv) {
     if (wav_in_flag) { //waveform input
         short num_reflected_right_edge_samples;
         long num_samples, size_of_each_sample;
+        //float pitchShift = 0.8;
 
         //read wave header input and initialize wave output header
         /*
@@ -236,6 +237,7 @@ int main(int argc, char **argv) {
         if (read_write_wav(fin, fout, &num_reflected_right_edge_samples, &num_samples, &size_of_each_sample)) {
 
             float features[FEATURES_DIM];
+            short pcm[MAX_N_OUTPUT]; //output is in short 2-byte (16-bit) format [-32768,32767]
             //short pcm_band[N_MBANDS*N_SAMPLE_BANDS];
             short first_buffer_flag = 0;
             short waveform_buffer_flag = 0;
@@ -255,8 +257,6 @@ int main(int argc, char **argv) {
             // initialize mwdlp struct
             MWDLP10NetState *net;
             net = mwdlp10net_create();
-
-            short *pcm = &net->output[0];
 
             for (i = 0, j = 0, k = 0; i < num_samples; i++) {
                 if ((read = fread(data_buffer, sizeof(data_buffer), 1, fin))) {
@@ -298,11 +298,12 @@ int main(int argc, char **argv) {
                     if (waveform_buffer_flag) {
                         //extract melspectrogram here
                         mel_spec_extract(dsp, features);
+                        //mel_spec_warp_extract(dsp, features, pitchShift);
 
-                        if (!NO_DLPC) mwdlp10net_synthesize(net, features, &n_output, 0);
-                        else mwdlp10net_synthesize_nodlpc(net, features, &n_output, 0);
-                        //if (!NO_DLPC) mwdlp10net_synthesize(net, features, &n_output, 0, out_ddlpc_coarse, out_ddlpc_fine, pcm_band);
-                        //else mwdlp10net_synthesize_nodlpc(net, features, &n_output, 0, pcm_band);
+                        if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 0);
+                        else mwdlp10net_synthesize_nodlpc(net, features, pcm, &n_output, 0);
+                        //if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 0, out_ddlpc_coarse, out_ddlpc_fine, pcm_band);
+                        //else mwdlp10net_synthesize_nodlpc(net, features, pcm, &n_output, 0, pcm_band);
 
                         if (print_melsp_flag) {
                             for (l=0;l<FEATURES_DIM;l++) {
@@ -389,11 +390,12 @@ int main(int argc, char **argv) {
                 }
 
                 mel_spec_extract(dsp, features);
+                //mel_spec_warp_extract(dsp, features, pitchShift);
 
-                if (!NO_DLPC) mwdlp10net_synthesize(net, features, &n_output, 0);
-                else mwdlp10net_synthesize_nodlpc(net, features, &n_output, 0);
-                //if (!NO_DLPC) mwdlp10net_synthesize(net, features, &n_output, 0, out_ddlpc_coarse, out_ddlpc_fine, pcm_band);
-                //else mwdlp10net_synthesize_nodlpc(net, features, &n_output, 0, pcm_band);
+                if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 0);
+                else mwdlp10net_synthesize_nodlpc(net, features, pcm, &n_output, 0);
+                //if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 0, out_ddlpc_coarse, out_ddlpc_fine, pcm_band);
+                //else mwdlp10net_synthesize_nodlpc(net, features, pcm, &n_output, 0, pcm_band);
 
                 if (n_output > 0)  {
                     fwrite(pcm, sizeof(pcm[0]), n_output, fout);
@@ -414,10 +416,10 @@ int main(int argc, char **argv) {
                     */
                 }
 
-                if (!NO_DLPC) mwdlp10net_synthesize(net, features, &n_output, 1); //last_frame_flag, synth pad_right
-                else mwdlp10net_synthesize_nodlpc(net, features, &n_output, 1);
-                //if (!NO_DLPC) mwdlp10net_synthesize(net, features, &n_output, 1, out_ddlpc_coarse, out_ddlpc_fine, pcm_band); //last_frame_flag, synth pad_right
-                //else mwdlp10net_synthesize_nodlpc(net, features, &n_output, 1, pcm_band);
+                if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 1); //last_frame_flag, synth pad_right
+                else mwdlp10net_synthesize_nodlpc(net, features, pcm, &n_output, 1);
+                //if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 1, out_ddlpc_coarse, out_ddlpc_fine, pcm_band); //last_frame_flag, synth pad_right
+                //else mwdlp10net_synthesize_nodlpc(net, features, pcm, &n_output, 1, pcm_band);
 
                 if (print_melsp_flag) {
                     for (l=0;l<FEATURES_DIM;l++) {
@@ -495,6 +497,7 @@ int main(int argc, char **argv) {
         if ((num_frame = read_feat_write_wav(fin, fout, melsp_bin_in_flag)) > 0) {
 
             float features[FEATURES_DIM];
+            short pcm[MAX_N_OUTPUT]; //output is in short 2-byte (16-bit) format [-32768,32767]
             //short pcm_band[N_MBANDS*N_SAMPLE_BANDS];
             int n_output = 0;
             short i, j;
@@ -505,8 +508,6 @@ int main(int argc, char **argv) {
             // initialize mwdlp struct
             MWDLP10NetState *net;
             net = mwdlp10net_create();
-
-            short *pcm = &net->output[0];
 
             if (melsp_txt_in_flag) {
                 char c;
@@ -582,10 +583,10 @@ int main(int argc, char **argv) {
                         else if (k < num_frame) printf("frame: [%ld]", k);
                         else printf(" [last frame]\n");
 
-                        if (!NO_DLPC) mwdlp10net_synthesize(net, features, &n_output, 0);
-                        else mwdlp10net_synthesize_nodlpc(net, features, &n_output, 0);
-                        //if (!NO_DLPC) mwdlp10net_synthesize(net, features, &n_output, 0, out_ddlpc_coarse, out_ddlpc_fine, pcm_band);
-                        //else mwdlp10net_synthesize_nodlpc(net, features, &n_output, 0, pcm_band);
+                        if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 0);
+                        else mwdlp10net_synthesize_nodlpc(net, features, pcm, &n_output, 0);
+                        //if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 0, out_ddlpc_coarse, out_ddlpc_fine, pcm_band);
+                        //else mwdlp10net_synthesize_nodlpc(net, features, pcm, &n_output, 0, pcm_band);
                 
                         //if (print_melsp_flag) {
                         //    for (l=0;l<FEATURES_DIM;l++)
@@ -630,10 +631,10 @@ int main(int argc, char **argv) {
                         for (j = 0; j < FEATURES_DIM; j++)
                             features[j] = log(1+10000*buffer[j]);
 
-                        if (!NO_DLPC) mwdlp10net_synthesize(net, features, &n_output, 0);
-                        else mwdlp10net_synthesize_nodlpc(net, features, &n_output, 0);
-                        //if (!NO_DLPC) mwdlp10net_synthesize(net, features, &n_output, 0, out_ddlpc_coarse, out_ddlpc_fine, pcm_band);
-                        //else mwdlp10net_synthesize_nodlpc(net, features, &n_output, 0, pcm_band);
+                        if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 0);
+                        else mwdlp10net_synthesize_nodlpc(net, features, pcm, &n_output, 0);
+                        //if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 0, out_ddlpc_coarse, out_ddlpc_fine, pcm_band);
+                        //else mwdlp10net_synthesize_nodlpc(net, features, pcm, &n_output, 0, pcm_band);
 
                         //if (print_melsp_flag) {
                         //    for (l=0;l<FEATURES_DIM;l++)
@@ -704,10 +705,10 @@ int main(int argc, char **argv) {
             }
 
             if (k == num_frame) {
-                if (!NO_DLPC) mwdlp10net_synthesize(net, features, &n_output, 1); //last_frame_flag, synth pad_right
-                else mwdlp10net_synthesize_nodlpc(net, features, &n_output, 1);
-                //if (!NO_DLPC) mwdlp10net_synthesize(net, features, &n_output, 1, out_ddlpc_coarse, out_ddlpc_fine, pcm_band); //last_frame_flag, synth pad_right
-                //else mwdlp10net_synthesize_nodlpc(net, features, &n_output, 1, pcm_band);
+                if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 1); //last_frame_flag, synth pad_right
+                else mwdlp10net_synthesize_nodlpc(net, features, pcm, &n_output, 1);
+                //if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 1, out_ddlpc_coarse, out_ddlpc_fine, pcm_band); //last_frame_flag, synth pad_right
+                //else mwdlp10net_synthesize_nodlpc(net, features, pcm, &n_output, 1, pcm_band);
 
                 if (n_output > 0)  {
                     fwrite(pcm, sizeof(pcm[0]), n_output, fout);

@@ -23,8 +23,8 @@
    NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
    SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-/* Modified by Patrick Lumban Tobing (Nagoya University) on Dec. 2020,
-   marked by PLT_Dec20 */
+/* Modified by Patrick Lumban Tobing (Nagoya University) on Dec. 2020 - Aug. 2021,
+   marked by PLT_<MonthYear> */
 
 #include "freq_conf.h"
 #include "kiss_fft.h"
@@ -96,3 +96,6 @@ void apply_window(DSPState *dsp);
 void shift_apply_window(DSPState *dsp, const float *x);
 
 void mel_spec_extract(DSPState *dsp, float *melsp);
+
+//PLT_Aug21
+void mel_spec_warp_extract(DSPState *dsp, float *melsp, float pitchShift);

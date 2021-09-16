@@ -44,12 +44,15 @@
 #include "nnet_cv_data.h"
 #include "mwdlp10net_cycvae_private.h"
 
-#if defined(WINDOWS_SYS)
-#define RAND_MAX_FLT_MIN_FLT_MIN (UINT_MAX + FLT_MIN + FLT_MIN)
+#ifdef WINDOWS_SYS
+    #define RAND_MAX_FLT_MIN_FLT_MIN (UINT_MAX + FLT_MIN + FLT_MIN)
 #else
-#define RAND_MAX_FLT_MIN_FLT_MIN (NRAND48_MAX + FLT_MIN + FLT_MIN)
+    #ifdef GNU_EXT
+        #define RAND_MAX_FLT_MIN_FLT_MIN (NRAND48_MAX + FLT_MIN + FLT_MIN)
+    #else
+        #define RAND_MAX_FLT_MIN_FLT_MIN (RAND_MAX + FLT_MIN + FLT_MIN)
+    #endif
 #endif
-//#define RAND_MAX_FLT_MIN_FLT_MIN (RAND_MAX + FLT_MIN + FLT_MIN)
 
 #ifdef __AVX__
 #include "vec_avx.h"
@@ -60,7 +63,7 @@
 #include "vec.h"
 #endif
 
-static OPUS_INLINE float relu(float x)
+static OPUS_INLINE float relu(const float x)
 {
    return x < 0 ? 0 : x;
 }
@@ -85,7 +88,7 @@ void sgemv_accum(float *out, const float *weights, int rows, int cols, const flo
 }
 
 //PLT_Aug21
-void compute_activation(float *output, float *input, int N, int activation)
+void compute_activation(float *output, const float *input, int N, int activation)
 {
    int i;
    if (activation == ACTIVATION_SIGMOID) {
@@ -103,10 +106,6 @@ void compute_activation(float *output, float *input, int N, int activation)
    } else if (activation == ACTIVATION_RELU) {
       for (i=0;i<N;i++)
          output[i] = relu(input[i]);
-   } else {
-      //celt_assert(activation == ACTIVATION_LINEAR);
-      for (i=0;i<N;i++)
-         output[i] = input[i];
    }
 }
 
@@ -148,7 +147,8 @@ void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *f
     const float *prev_logits, float *output, const float *input, const short *last_output)
 {
     //int i, j, k, l, m, n, last_idx;
-    int i, j, k, n, last_idx;
+    int i, j, k, n;
+    short last_idx;
     float vec_out[MDENSE_OUT_DUALFC_2_MBANDS], dualfc_out[MDENSE_OUT_DUALFC_MBANDS], fc_out[MDENSE_OUT_FC_MBANDS];
     float signs[LPC_ORDER_MBANDS], mags[LPC_ORDER_MBANDS];
 
@@ -272,12 +272,12 @@ void compute_gru3(const GRULayer *gru, float *state, const float *input)
 }
 
 //PLT_Aug21
-void compute_sparse_gru(const SparseGRULayer *gru, float *zrh, float *recur, float *state, const float *input)
+void compute_sparse_gru(const SparseGRULayer *gru, float *state, const float *input)
 {
    int i, j, k;
    //int N;
-   //float zrh[RNN_MAIN_NEURONS_3];
-   //float recur[RNN_MAIN_NEURONS_3];
+   float zrh[RNN_MAIN_NEURONS_3];
+   float recur[RNN_MAIN_NEURONS_3];
    float *z;
    float *r;
    float *h;
@@ -402,7 +402,7 @@ void compute_conv1d_linear_frame_in(const Conv1DLayer *layer, float *output, flo
    float tmp[FEATURE_CONV_INPUT_SIZE]; //set to input_size*kernel_size
    //celt_assert(input != output);
    RNN_COPY(tmp, mem, FEATURE_CONV_STATE_SIZE); //get state_size of last frame (in*(kernel_size-1))
-   RNN_COPY(&tmp[FEATURE_CONV_STATE_SIZE], input, FEATURE_RED_DIM); //append current input frame
+   RNN_COPY(&tmp[FEATURE_CONV_STATE_SIZE], input, FEATURES_DIM); //append current input frame
    //for (int j=0;j<layer->kernel_size;j++) {
    //    for (i=0;i<layer->nb_inputs;i++) {
    //        printf("tmp [%d][%d] %f\n", j, i, tmp[j*layer->nb_inputs+i]);
@@ -413,20 +413,22 @@ void compute_conv1d_linear_frame_in(const Conv1DLayer *layer, float *output, flo
       output[i] = layer->bias[i];
    sgemv_accum16(output, layer->input_weights, FEATURE_CONV_OUT_SIZE, FEATURE_CONV_INPUT_SIZE, tmp);
    //no activation (linear)
-   RNN_COPY(mem, &tmp[FEATURE_RED_DIM], FEATURE_CONV_STATE_SIZE); //set state size for next frame
+   RNN_COPY(mem, &tmp[FEATURES_DIM], FEATURE_CONV_STATE_SIZE); //set state size for next frame
 }
 
-//PLT_Jul21
+//PLT_Sep21
+#if defined(WINDOWS_SYS) || defined (GNU_EXT)
 int sample_from_pdf_mwdlp(const float *pdf, int N, RNGState *rng_state)
+#else
+int sample_from_pdf_mwdlp(const float *pdf, int N)
+#endif
 {
     int i;
     float r;
-#if defined(WINDOWS_SYS)
-    UINT buffer = 0;
     float tmp[SQRT_QUANTIZE], cdf[SQRT_QUANTIZE], sum, norm;
     for (i=0;i<N;i++)
         tmp[i] = pdf[i];
-    vec_exp(tmp, tmp, N);
+    vec_exp_softmax(tmp, tmp, N);
     for (i=0,sum=0;i<N;i++)
         sum += tmp[i];
     norm = 1.f/sum;
@@ -435,32 +437,22 @@ int sample_from_pdf_mwdlp(const float *pdf, int N, RNGState *rng_state)
     for (i=1;i<N;i++)
         cdf[i] = cdf[i-1] + norm*tmp[i-1];
     /* Do the sampling (from the cdf). */
+#ifdef WINDOWS_SYS
+    UINT buffer = 0;
     BCryptGenRandom(rng_state->rng_prov, (PUCHAR)(&buffer), sizeof(buffer), 0);
     r = (float)buffer / UINT_MAX;
-    for (i=N-1;i>0;i--)
-        if (r >= cdf[i]) return i; //largest cdf that is less/equal than r
-    return 0;
 #else
+    #ifdef GNU_EXT
     long int rand_num = 0;
-    float tmp[SQRT_QUANTIZE], cdf[SQRT_QUANTIZE], sum, norm;
-    for (i=0;i<N;i++)
-        tmp[i] = pdf[i];
-    vec_exp(tmp, tmp, N);
-    for (i=0,sum=0;i<N;i++)
-        sum += tmp[i];
-    norm = 1.f/sum;
-    /* Convert tmp to a CDF (sum of all previous probs., init. with 0) */
-    cdf[0] = 0;
-    for (i=1;i<N;i++)
-        cdf[i] = cdf[i-1] + norm*tmp[i-1];
-    /* Do the sampling (from the cdf). */
     nrand48_r(rng_state->xsubi, rng_state->drand_buffer, &rand_num); // res ~ [0,2^31-1]
     r = (float) rand_num / NRAND48_MAX; //r ~ [0,1]
-    //r = (float) rand() / RAND_MAX; //r ~ [0,1]
+    #else
+    r = (float) random() / RAND_MAX; //r ~ [0,1]
+    #endif
+#endif
     for (i=N-1;i>0;i--)
         if (r >= cdf[i]) return i; //largest cdf that is less/equal than r
     return 0;
-#endif
 }
 
 //PLT_Dec20
@@ -478,11 +470,11 @@ void compute_denormalize(const NormStats *norm_stats, float *input_output)
 }
 
 //PLT_Aug21
-void compute_sparse_gru_enc_melsp(const SparseFrameGRULayer *gru, float *zrh, float *recur, float *state, const float *input)
+void compute_sparse_gru_enc_melsp(const SparseFrameGRULayer *gru, float *state, const float *input)
 {
    int i, j, k;
-   //float zrh[RNN_ENC_MELSP_NEURONS_3];
-   //float recur[RNN_ENC_MELSP_NEURONS_3];
+   float zrh[RNN_ENC_MELSP_NEURONS_3];
+   float recur[RNN_ENC_MELSP_NEURONS_3];
    float *z;
    float *r;
    float *h;
@@ -499,7 +491,7 @@ void compute_sparse_gru_enc_melsp(const SparseFrameGRULayer *gru, float *zrh, fl
       for (i=0,j=k*RNN_ENC_MELSP_NEURONS;i<RNN_ENC_MELSP_NEURONS;i++)
          recur[j + i] += gru->diag_weights[j + i]*state[i];
    sparse_sgemv_accum16(recur, gru->recurrent_weights, RNN_ENC_MELSP_NEURONS_3, gru->idx, state);
-   sgemv_accum16(zrh, gru->input_weights, RNN_ENC_MELSP_NEURONS_3, FEATURE_DENSE_ENC_MELSP_OUT_SIZE, input);
+   sgemv_accum16(zrh, gru->input_weights, RNN_ENC_MELSP_NEURONS_3, FEAT_ENC_MELSP_DIM, input);
 
    for (i=0;i<RNN_ENC_MELSP_NEURONS_2;i++)
       zrh[i] += recur[i]; //z_t and r_t computed in a similar way : sigmoid(in_t + W_z*h_{t-1})
@@ -516,11 +508,11 @@ void compute_sparse_gru_enc_melsp(const SparseFrameGRULayer *gru, float *zrh, fl
 }
 
 //PLT_Aug21
-void compute_sparse_gru_enc_excit(const SparseFrameGRULayer *gru, float *zrh, float *recur, float *state, const float *input)
+void compute_sparse_gru_enc_excit(const SparseFrameGRULayer *gru, float *state, const float *input)
 {
    int i, j, k;
-   //float zrh[RNN_ENC_EXCIT_NEURONS_3];
-   //float recur[RNN_ENC_EXCIT_NEURONS_3];
+   float zrh[RNN_ENC_EXCIT_NEURONS_3];
+   float recur[RNN_ENC_EXCIT_NEURONS_3];
    float *z;
    float *r;
    float *h;
@@ -537,7 +529,7 @@ void compute_sparse_gru_enc_excit(const SparseFrameGRULayer *gru, float *zrh, fl
       for (i=0,j=k*RNN_ENC_EXCIT_NEURONS;i<RNN_ENC_EXCIT_NEURONS;i++)
          recur[j + i] += gru->diag_weights[j + i]*state[i];
    sparse_sgemv_accum16(recur, gru->recurrent_weights, RNN_ENC_EXCIT_NEURONS_3, gru->idx, state);
-   sgemv_accum16(zrh, gru->input_weights, RNN_ENC_EXCIT_NEURONS_3, FEATURE_DENSE_ENC_EXCIT_OUT_SIZE, input);
+   sgemv_accum16(zrh, gru->input_weights, RNN_ENC_EXCIT_NEURONS_3, FEAT_ENC_EXCIT_DIM, input);
 
    for (i=0;i<RNN_ENC_EXCIT_NEURONS_2;i++)
       zrh[i] += recur[i]; //z_t and r_t computed in a similar way : sigmoid(in_t + W_z*h_{t-1})
@@ -572,7 +564,7 @@ void compute_gru_spk(const FrameGRULayer *gru, float *state, const float *input)
       zrh[i] = gru->input_bias[i];
    }
    sgemv_accum16(recur, gru->recurrent_weights, RNN_SPK_NEURONS_3, RNN_SPK_NEURONS, state);
-   sgemv_accum16(zrh, gru->input_weights, RNN_SPK_NEURONS_3, FEATURE_DENSE_SPK_OUT_SIZE, input);
+   sgemv_accum16(zrh, gru->input_weights, RNN_SPK_NEURONS_3, FEAT_SPK_DIM, input);
 
    for (i=0;i<RNN_SPK_NEURONS_2;i++)
       zrh[i] += recur[i]; //z_t and r_t computed in a similar way : sigmoid(in_t + W_z*h_{t-1})
@@ -589,11 +581,11 @@ void compute_gru_spk(const FrameGRULayer *gru, float *state, const float *input)
 }
 
 //PLT_Aug21
-void compute_sparse_gru_dec_melsp(const SparseFrameGRULayer *gru, float *zrh, float *recur, float *state, const float *input)
+void compute_sparse_gru_dec_melsp(const SparseFrameGRULayer *gru, float *state, const float *input)
 {
    int i, j, k;
-   //float zrh[RNN_DEC_MELSP_NEURONS_3];
-   //float recur[RNN_DEC_MELSP_NEURONS_3];
+   float zrh[RNN_DEC_MELSP_NEURONS_3];
+   float recur[RNN_DEC_MELSP_NEURONS_3];
    float *z;
    float *r;
    float *h;
@@ -610,7 +602,7 @@ void compute_sparse_gru_dec_melsp(const SparseFrameGRULayer *gru, float *zrh, fl
       for (i=0,j=k*RNN_DEC_MELSP_NEURONS;i<RNN_DEC_MELSP_NEURONS;i++)
          recur[j + i] += gru->diag_weights[j + i]*state[i];
    sparse_sgemv_accum16(recur, gru->recurrent_weights, RNN_DEC_MELSP_NEURONS_3, gru->idx, state);
-   sgemv_accum16(zrh, gru->input_weights, RNN_DEC_MELSP_NEURONS_3, FEATURE_DENSE_DEC_MELSP_OUT_SIZE, input);
+   sgemv_accum16(zrh, gru->input_weights, RNN_DEC_MELSP_NEURONS_3, FEAT_DEC_MELSP_DIM, input);
 
    for (i=0;i<RNN_DEC_MELSP_NEURONS_2;i++)
       zrh[i] += recur[i]; //z_t and r_t computed in a similar way : sigmoid(in_t + W_z*h_{t-1})
@@ -626,11 +618,15 @@ void compute_sparse_gru_dec_melsp(const SparseFrameGRULayer *gru, float *zrh, fl
       state[i] = r[i]*state[i] + (1-r[i])*h[i]; //h_t = z_t o h_{t-1} + (1-z_t) o n_t
 }
 
-//PLT_Jul21
+//PLT_Sep21
+#if defined(WINDOWS_SYS) || defined (GNU_EXT)
 void compute_sampling_gauss(float *mu, const float *std, int dim, RNGState *rng_state)
+#else
+void compute_sampling_gauss(float *mu, const float *std, int dim);
+#endif
 {
     float u1, u2 = 0, mag = 0;
-#if defined(WINDOWS_SYS)
+#ifdef WINDOWS_SYS
     UINT buffer = 0;
     for (int i=0;i<dim;i++) {
         if (i % 2 == 0) {
@@ -638,28 +634,42 @@ void compute_sampling_gauss(float *mu, const float *std, int dim, RNGState *rng_
             u1 = ((float) buffer + FLT_MIN) / RAND_MAX_FLT_MIN_FLT_MIN; //u1 ~ (0,1)
             BCryptGenRandom(rng_state->rng_prov, (PUCHAR)(&buffer), sizeof(buffer), 0);
             u2 = ((float) buffer + FLT_MIN) / RAND_MAX_FLT_MIN_FLT_MIN; //u1 ~ (0,1)
-            mag = sqrt(-2*log(u1));
-            u2 *= 6.283185307179586476925286766559;
+            mag = (float)sqrt(-2*log(u1));
+            u2 *= 6.283185307179586476925286766559f;
             ////temperature sampling: 0.675
-            mu[i] += 0.675*std[i]*mag*cos(u2);
-        } else mu[i] += 0.675*std[i]*mag*sin(u2);
+            mu[i] += (float)(0.675*std[i]*mag*cos(u2));
+        } else mu[i] += (float)(0.675*std[i]*mag*sin(u2));
     }
 #else
+    #ifdef GNU_EXT
     long int rand_num = 0;
     for (int i=0;i<dim;i++) {
         if (i % 2 == 0) {
             nrand48_r(rng_state->xsubi, rng_state->drand_buffer, &rand_num); // res ~ [0,2^31-1]
             u1 = ((float) rand_num + FLT_MIN) / RAND_MAX_FLT_MIN_FLT_MIN; //u1 ~ (0,1)
-            //u1 = ((float) rand() + FLT_MIN) / RAND_MAX_FLT_MIN_FLT_MIN; //u1 ~ (0,1)
             nrand48_r(rng_state->xsubi, rng_state->drand_buffer, &rand_num); // res ~ [0,2^31-1]
             u2 = ((float) rand_num + FLT_MIN) / RAND_MAX_FLT_MIN_FLT_MIN; //u1 ~ (0,1)
-            //u2 = ((float) rand() + FLT_MIN) / RAND_MAX_FLT_MIN_FLT_MIN; //u2 ~ (0,1)
             mag = sqrt(-2*log(u1));
             u2 *= 6.283185307179586476925286766559;
             ////temperature sampling: 0.675
             mu[i] += 0.675*std[i]*mag*cos(u2);
         } else mu[i] += 0.675*std[i]*mag*sin(u2);
     }
+    #else
+    long int rand_num = 0;
+    for (int i=0;i<dim;i++) {
+        if (i % 2 == 0) {
+            nrand48_r(rng_state->xsubi, rng_state->drand_buffer, &rand_num); // res ~ [0,2^31-1]
+            u1 = ((float) random() + FLT_MIN) / RAND_MAX_FLT_MIN_FLT_MIN; //u1 ~ (0,1)
+            nrand48_r(rng_state->xsubi, rng_state->drand_buffer, &rand_num); // res ~ [0,2^31-1]
+            u2 = ((float) random() + FLT_MIN) / RAND_MAX_FLT_MIN_FLT_MIN; //u2 ~ (0,1)
+            mag = sqrt(-2*log(u1));
+            u2 *= 6.283185307179586476925286766559;
+            ////temperature sampling: 0.675
+            mu[i] += 0.675*std[i]*mag*cos(u2);
+        } else mu[i] += 0.675*std[i]*mag*sin(u2);
+    }
+    #endif
     return;
 #endif
 }

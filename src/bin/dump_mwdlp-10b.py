@@ -28,7 +28,7 @@
     Modified for 16-bit output multiband wavernn with data-driven LPC
     by: Patrick Lumban Tobing (Nagoya University) on October 2020
     Further modified for 10-bit mu-law output multiband wavernn with data-driven LPC.
-    by: Patrick Lumban Tobing (Nagoya University) on December 2020 - March 2021
+    by: Patrick Lumban Tobing (Nagoya University) on December 2020 - September 2021
 '''
 
 import argparse
@@ -165,6 +165,7 @@ def main():
         s_dim=config.s_dim,
         mid_dim=config.mid_dim,
         emb_flag=True,
+        seg_conv_flag=config.seg_conv_flag_wave,
         lpc=config.lpc)
     print(model)
     device = torch.device("cpu")
@@ -722,16 +723,8 @@ def main():
 
     hf.write('typedef struct {\n')
     hf.write('  float feature_conv_state[FEATURE_CONV_STATE_SIZE];\n')
-    hf.write('  float gru_a_condition[SPARSE_GRU_A_STATE_SIZE*3];\n')
-    hf.write('  float gru_a_input[SPARSE_GRU_A_STATE_SIZE*3];\n')
-    hf.write('  float gru_a_zrh[SPARSE_GRU_A_STATE_SIZE*3];\n')
-    hf.write('  float gru_a_recur[SPARSE_GRU_A_STATE_SIZE*3];\n')
     hf.write('  float gru_a_state[SPARSE_GRU_A_STATE_SIZE];\n')
-    hf.write('  float gru_b_condition[GRU_B_STATE_SIZE*3];\n')
-    hf.write('  float gru_b_input[GRU_B_STATE_SIZE*3];\n')
     hf.write('  float gru_b_state[GRU_B_STATE_SIZE];\n')
-    hf.write('  float gru_c_condition[GRU_C_STATE_SIZE*3];\n')
-    hf.write('  float gru_c_input[GRU_C_STATE_SIZE*3];\n')
     hf.write('  float gru_c_state[GRU_C_STATE_SIZE];\n')
     hf.write('} MWDLP10NNetState;\n')
     

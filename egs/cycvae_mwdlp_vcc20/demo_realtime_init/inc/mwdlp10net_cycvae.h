@@ -65,20 +65,20 @@ MWDLP10NET_CYCVAE_EXPORT void mwdlp10net_destroy(MWDLP10NetState *mwdlp10net);
 //PLT_Jul21
 MWDLP10NET_CYCVAE_EXPORT void cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(
     MWDLP10CycleVAEMelspExcitSpkNetState *st, float *features, float *spk_code_aux,
-        int *n_output, int flag_last_frame);
+        short *output, int *n_output, int flag_last_frame);
         //short *output, int *n_output, int flag_last_frame, float *melsp_in_tmp, float *conv_tmp, float *dense_tmp, float *gru_tmp, float *lat_tmp, float *spk_in_tmp, float *spk_red_tmp, float *spk_conv_tmp, float *spk_dense_tmp, float *spk_gru_tmp, float *spk_out_tmp, float *spk_tmp, float *melsp_red_tmp, float *melsp_conv_tmp, float *melsp_dense_tmp, float *melsp_gru_tmp, float *melsp_pdf_tmp, float *melsp_smpl_tmp);
 
-MWDLP10NET_CYCVAE_EXPORT void mwdlp10net_synthesize(MWDLP10NetState *st, float *features,
-    int *n_output, int flag_last_frame);
+MWDLP10NET_CYCVAE_EXPORT void mwdlp10net_synthesize(MWDLP10NetState *st, const float *features,
+    short *output, int *n_output, int flag_last_frame);
     //short *output, int *n_output, int flag_last_frame, float *mwdlp_conv_tmp, float *mwdlp_dense_tmp);
 
 //PLT_Jul21
 MWDLP10NET_CYCVAE_EXPORT void cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(
     MWDLP10CycleVAEMelspExcitSpkNetState *st, float *features, float *spk_code_aux,
-        int *n_output, int flag_last_frame);
+        short *output, int *n_output, int flag_last_frame);
         //short *output, int *n_output, int flag_last_frame, float *melsp_in_tmp, float *conv_tmp, float *dense_tmp, float *gru_tmp, float *lat_tmp, float *spk_in_tmp, float *spk_red_tmp, float *spk_conv_tmp, float *spk_dense_tmp, float *spk_gru_tmp, float *spk_out_tmp, float *spk_tmp, float *melsp_red_tmp, float *melsp_conv_tmp, float *melsp_dense_tmp, float *melsp_gru_tmp, float *melsp_pdf_tmp, float *melsp_smpl_tmp);
 
-MWDLP10NET_CYCVAE_EXPORT void mwdlp10net_synthesize_nodlpc(MWDLP10NetState *st, float *features,
-    int *n_output, int flag_last_frame);
+MWDLP10NET_CYCVAE_EXPORT void mwdlp10net_synthesize_nodlpc(MWDLP10NetState *st, const float *features,
+    short *output, int *n_output, int flag_last_frame);
 
 #endif

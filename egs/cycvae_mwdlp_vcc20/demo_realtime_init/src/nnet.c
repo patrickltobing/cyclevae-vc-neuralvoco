@@ -44,12 +44,15 @@
 #include "nnet_cv_data.h"
 #include "mwdlp10net_cycvae_private.h"
 
-#if defined(WINDOWS_SYS)
-#define RAND_MAX_FLT_MIN_FLT_MIN (UINT_MAX + FLT_MIN + FLT_MIN)
+#ifdef WINDOWS_SYS
+    #define RAND_MAX_FLT_MIN_FLT_MIN (UINT_MAX + FLT_MIN + FLT_MIN)
 #else
-#define RAND_MAX_FLT_MIN_FLT_MIN (NRAND48_MAX + FLT_MIN + FLT_MIN)
+    #ifdef GNU_EXT
+        #define RAND_MAX_FLT_MIN_FLT_MIN (NRAND48_MAX + FLT_MIN + FLT_MIN)
+    #else
+        #define RAND_MAX_FLT_MIN_FLT_MIN (RAND_MAX + FLT_MIN + FLT_MIN)
+    #endif
 #endif
-//#define RAND_MAX_FLT_MIN_FLT_MIN (RAND_MAX + FLT_MIN + FLT_MIN)
 
 #ifdef __AVX__
 #include "vec_avx.h"
@@ -60,7 +63,7 @@
 #include "vec.h"
 #endif
 
-static OPUS_INLINE float relu(float x)
+static OPUS_INLINE float relu(const float x)
 {
    return x < 0 ? 0 : x;
 }
@@ -85,24 +88,24 @@ void sgemv_accum(float *out, const float *weights, int rows, int cols, const flo
 }
 
 //PLT_Aug21
-void compute_activation(float *vector, int N, int activation)
+void compute_activation(float *output, const float *input, int N, int activation)
 {
    int i;
    if (activation == ACTIVATION_SIGMOID) {
-      vec_sigmoid(vector, N);
+      vec_sigmoid(output, input, N);
    } else if (activation == ACTIVATION_TANH) {
-      vec_tanh(vector, N);
+      vec_tanh(output, input, N);
    } else if (activation == ACTIVATION_TANHSHRINK) { //PLT_Sep20
-      vec_tanhshrink(vector, N);
+      vec_tanhshrink(output, input, N);
    } else if (activation == ACTIVATION_EXP) { //PLT_Feb21
-      vec_exp(vector, N);
+      vec_exp(output, input, N);
    } else if (activation == ACTIVATION_SIGMOID_EXP) { //PLT_Feb21
-      vec_sigmoid_exp(vector, N);
+      vec_sigmoid_exp(output, input, N);
    } else if (activation == ACTIVATION_TANH_EXP) { //PLT_Feb21
-      vec_tanh_exp(vector, N);
+      vec_tanh_exp(output, input, N);
    } else if (activation == ACTIVATION_RELU) {
       for (i=0;i<N;i++)
-         vector[i] = relu(vector[i]);
+         output[i] = relu(input[i]);
    }
 }
 
@@ -120,7 +123,7 @@ void compute_dense(const DenseLayer *layer, float *output, const float *input)
       output[i] = layer->bias[i];
    // sgemv_accum16(output, layer->input_weights, N, M, stride, input);
    sgemv_accum16(output, layer->input_weights, N, layer->nb_inputs, input);
-   compute_activation(output, N, layer->activation);
+   compute_activation(output, output, N, layer->activation);
 }
 
 //PLT_Aug21
@@ -144,7 +147,8 @@ void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *f
     const float *prev_logits, float *output, const float *input, const short *last_output)
 {
     //int i, j, k, l, m, n, last_idx;
-    int i, j, k, n, last_idx;
+    int i, j, k, n;
+    short last_idx;
     float vec_out[MDENSE_OUT_DUALFC_2_MBANDS], dualfc_out[MDENSE_OUT_DUALFC_MBANDS], fc_out[MDENSE_OUT_FC_MBANDS];
     float signs[LPC_ORDER_MBANDS], mags[LPC_ORDER_MBANDS];
 
@@ -152,7 +156,7 @@ void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *f
     for (i=0;i<MDENSE_OUT_DUALFC_2_MBANDS;i++)
        vec_out[i] = layer->bias[i];
     sgemv_accum16(vec_out, layer->input_weights, MDENSE_OUT_DUALFC_2_MBANDS, RNN_SUB_NEURONS, input);
-    compute_activation(vec_out, MDENSE_OUT_DUALFC_2_MBANDS, layer->activation);
+    compute_activation(vec_out, vec_out, MDENSE_OUT_DUALFC_2_MBANDS, layer->activation);
     //combine dualfc channels
     // [[[K,K,32]_1,...,[K,K,32]_NB]_1,[[K,K,32]_1,...,[K,K,32]_NB]_2]
     sgev_dualfc8(dualfc_out, layer->factors, MDENSE_OUT_DUALFC_2_MBANDS, vec_out);
@@ -186,9 +190,9 @@ void compute_mdense_mwdlp10(const MDenseLayerMWDLP10 *layer, const DenseLayer *f
         j += SQRT_QUANTIZE;
         k += SQRT_QUANTIZE;
     }
-    compute_activation(signs, LPC_ORDER_MBANDS, layer->activation_signs); //signs
-    compute_activation(mags, LPC_ORDER_MBANDS, layer->activation_mags); //mags
-    compute_activation(output, SQRT_QUANTIZE_MBANDS, layer->activation_logits); //logits
+    compute_activation(signs, signs, LPC_ORDER_MBANDS, layer->activation_signs); //signs
+    compute_activation(mags, mags, LPC_ORDER_MBANDS, layer->activation_mags); //mags
+    compute_activation(output, output, SQRT_QUANTIZE_MBANDS, layer->activation_logits); //logits
 
     //refine logits with data-driven linear prediction procedure
     //for (n=0,k=0;n<N_MBANDS;n++) {
@@ -220,7 +224,7 @@ void compute_mdense_mwdlp10_nodlpc(const MDenseLayerMWDLP10 *layer, const DenseL
     for (i=0;i<MID_OUT_MBANDS_2;i++)
        vec_out[i] = layer->bias[i];
     sgemv_accum16(vec_out, layer->input_weights, MID_OUT_MBANDS_2, RNN_SUB_NEURONS, input);
-    compute_activation(vec_out, MID_OUT_MBANDS_2, layer->activation);
+    compute_activation(vec_out, vec_out, MID_OUT_MBANDS_2, layer->activation);
     //combine dualfc channels
     sgev_dualfc8(dualfc_out, layer->factors, MDENSE_OUT_DUALFC_2_MBANDS, vec_out);
 
@@ -229,7 +233,7 @@ void compute_mdense_mwdlp10_nodlpc(const MDenseLayerMWDLP10 *layer, const DenseL
         for (i=0,j=n*SQRT_QUANTIZE;i<SQRT_QUANTIZE;i++)
             output[j+i] = fc_layer->bias[i];
     sgemv_fclogits16(output, fc_layer->input_weights, SQRT_QUANTIZE, MID_OUT, N_MBANDS, dualfc_out);
-    compute_activation(output, SQRT_QUANTIZE_MBANDS, layer->activation_logits);
+    compute_activation(output, output, SQRT_QUANTIZE_MBANDS, layer->activation_logits);
 }
 
 //PLT_Aug21
@@ -257,23 +261,23 @@ void compute_gru3(const GRULayer *gru, float *state, const float *input)
    sgemv_accum16(recur, gru->recurrent_weights, RNN_SUB_NEURONS_3, RNN_SUB_NEURONS, state);
    for (i=0;i<RNN_SUB_NEURONS_2;i++)
       zrh[i] += recur[i];
-   compute_activation(zrh, RNN_SUB_NEURONS_2, ACTIVATION_SIGMOID);
+   compute_activation(zrh, zrh, RNN_SUB_NEURONS_2, ACTIVATION_SIGMOID);
    //compute_activation(zrh, zrh, RNN_SUB_NEURONS_2, ACTIVATION_SIGMOID_EXP);
    for (i=0;i<RNN_SUB_NEURONS;i++)
       h[i] += recur[RNN_SUB_NEURONS_2+i]*z[i];
       //h[i] += recur[RNN_SUB_NEURONS_2+i]*r[i];
-   compute_activation(h, RNN_SUB_NEURONS, gru->activation);
+   compute_activation(h, h, RNN_SUB_NEURONS, gru->activation);
    for (i=0;i<RNN_SUB_NEURONS;i++)
       state[i] = r[i]*state[i] + (1-r[i])*h[i];
 }
 
 //PLT_Aug21
-void compute_sparse_gru(const SparseGRULayer *gru, float *zrh, float *recur, float *state, const float *input)
+void compute_sparse_gru(const SparseGRULayer *gru, float *state, const float *input)
 {
    int i, j, k;
    //int N;
-   //float zrh[RNN_MAIN_NEURONS_3];
-   //float recur[RNN_MAIN_NEURONS_3];
+   float zrh[RNN_MAIN_NEURONS_3];
+   float recur[RNN_MAIN_NEURONS_3];
    float *z;
    float *r;
    float *h;
@@ -297,12 +301,12 @@ void compute_sparse_gru(const SparseGRULayer *gru, float *zrh, float *recur, flo
    //     printf("sg[%d] %f\n", i, recur[i]);
    for (i=0;i<RNN_MAIN_NEURONS_2;i++)
       zrh[i] += recur[i];
-   compute_activation(zrh, RNN_MAIN_NEURONS_2, ACTIVATION_SIGMOID);
+   compute_activation(zrh, zrh, RNN_MAIN_NEURONS_2, ACTIVATION_SIGMOID);
    //compute_activation(zrh, zrh, RNN_MAIN_NEURONS_2, ACTIVATION_SIGMOID_EXP);
    for (i=0;i<RNN_MAIN_NEURONS;i++)
       h[i] += recur[RNN_MAIN_NEURONS_2+i]*z[i];
       //h[i] += recur[RNN_MAIN_NEURONS_2+i]*r[i];
-   compute_activation(h, RNN_MAIN_NEURONS, gru->activation);
+   compute_activation(h, h, RNN_MAIN_NEURONS, gru->activation);
    for (i=0;i<RNN_MAIN_NEURONS;i++)
       state[i] = r[i]*state[i] + (1-r[i])*h[i];
 }
@@ -391,7 +395,6 @@ void compute_conv1d_linear_dec_excit(const Conv1DLayer *layer, float *output, fl
    RNN_COPY(mem, &tmp[FEATURE_RED_DIM], FEATURE_CONV_DEC_EXCIT_STATE_SIZE); //set state size for next frame
 }
 
-
 //PLT_Aug21
 void compute_conv1d_linear_dec_melsp(const Conv1DLayer *layer, float *output, float *mem, const float *input)
 {
@@ -420,7 +423,7 @@ void compute_conv1d_linear_frame_in(const Conv1DLayer *layer, float *output, flo
    float tmp[FEATURE_CONV_INPUT_SIZE]; //set to input_size*kernel_size
    //celt_assert(input != output);
    RNN_COPY(tmp, mem, FEATURE_CONV_STATE_SIZE); //get state_size of last frame (in*(kernel_size-1))
-   RNN_COPY(&tmp[FEATURE_CONV_STATE_SIZE], input, FEATURE_RED_DIM); //append current input frame
+   RNN_COPY(&tmp[FEATURE_CONV_STATE_SIZE], input, FEATURES_DIM); //append current input frame
    //for (int j=0;j<layer->kernel_size;j++) {
    //    for (i=0;i<layer->nb_inputs;i++) {
    //        printf("tmp [%d][%d] %f\n", j, i, tmp[j*layer->nb_inputs+i]);
@@ -431,50 +434,46 @@ void compute_conv1d_linear_frame_in(const Conv1DLayer *layer, float *output, flo
       output[i] = layer->bias[i];
    sgemv_accum16(output, layer->input_weights, FEATURE_CONV_OUT_SIZE, FEATURE_CONV_INPUT_SIZE, tmp);
    //no activation (linear)
-   RNN_COPY(mem, &tmp[FEATURE_RED_DIM], FEATURE_CONV_STATE_SIZE); //set state size for next frame
+   RNN_COPY(mem, &tmp[FEATURES_DIM], FEATURE_CONV_STATE_SIZE); //set state size for next frame
 }
 
-//PLT_Jul21
-int sample_from_pdf_mwdlp(float *pdf, int N, RNGState *rng_state)
+//PLT_Sep21
+#if defined(WINDOWS_SYS) || defined (GNU_EXT)
+int sample_from_pdf_mwdlp(const float *pdf, int N, RNGState *rng_state)
+#else
+int sample_from_pdf_mwdlp(const float *pdf, int N)
+#endif
 {
     int i;
     float r;
-#if defined(WINDOWS_SYS)
-    UINT buffer = 0;
-    float cdf[SQRT_QUANTIZE], sum, norm;
-    vec_exp(pdf, N);
+    float tmp[SQRT_QUANTIZE], cdf[SQRT_QUANTIZE], sum, norm;
+    for (i=0;i<N;i++)
+        tmp[i] = pdf[i];
+    vec_exp_softmax(tmp, tmp, N);
     for (i=0,sum=0;i<N;i++)
-        sum += pdf[i];
+        sum += tmp[i];
     norm = 1.f/sum;
-    /* Convert pdf to a CDF (sum of all previous probs., init. with 0) */
+    /* Convert tmp to a CDF (sum of all previous probs., init. with 0) */
     cdf[0] = 0;
     for (i=1;i<N;i++)
-        cdf[i] = cdf[i-1] + norm*pdf[i-1];
+        cdf[i] = cdf[i-1] + norm*tmp[i-1];
     /* Do the sampling (from the cdf). */
+#ifdef WINDOWS_SYS
+    UINT buffer = 0;
     BCryptGenRandom(rng_state->rng_prov, (PUCHAR)(&buffer), sizeof(buffer), 0);
     r = (float)buffer / UINT_MAX;
-    for (i=N-1;i>0;i--)
-        if (r >= cdf[i]) return i; //largest cdf that is less/equal than r
-    return 0;
 #else
+    #ifdef GNU_EXT
     long int rand_num = 0;
-    float cdf[SQRT_QUANTIZE], sum, norm;
-    vec_exp(pdf, N);
-    for (i=0,sum=0;i<N;i++)
-        sum += pdf[i];
-    norm = 1.f/sum;
-    /* Convert pdf to a CDF (sum of all previous probs., init. with 0) */
-    cdf[0] = 0;
-    for (i=1;i<N;i++)
-        cdf[i] = cdf[i-1] + norm*pdf[i-1];
-    /* Do the sampling (from the cdf). */
     nrand48_r(rng_state->xsubi, rng_state->drand_buffer, &rand_num); // res ~ [0,2^31-1]
     r = (float) rand_num / NRAND48_MAX; //r ~ [0,1]
-    //r = (float) rand() / RAND_MAX; //r ~ [0,1]
+    #else
+    r = (float) random() / RAND_MAX; //r ~ [0,1]
+    #endif
+#endif
     for (i=N-1;i>0;i--)
         if (r >= cdf[i]) return i; //largest cdf that is less/equal than r
     return 0;
-#endif
 }
 
 //PLT_Dec20
@@ -492,11 +491,11 @@ void compute_denormalize(const NormStats *norm_stats, float *input_output)
 }
 
 //PLT_Aug21
-void compute_sparse_gru_enc_melsp(const SparseFrameGRULayer *gru, float *zrh, float *recur, float *state, const float *input)
+void compute_sparse_gru_enc_melsp(const SparseFrameGRULayer *gru, float *state, const float *input)
 {
    int i, j, k;
-   //float zrh[RNN_ENC_MELSP_NEURONS_3];
-   //float recur[RNN_ENC_MELSP_NEURONS_3];
+   float zrh[RNN_ENC_MELSP_NEURONS_3];
+   float recur[RNN_ENC_MELSP_NEURONS_3];
    float *z;
    float *r;
    float *h;
@@ -513,28 +512,28 @@ void compute_sparse_gru_enc_melsp(const SparseFrameGRULayer *gru, float *zrh, fl
       for (i=0,j=k*RNN_ENC_MELSP_NEURONS;i<RNN_ENC_MELSP_NEURONS;i++)
          recur[j + i] += gru->diag_weights[j + i]*state[i];
    sparse_sgemv_accum16(recur, gru->recurrent_weights, RNN_ENC_MELSP_NEURONS_3, gru->idx, state);
-   sgemv_accum16(zrh, gru->input_weights, RNN_ENC_MELSP_NEURONS_3, FEATURE_DENSE_ENC_MELSP_OUT_SIZE, input);
+   sgemv_accum16(zrh, gru->input_weights, RNN_ENC_MELSP_NEURONS_3, FEAT_ENC_MELSP_DIM, input);
 
    for (i=0;i<RNN_ENC_MELSP_NEURONS_2;i++)
       zrh[i] += recur[i]; //z_t and r_t computed in a similar way : sigmoid(in_t + W_z*h_{t-1})
    //compute_activation(zrh, zrh, RNN_ENC_MELSP_NEURONS_2, ACTIVATION_SIGMOID);
-   compute_activation(zrh, RNN_ENC_MELSP_NEURONS_2, ACTIVATION_SIGMOID_EXP);
+   compute_activation(zrh, zrh, RNN_ENC_MELSP_NEURONS_2, ACTIVATION_SIGMOID_EXP);
 
    for (i=0;i<RNN_ENC_MELSP_NEURONS;i++)
       h[i] += recur[RNN_ENC_MELSP_NEURONS_2+i]*z[i]; //n_t = tanh(in_t + r_t o W_n*h_{t-1})
    //compute_activation(h, h, RNN_ENC_MELSP_NEURONS, ACTIVATION_TANH);
-   compute_activation(h, RNN_ENC_MELSP_NEURONS, gru->activation);
+   compute_activation(h, h, RNN_ENC_MELSP_NEURONS, gru->activation);
 
    for (i=0;i<RNN_ENC_MELSP_NEURONS;i++)
       state[i] = r[i]*state[i] + (1-r[i])*h[i]; //h_t = z_t o h_{t-1} + (1-z_t) o n_t
 }
 
 //PLT_Aug21
-void compute_sparse_gru_enc_excit(const SparseFrameGRULayer *gru, float *zrh, float *recur, float *state, const float *input)
+void compute_sparse_gru_enc_excit(const SparseFrameGRULayer *gru, float *state, const float *input)
 {
    int i, j, k;
-   //float zrh[RNN_ENC_EXCIT_NEURONS_3];
-   //float recur[RNN_ENC_EXCIT_NEURONS_3];
+   float zrh[RNN_ENC_EXCIT_NEURONS_3];
+   float recur[RNN_ENC_EXCIT_NEURONS_3];
    float *z;
    float *r;
    float *h;
@@ -551,17 +550,17 @@ void compute_sparse_gru_enc_excit(const SparseFrameGRULayer *gru, float *zrh, fl
       for (i=0,j=k*RNN_ENC_EXCIT_NEURONS;i<RNN_ENC_EXCIT_NEURONS;i++)
          recur[j + i] += gru->diag_weights[j + i]*state[i];
    sparse_sgemv_accum16(recur, gru->recurrent_weights, RNN_ENC_EXCIT_NEURONS_3, gru->idx, state);
-   sgemv_accum16(zrh, gru->input_weights, RNN_ENC_EXCIT_NEURONS_3, FEATURE_DENSE_ENC_EXCIT_OUT_SIZE, input);
+   sgemv_accum16(zrh, gru->input_weights, RNN_ENC_EXCIT_NEURONS_3, FEAT_ENC_EXCIT_DIM, input);
 
    for (i=0;i<RNN_ENC_EXCIT_NEURONS_2;i++)
       zrh[i] += recur[i]; //z_t and r_t computed in a similar way : sigmoid(in_t + W_z*h_{t-1})
    //compute_activation(zrh, zrh, RNN_ENC_EXCIT_NEURONS_2, ACTIVATION_SIGMOID);
-   compute_activation(zrh, RNN_ENC_EXCIT_NEURONS_2, ACTIVATION_SIGMOID_EXP);
+   compute_activation(zrh, zrh, RNN_ENC_EXCIT_NEURONS_2, ACTIVATION_SIGMOID_EXP);
 
    for (i=0;i<RNN_ENC_EXCIT_NEURONS;i++)
       h[i] += recur[RNN_ENC_EXCIT_NEURONS_2+i]*z[i]; //n_t = tanh(in_t + r_t o W_n*h_{t-1})
    //compute_activation(h, h, RNN_ENC_EXCIT_NEURONS, ACTIVATION_TANH);
-   compute_activation(h, RNN_ENC_EXCIT_NEURONS, gru->activation);
+   compute_activation(h, h, RNN_ENC_EXCIT_NEURONS, gru->activation);
 
    for (i=0;i<RNN_ENC_EXCIT_NEURONS;i++)
       state[i] = r[i]*state[i] + (1-r[i])*h[i]; //h_t = z_t o h_{t-1} + (1-z_t) o n_t
@@ -586,17 +585,17 @@ void compute_gru_spk(const FrameGRULayer *gru, float *state, const float *input)
       zrh[i] = gru->input_bias[i];
    }
    sgemv_accum16(recur, gru->recurrent_weights, RNN_SPK_NEURONS_3, RNN_SPK_NEURONS, state);
-   sgemv_accum16(zrh, gru->input_weights, RNN_SPK_NEURONS_3, FEATURE_DENSE_SPK_OUT_SIZE, input);
+   sgemv_accum16(zrh, gru->input_weights, RNN_SPK_NEURONS_3, FEAT_SPK_DIM, input);
 
    for (i=0;i<RNN_SPK_NEURONS_2;i++)
       zrh[i] += recur[i]; //z_t and r_t computed in a similar way : sigmoid(in_t + W_z*h_{t-1})
    //compute_activation(zrh, zrh, RNN_SPK_NEURONS_2, ACTIVATION_SIGMOID);
-   compute_activation(zrh, RNN_SPK_NEURONS_2, ACTIVATION_SIGMOID_EXP);
+   compute_activation(zrh, zrh, RNN_SPK_NEURONS_2, ACTIVATION_SIGMOID_EXP);
 
    for (i=0;i<RNN_SPK_NEURONS;i++)
       h[i] += recur[RNN_SPK_NEURONS_2+i]*z[i]; //n_t = tanh(in_t + r_t o W_n*h_{t-1})
    //compute_activation(h, h, RNN_SPK_NEURONS, ACTIVATION_TANH);
-   compute_activation(h, RNN_SPK_NEURONS, gru->activation);
+   compute_activation(h, h, RNN_SPK_NEURONS, gru->activation);
 
    for (i=0;i<RNN_SPK_NEURONS;i++)
       state[i] = r[i]*state[i] + (1-r[i])*h[i]; //h_t = z_t o h_{t-1} + (1-z_t) o n_t
@@ -621,28 +620,27 @@ void compute_gru_dec_excit(const FrameGRULayer *gru, float *state, const float *
       zrh[i] = gru->input_bias[i];
    }
    sgemv_accum16(recur, gru->recurrent_weights, RNN_DEC_EXCIT_NEURONS_3, RNN_DEC_EXCIT_NEURONS, state);
-   sgemv_accum16(zrh, gru->input_weights, RNN_DEC_EXCIT_NEURONS_3, FEATURE_DENSE_DEC_EXCIT_OUT_SIZE, input);
+   sgemv_accum16(zrh, gru->input_weights, RNN_DEC_EXCIT_NEURONS_3, FEAT_DEC_EXCIT_DIM, input);
 
    for (i=0;i<RNN_DEC_EXCIT_NEURONS_2;i++)
       zrh[i] += recur[i]; //z_t and r_t computed in a similar way : sigmoid(in_t + W_z*h_{t-1})
    //compute_activation(zrh, zrh, RNN_DEC_EXCIT_NEURONS_2, ACTIVATION_SIGMOID);
-   compute_activation(zrh, RNN_DEC_EXCIT_NEURONS_2, ACTIVATION_SIGMOID_EXP);
+   compute_activation(zrh, zrh, RNN_DEC_EXCIT_NEURONS_2, ACTIVATION_SIGMOID_EXP);
 
    for (i=0;i<RNN_DEC_EXCIT_NEURONS;i++)
       h[i] += recur[RNN_DEC_EXCIT_NEURONS_2+i]*z[i]; //n_t = tanh(in_t + r_t o W_n*h_{t-1})
-   compute_activation(h, RNN_DEC_EXCIT_NEURONS, gru->activation);
+   compute_activation(h, h, RNN_DEC_EXCIT_NEURONS, gru->activation);
 
    for (i=0;i<RNN_DEC_EXCIT_NEURONS;i++)
       state[i] = r[i]*state[i] + (1-r[i])*h[i]; //h_t = z_t o h_{t-1} + (1-z_t) o n_t
 }
 
-
 //PLT_Aug21
-void compute_sparse_gru_dec_melsp(const SparseFrameGRULayer *gru, float *zrh, float *recur, float *state, const float *input)
+void compute_sparse_gru_dec_melsp(const SparseFrameGRULayer *gru, float *state, const float *input)
 {
    int i, j, k;
-   //float zrh[RNN_DEC_MELSP_NEURONS_3];
-   //float recur[RNN_DEC_MELSP_NEURONS_3];
+   float zrh[RNN_DEC_MELSP_NEURONS_3];
+   float recur[RNN_DEC_MELSP_NEURONS_3];
    float *z;
    float *r;
    float *h;
@@ -659,27 +657,31 @@ void compute_sparse_gru_dec_melsp(const SparseFrameGRULayer *gru, float *zrh, fl
       for (i=0,j=k*RNN_DEC_MELSP_NEURONS;i<RNN_DEC_MELSP_NEURONS;i++)
          recur[j + i] += gru->diag_weights[j + i]*state[i];
    sparse_sgemv_accum16(recur, gru->recurrent_weights, RNN_DEC_MELSP_NEURONS_3, gru->idx, state);
-   sgemv_accum16(zrh, gru->input_weights, RNN_DEC_MELSP_NEURONS_3, FEATURE_DENSE_DEC_MELSP_OUT_SIZE, input);
+   sgemv_accum16(zrh, gru->input_weights, RNN_DEC_MELSP_NEURONS_3, FEAT_DEC_MELSP_DIM, input);
 
    for (i=0;i<RNN_DEC_MELSP_NEURONS_2;i++)
       zrh[i] += recur[i]; //z_t and r_t computed in a similar way : sigmoid(in_t + W_z*h_{t-1})
    //compute_activation(zrh, zrh, RNN_DEC_MELSP_NEURONS_2, ACTIVATION_SIGMOID);
-   compute_activation(zrh, RNN_DEC_MELSP_NEURONS_2, ACTIVATION_SIGMOID_EXP);
+   compute_activation(zrh, zrh, RNN_DEC_MELSP_NEURONS_2, ACTIVATION_SIGMOID_EXP);
 
    for (i=0;i<RNN_DEC_MELSP_NEURONS;i++)
       h[i] += recur[RNN_DEC_MELSP_NEURONS_2+i]*z[i]; //n_t = tanh(in_t + r_t o W_n*h_{t-1})
    //compute_activation(h, h, RNN_DEC_MELSP_NEURONS, ACTIVATION_TANH);
-   compute_activation(h, RNN_DEC_MELSP_NEURONS, gru->activation);
+   compute_activation(h, h, RNN_DEC_MELSP_NEURONS, gru->activation);
 
    for (i=0;i<RNN_DEC_MELSP_NEURONS;i++)
       state[i] = r[i]*state[i] + (1-r[i])*h[i]; //h_t = z_t o h_{t-1} + (1-z_t) o n_t
 }
 
-//PLT_Jul21
+//PLT_Sep21
+#if defined(WINDOWS_SYS) || defined (GNU_EXT)
 void compute_sampling_gauss(float *mu, const float *std, int dim, RNGState *rng_state)
+#else
+void compute_sampling_gauss(float *mu, const float *std, int dim);
+#endif
 {
     float u1, u2 = 0, mag = 0;
-#if defined(WINDOWS_SYS)
+#ifdef WINDOWS_SYS
     UINT buffer = 0;
     for (int i=0;i<dim;i++) {
         if (i % 2 == 0) {
@@ -687,28 +689,42 @@ void compute_sampling_gauss(float *mu, const float *std, int dim, RNGState *rng_
             u1 = ((float) buffer + FLT_MIN) / RAND_MAX_FLT_MIN_FLT_MIN; //u1 ~ (0,1)
             BCryptGenRandom(rng_state->rng_prov, (PUCHAR)(&buffer), sizeof(buffer), 0);
             u2 = ((float) buffer + FLT_MIN) / RAND_MAX_FLT_MIN_FLT_MIN; //u1 ~ (0,1)
-            mag = sqrt(-2*log(u1));
-            u2 *= 6.283185307179586476925286766559;
+            mag = (float)sqrt(-2*log(u1));
+            u2 *= 6.283185307179586476925286766559f;
             ////temperature sampling: 0.675
-            mu[i] += 0.675*std[i]*mag*cos(u2);
-        } else mu[i] += 0.675*std[i]*mag*sin(u2);
+            mu[i] += (float)(0.675*std[i]*mag*cos(u2));
+        } else mu[i] += (float)(0.675*std[i]*mag*sin(u2));
     }
 #else
+    #ifdef GNU_EXT
     long int rand_num = 0;
     for (int i=0;i<dim;i++) {
         if (i % 2 == 0) {
             nrand48_r(rng_state->xsubi, rng_state->drand_buffer, &rand_num); // res ~ [0,2^31-1]
             u1 = ((float) rand_num + FLT_MIN) / RAND_MAX_FLT_MIN_FLT_MIN; //u1 ~ (0,1)
-            //u1 = ((float) rand() + FLT_MIN) / RAND_MAX_FLT_MIN_FLT_MIN; //u1 ~ (0,1)
             nrand48_r(rng_state->xsubi, rng_state->drand_buffer, &rand_num); // res ~ [0,2^31-1]
             u2 = ((float) rand_num + FLT_MIN) / RAND_MAX_FLT_MIN_FLT_MIN; //u1 ~ (0,1)
-            //u2 = ((float) rand() + FLT_MIN) / RAND_MAX_FLT_MIN_FLT_MIN; //u2 ~ (0,1)
             mag = sqrt(-2*log(u1));
             u2 *= 6.283185307179586476925286766559;
             ////temperature sampling: 0.675
             mu[i] += 0.675*std[i]*mag*cos(u2);
         } else mu[i] += 0.675*std[i]*mag*sin(u2);
     }
+    #else
+    long int rand_num = 0;
+    for (int i=0;i<dim;i++) {
+        if (i % 2 == 0) {
+            nrand48_r(rng_state->xsubi, rng_state->drand_buffer, &rand_num); // res ~ [0,2^31-1]
+            u1 = ((float) random() + FLT_MIN) / RAND_MAX_FLT_MIN_FLT_MIN; //u1 ~ (0,1)
+            nrand48_r(rng_state->xsubi, rng_state->drand_buffer, &rand_num); // res ~ [0,2^31-1]
+            u2 = ((float) random() + FLT_MIN) / RAND_MAX_FLT_MIN_FLT_MIN; //u2 ~ (0,1)
+            mag = sqrt(-2*log(u1));
+            u2 *= 6.283185307179586476925286766559;
+            ////temperature sampling: 0.675
+            mu[i] += 0.675*std[i]*mag*cos(u2);
+        } else mu[i] += 0.675*std[i]*mag*sin(u2);
+    }
+    #endif
     return;
 #endif
 }
@@ -733,7 +749,7 @@ void compute_spkidtr(const DenseLayer * in_emb_layer, const DenseLayer * in_laye
     //   printf("[%d] %f ", i, tmp_in[i]);
     //}
     //printf("\n");
-    compute_activation(tmp_in, FC_IN_SPK_CODE_OUT_SIZE, in_emb_layer->activation);
+    compute_activation(tmp_in, tmp_in, FC_IN_SPK_CODE_OUT_SIZE, in_emb_layer->activation);
     //for (i=0;i<N;i++) {
     //   printf("[%d] %f ", i, tmp_in[i]);
     //}
@@ -749,7 +765,7 @@ void compute_spkidtr(const DenseLayer * in_emb_layer, const DenseLayer * in_laye
     //printf("\n");
     sgemv_accum16(tmp, in_layer->input_weights, FC_IN_SPK_CODE_TRANSFORM_OUT_SIZE, in_layer->nb_inputs, tmp_in);
     //printf("2-dim %f %f\n", tmp[0], tmp[1]);
-    compute_activation(tmp, FC_IN_SPK_CODE_TRANSFORM_OUT_SIZE, in_layer->activation);
+    compute_activation(tmp, tmp, FC_IN_SPK_CODE_TRANSFORM_OUT_SIZE, in_layer->activation);
     //printf("2-dim tanh %f %f\n", tmp[0], tmp[1]);
     printf("2-dim spk-coord: %f %f\n", tmp[0], tmp[1]);
 
@@ -761,7 +777,7 @@ void compute_spkidtr(const DenseLayer * in_emb_layer, const DenseLayer * in_laye
     }
     //printf("\n");
     sgemv_accum16(coeff, out_layer->input_weights, FC_OUT_SPK_CODE_TRANSFORM_OUT_SIZE, out_layer->nb_inputs, tmp);
-    compute_activation(coeff, FC_OUT_SPK_CODE_TRANSFORM_OUT_SIZE, out_layer->activation);
+    compute_activation(coeff, coeff, FC_OUT_SPK_CODE_TRANSFORM_OUT_SIZE, out_layer->activation);
 
     printf("%d-dim spk-embed-coeff:", FEATURE_N_WEIGHT_EMBED_SPK);
     //multiply with coeff
@@ -782,7 +798,7 @@ void compute_spkidtr_coord(const DenseLayer* layer, float* output, float* coeff,
     for (i = 0; i < N; i++)
         coeff[i] = layer->bias[i];
     sgemv_accum16(coeff, layer->input_weights, N, layer->nb_inputs, input);
-    compute_activation(coeff, N, layer->activation);
+    compute_activation(coeff, coeff, N, layer->activation);
 
     printf("%d-dim spk-embed-coeff:", FEATURE_N_WEIGHT_EMBED_SPK);
     //multiply with coeff

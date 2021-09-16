@@ -409,6 +409,10 @@ def main():
                         type=int, help="number of dimension of reduced one-hot spk-dim (if 0 not apply reduction)")
     parser.add_argument("--n_weight_emb", default=4,
                         type=int, help="number of dimension of reduced one-hot spk-dim (if 0 not apply reduction)")
+    parser.add_argument("--s_conv_flag", default=False,
+                        type=strtobool, help="batch size (if set 0, utterance batch will be used)")
+    parser.add_argument("--seg_conv_flag", default=True,
+                        type=strtobool, help="batch size (if set 0, utterance batch will be used)")
     # network training setting
     parser.add_argument("--lr", default=1e-4,
                         type=float, help="learning rate")
@@ -542,6 +546,8 @@ def main():
         causal_conv=args.causal_conv_enc,
         pad_first=True,
         right_size=args.right_size_enc,
+        s_conv_flag=args.s_conv_flag,
+        seg_conv_flag=args.seg_conv_flag,
         do_prob=args.do_prob)
     logging.info(model_encoder_melsp)
     model_decoder_melsp = GRU_SPEC_DECODER(
@@ -559,6 +565,8 @@ def main():
         right_size=args.right_size_dec,
         red_dim=args.mel_dim,
         pdf_gauss=True,
+        s_conv_flag=args.s_conv_flag,
+        seg_conv_flag=args.seg_conv_flag,
         do_prob=args.do_prob)
     logging.info(model_decoder_melsp)
     model_encoder_excit = GRU_VAE_ENCODER(
@@ -572,6 +580,8 @@ def main():
         causal_conv=args.causal_conv_enc,
         pad_first=True,
         right_size=args.right_size_enc,
+        s_conv_flag=args.s_conv_flag,
+        seg_conv_flag=args.seg_conv_flag,
         do_prob=args.do_prob)
     logging.info(model_encoder_excit)
     model_decoder_excit = GRU_EXCIT_DECODER(
@@ -587,6 +597,8 @@ def main():
         pad_first=True,
         right_size=args.right_size_lf0,
         red_dim=args.mel_dim,
+        s_conv_flag=args.s_conv_flag,
+        seg_conv_flag=args.seg_conv_flag,
         do_prob=args.do_prob)
     logging.info(model_decoder_excit)
     model_spkidtr = SPKID_TRANSFORM_LAYER(
@@ -615,6 +627,8 @@ def main():
         pad_first=True,
         right_size=args.right_size_spk,
         red_dim=args.mel_dim,
+        s_conv_flag=args.s_conv_flag,
+        seg_conv_flag=args.seg_conv_flag,
         do_prob=args.do_prob)
     logging.info(model_spk)
     criterion_gauss = GaussLoss(dim=args.mel_dim)
@@ -738,18 +752,24 @@ def main():
     for param in model_decoder_excit.scale_out_cap.parameters():
         param.requires_grad = False
 
-    module_list = list(model_encoder_melsp.conv.parameters()) + list(model_encoder_melsp.conv_s_c.parameters())
+    module_list = list(model_encoder_melsp.conv.parameters())
+    if args.s_conv_flag:
+        module_list += list(model_encoder_melsp.conv_s_c.parameters())
     module_list += list(model_encoder_melsp.gru.parameters()) + list(model_encoder_melsp.out.parameters())
 
     module_list += list(model_decoder_melsp.in_red.parameters()) + list(model_decoder_melsp.conv.parameters())
-    module_list += list(model_decoder_melsp.conv_s_c.parameters())
+    if args.s_conv_flag:
+        module_list += list(model_decoder_melsp.conv_s_c.parameters())
     module_list += list(model_decoder_melsp.gru.parameters()) + list(model_decoder_melsp.out.parameters())
 
-    module_list += list(model_encoder_excit.conv.parameters()) + list(model_encoder_excit.conv_s_c.parameters())
+    module_list += list(model_encoder_excit.conv.parameters())
+    if args.s_conv_flag:
+        module_list += list(model_encoder_excit.conv_s_c.parameters())
     module_list += list(model_encoder_excit.gru.parameters()) + list(model_encoder_excit.out.parameters())
 
     module_list += list(model_decoder_excit.in_red.parameters()) + list(model_decoder_excit.conv.parameters())
-    module_list += list(model_decoder_excit.conv_s_c.parameters())
+    if args.s_conv_flag:
+        module_list += list(model_decoder_excit.conv_s_c.parameters())
     module_list += list(model_decoder_excit.gru.parameters()) + list(model_decoder_excit.out.parameters())
 
     if (args.spkidtr_dim > 0):
@@ -760,7 +780,8 @@ def main():
                         + list(model_spkidtr.embed_spk.parameters())
 
     module_list += list(model_spk.in_red.parameters()) + list(model_spk.conv.parameters())
-    module_list += list(model_spk.conv_s_c.parameters())
+    if args.s_conv_flag:
+        module_list += list(model_spk.conv_s_c.parameters())
     module_list += list(model_spk.gru.parameters()) + list(model_spk.out.parameters())
 
     module_list += list(model_classifier.conv_lat.parameters()) + list(model_classifier.conv_feat.parameters())

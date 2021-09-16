@@ -260,6 +260,7 @@ int main(int argc, char **argv) {
 
             float features[FEATURES_DIM];
             float features_last[FEATURES_DIM];
+            short pcm[MAX_N_OUTPUT]; //output is in short 2-byte (16-bit) format [-32768,32767]
             short first_buffer_flag = 0;
             short waveform_buffer_flag = 0;
             int n_output = 0;
@@ -278,8 +279,6 @@ int main(int argc, char **argv) {
                 // initialize mwdlp struct
                 MWDLP10NetState *net;
                 net = mwdlp10net_create();
-
-                short *pcm = &net->output[0];
 
                 for (i = 0, j = 0, k = 0; i < num_samples; i++) {
                     if ((read = fread(data_buffer, sizeof(data_buffer), 1, fin))) {
@@ -324,8 +323,8 @@ int main(int argc, char **argv) {
 
                             //t_ = clock();
                             //if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 0, mwdlp_conv_tmp, mwdlp_dense_tmp);
-                            if (!NO_DLPC) mwdlp10net_synthesize(net, features, &n_output, 0);
-                            else mwdlp10net_synthesize_nodlpc(net, features, &n_output, 0);
+                            if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 0);
+                            else mwdlp10net_synthesize_nodlpc(net, features, pcm, &n_output, 0);
                             //printf("\nwav %f sec.\n", ((double)(clock()-t_))/CLOCKS_PER_SEC);
 
                             /*if (k > FEATURE_CONV_DELAY) {
@@ -404,8 +403,8 @@ int main(int argc, char **argv) {
                     mel_spec_extract(dsp, features);
 
                     //if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 0, mwdlp_conv_tmp, mwdlp_dense_tmp);
-                    if (!NO_DLPC) mwdlp10net_synthesize(net, features, &n_output, 0);
-                    else mwdlp10net_synthesize_nodlpc(net, features, &n_output, 0);
+                    if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 0);
+                    else mwdlp10net_synthesize_nodlpc(net, features, pcm, &n_output, 0);
 
                     /*if (k > FEATURE_CONV_DELAY) {
                         for (l=0;l<FEATURE_CONV_OUT_SIZE;l++) {
@@ -430,8 +429,8 @@ int main(int argc, char **argv) {
                     }
 
                     //if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 1, mwdlp_conv_tmp, mwdlp_dense_tmp); //last_frame_flag, synth pad_right
-                    if (!NO_DLPC) mwdlp10net_synthesize(net, features, &n_output, 1); //last_frame_flag, synth pad_right
-                    else mwdlp10net_synthesize_nodlpc(net, features, &n_output, 1);
+                    if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 1); //last_frame_flag, synth pad_right
+                    else mwdlp10net_synthesize_nodlpc(net, features, pcm, &n_output, 1);
 
                     if (print_melsp_flag) {
                         for (l=0;l<FEATURES_DIM;l++) {
@@ -475,8 +474,6 @@ int main(int argc, char **argv) {
                 // initialize mwdlp+cyclevae struct
                 MWDLP10CycleVAEMelspExcitSpkNetState *net;
                 net = mwdlp10cyclevaenet_create();
-
-                short *pcm = &net->output[0];
 
                 // set spk-conditioning here
                 float spk_code_coeff[FEATURE_N_WEIGHT_EMBED_SPK];
@@ -572,8 +569,8 @@ int main(int argc, char **argv) {
                             }*/
                             
 
-                            if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, &n_output, 0);
-                            else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, &n_output, 0);
+                            if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0);
+                            else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, pcm, &n_output, 0);
                             //if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0, melsp_in_tmp, conv_tmp, dense_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_dense_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_dense_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp);
                             //else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, pcm, &n_output, 0, melsp_in_tmp, conv_tmp, dense_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_dense_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_dense_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp);
 
@@ -785,8 +782,8 @@ int main(int argc, char **argv) {
                         }
                     }*/
                     
-                    if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, &n_output, 0);
-                    else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, &n_output, 0);
+                    if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0);
+                    else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, pcm, &n_output, 0);
                     //if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0, melsp_in_tmp, conv_tmp, dense_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_dense_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_dense_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp);
                     //else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, pcm, &n_output, 0, melsp_in_tmp, conv_tmp, dense_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_dense_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_dense_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp);
 
@@ -965,8 +962,8 @@ int main(int argc, char **argv) {
                         }*/
                         
 
-                        if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, &n_output, 0);
-                        else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, &n_output, 0);
+                        if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0);
+                        else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, pcm, &n_output, 0);
                         //if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0, melsp_in_tmp, conv_tmp, dense_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_dense_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_dense_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp);
                         //else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, pcm, &n_output, 0, melsp_in_tmp, conv_tmp, dense_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_dense_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_dense_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp);
 
@@ -1120,8 +1117,8 @@ int main(int argc, char **argv) {
                     }
 
                     // last frame padding sample level
-                    if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, &n_output, 1);
-                    else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, &n_output, 1);
+                    if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 1);
+                    else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, pcm, &n_output, 1);
                     //if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 1, melsp_in_tmp, conv_tmp, dense_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_dense_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_dense_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp);
                     //else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, pcm, &n_output, 1, melsp_in_tmp, conv_tmp, dense_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_dense_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_dense_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp);
 
@@ -1183,6 +1180,7 @@ int main(int argc, char **argv) {
 
             float features[FEATURES_DIM];
             float features_last[FEATURES_DIM];
+            short pcm[MAX_N_OUTPUT]; //output is in short 2-byte (16-bit) format [-32768,32767]
             int n_output = 0;
             short i, j;
             long k;
@@ -1191,8 +1189,6 @@ int main(int argc, char **argv) {
                 // initialize mwdlp struct
                 MWDLP10NetState *net;
                 net = mwdlp10net_create();
-
-                short *pcm = &net->output[0];
 
                 if (melsp_txt_in_flag) {
                     char c;
@@ -1269,8 +1265,8 @@ int main(int argc, char **argv) {
                             else printf(" [last frame]\n");
 
                             //if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 0, mwdlp_conv_tmp, mwdlp_dense_tmp);
-                            if (!NO_DLPC) mwdlp10net_synthesize(net, features, &n_output, 0);
-                            else mwdlp10net_synthesize_nodlpc(net, features, &n_output, 0);
+                            if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 0);
+                            else mwdlp10net_synthesize_nodlpc(net, features, pcm, &n_output, 0);
                     
                             //if (print_melsp_flag) {
                             //    for (l=0;l<FEATURES_DIM;l++)
@@ -1302,8 +1298,8 @@ int main(int argc, char **argv) {
                                 features[j] = log(1+10000*buffer[j]);
 
                             //if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 0, mwdlp_conv_tmp, mwdlp_dense_tmp);
-                            if (!NO_DLPC) mwdlp10net_synthesize(net, features, &n_output, 0);
-                            else mwdlp10net_synthesize_nodlpc(net, features, &n_output, 0);
+                            if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 0);
+                            else mwdlp10net_synthesize_nodlpc(net, features, pcm, &n_output, 0);
                     
                             //if (print_melsp_flag) {
                             //    for (l=0;l<FEATURES_DIM;l++)
@@ -1347,8 +1343,8 @@ int main(int argc, char **argv) {
 
                 if (k == num_frame) {
                     //if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 1, mwdlp_conv_tmp, mwdlp_dense_tmp); //last_frame_flag, synth pad_right
-                    if (!NO_DLPC) mwdlp10net_synthesize(net, features, &n_output, 1); //last_frame_flag, synth pad_right
-                    else mwdlp10net_synthesize_nodlpc(net, features, &n_output, 1);
+                    if (!NO_DLPC) mwdlp10net_synthesize(net, features, pcm, &n_output, 1); //last_frame_flag, synth pad_right
+                    else mwdlp10net_synthesize_nodlpc(net, features, pcm, &n_output, 1);
 
                     if (n_output > 0)  {
                         fwrite(pcm, sizeof(pcm[0]), n_output, fout);
@@ -1387,8 +1383,6 @@ int main(int argc, char **argv) {
                 // initialize mwdlp+cyclevae struct
                 MWDLP10CycleVAEMelspExcitSpkNetState *net;
                 net = mwdlp10cyclevaenet_create();
-
-                short *pcm = &net->output[0];
 
                 // set spk-conditioning here
                 float spk_code_coeff[FEATURE_N_WEIGHT_EMBED_SPK];
@@ -1502,8 +1496,8 @@ int main(int argc, char **argv) {
                                 }
                             }
 
-                            if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, &n_output, 0);
-                            else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, &n_output, 0);
+                            if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0);
+                            else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, pcm, &n_output, 0);
                             //if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0, melsp_in_tmp, conv_tmp, dense_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_dense_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_dense_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp);
                             //else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, pcm, &n_output, 0, melsp_in_tmp, conv_tmp, dense_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_dense_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_dense_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp);
                             
@@ -1542,8 +1536,8 @@ int main(int argc, char **argv) {
                                     features_last[l] = features[l];
                             }
 
-                            if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, &n_output, 0);
-                            else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, &n_output, 0);
+                            if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0);
+                            else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, pcm, &n_output, 0);
                             //if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0, melsp_in_tmp, conv_tmp, dense_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_dense_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_dense_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp);
                             //else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, pcm, &n_output, 0, melsp_in_tmp, conv_tmp, dense_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_dense_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_dense_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp);
                     
@@ -1594,8 +1588,8 @@ int main(int argc, char **argv) {
                             features[l] = features_last[l];
                         }
 
-                        if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, &n_output, 0);
-                        else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, &n_output, 0);
+                        if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0);
+                        else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, pcm, &n_output, 0);
                         //if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 0, melsp_in_tmp, conv_tmp, dense_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_dense_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_dense_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp);
                         //else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, pcm, &n_output, 0, melsp_in_tmp, conv_tmp, dense_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_dense_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_dense_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp);
 
@@ -1620,8 +1614,8 @@ int main(int argc, char **argv) {
                     }
 
                     // last frame padding sample level
-                    if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, &n_output, 1);
-                    else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, &n_output, 1);
+                    if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 1);
+                    else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, pcm, &n_output, 1);
                     //if (!NO_DLPC) cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize(net, features, spk_code_aux, pcm, &n_output, 1, melsp_in_tmp, conv_tmp, dense_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_dense_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_dense_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp);
                     //else cyclevae_melsp_excit_spk_convert_mwdlp10net_synthesize_nodlpc(net, features, spk_code_aux, pcm, &n_output, 1, melsp_in_tmp, conv_tmp, dense_tmp, gru_tmp, lat_tmp, spk_in_tmp, spk_red_tmp, spk_conv_tmp, spk_dense_tmp, spk_gru_tmp, spk_out_tmp, spk_tmp, melsp_red_tmp, melsp_conv_tmp, melsp_dense_tmp, melsp_gru_tmp, melsp_pdf_tmp, melsp_smpl_tmp);
 

@@ -178,6 +178,8 @@ n_weight_emb=`awk '{if ($1 == "n_weight_emb:") print $2}' conf/config.yml`
 right_size_spk=`awk '{if ($1 == "right_size_spk:") print $2}' conf/config.yml`
 right_size_dec=`awk '{if ($1 == "right_size_dec:") print $2}' conf/config.yml`
 right_size_lf0=`awk '{if ($1 == "right_size_lf0:") print $2}' conf/config.yml`
+s_conv_flag=`awk '{if ($1 == "s_conv_flag:") print $2}' conf/config.yml`
+seg_conv_flag=`awk '{if ($1 == "seg_conv_flag:") print $2}' conf/config.yml`
 t_start_cycvae=`awk '{if ($1 == "t_start_cycvae:") print $2}' conf/config.yml`
 t_end_cycvae=`awk '{if ($1 == "t_end_cycvae:") print $2}' conf/config.yml`
 interval_cycvae=`awk '{if ($1 == "interval_cycvae:") print $2}' conf/config.yml`
@@ -204,6 +206,7 @@ densities=`awk '{if ($1 == "densities:") print $2}' conf/config.yml`
 n_stage=`awk '{if ($1 == "n_stage:") print $2}' conf/config.yml`
 lpc=`awk '{if ($1 == "lpc:") print $2}' conf/config.yml`
 causal_conv_wave=`awk '{if ($1 == "causal_conv_wave:") print $2}' conf/config.yml`
+seg_conv_flag_wave=`awk '{if ($1 == "seg_conv_flag_wave:") print $2}' conf/config.yml`
 s_dim=`awk '{if ($1 == "s_dim:") print $2}' conf/config.yml`
 mid_dim=`awk '{if ($1 == "mid_dim:") print $2}' conf/config.yml`
 
@@ -254,7 +257,7 @@ set -e
 if [ `echo ${stage} | grep 0` ] || [ `echo ${stage} | grep 4` ];then
 echo $mdl_name_vc
 if [ $mdl_name_vc == "cycmelspxlf0capspkvae-gauss-smpl_sparse_weightemb_v2" ]; then
-    setting_vc=${mdl_name_vc}_${data_name}_lr${lr}_bs${batch_size}_lat${lat_dim}_late${lat_dim_e}_hue${hidden_units_enc}_hud${hidden_units_dec}_huf${hidden_units_lf0}_do${do_prob}_st${step_count}_mel${mel_dim}_nhcyc${n_half_cyc}_s${spkidtr_dim}_w${n_weight_emb}_ts${t_start_cycvae}_te${t_end_cycvae}_i${interval_cycvae}_de${densities_cycvae_enc}_dd${densities_cycvae_dec}_ns${n_stage_cycvae}
+    setting_vc=${mdl_name_vc}_${data_name}_lr${lr}_bs${batch_size}_lat${lat_dim}_late${lat_dim_e}_hue${hidden_units_enc}_hud${hidden_units_dec}_huf${hidden_units_lf0}_do${do_prob}_st${step_count}_mel${mel_dim}_nhcyc${n_half_cyc}_s${spkidtr_dim}_w${n_weight_emb}_ts${t_start_cycvae}_te${t_end_cycvae}_i${interval_cycvae}_de${densities_cycvae_enc}_dd${densities_cycvae_dec}_ns${n_stage_cycvae}_sc${s_conv_flag}_ss${seg_conv_flag}
 fi
 expdir_vc=exp/tr_${setting_vc}
 echo $expdir_vc
@@ -272,7 +275,7 @@ fi
 
 echo $mdl_name_wave
 if [ $mdl_name_wave == "wavernn_dualgru_compact_lpc_mband_10bit_cf_stft_emb_v2" ]; then
-    setting_wave=${mdl_name_wave}_${data_name}_lr${lr}_bs${batch_size_wave}_huw${hidden_units_wave}_hu2w${hidden_units_wave_2}_ksw${kernel_size_wave}_dsw${dilation_size_wave}_do${do_prob}_st${step_count_wave}_mel${mel_dim}_ts${t_start}_te${t_end}_i${interval}_d${densities}_ns${n_stage}_lpc${lpc}_rs${right_size_wave}_nb${n_bands}_s${s_dim}_m${mid_dim}
+    setting_wave=${mdl_name_wave}_${data_name}_lr${lr}_bs${batch_size_wave}_huw${hidden_units_wave}_hu2w${hidden_units_wave_2}_ksw${kernel_size_wave}_dsw${dilation_size_wave}_do${do_prob}_st${step_count_wave}_mel${mel_dim}_ts${t_start}_te${t_end}_i${interval}_d${densities}_ns${n_stage}_lpc${lpc}_rs${right_size_wave}_nb${n_bands}_s${s_dim}_m${mid_dim}_ss${seg_conv_flag_wave}
 fi
 expdir_wave=exp/tr_${setting_wave}
 echo $expdir_wave
@@ -290,7 +293,7 @@ fi
 
 echo $mdl_name_ft
 if [ $mdl_name_ft == "cycmelspspkvae-gauss-smpl_sparse_weightemb_mwdlp_smpl_v2" ]; then
-    setting_ft=${mdl_name_ft}_${data_name}_lr${lr}_bs${batch_size_wave}_lat${lat_dim}_late${lat_dim_e}_hue${hidden_units_enc}_hud${hidden_units_dec}_huw${hidden_units_wave}_stc${step_count}_st${step_count_wave}_nhcyc${n_half_cyc}_s${spkidtr_dim}_w${n_weight_emb}_tsc${t_start_cycvae}_tec${t_end_cycvae}_ic${interval_cycvae}_ts${t_start}_te${t_end}_i${interval}_de${densities_cycvae_enc}_dd${densities_cycvae_dec}_nsc${n_stage_cycvae}_ns${n_stage}_nb${n_bands}_sd${s_dim}_${min_idx_cycvae}-${min_idx_wave}
+    setting_ft=${mdl_name_ft}_${data_name}_lr${lr}_bs${batch_size_wave}_lat${lat_dim}_late${lat_dim_e}_hue${hidden_units_enc}_hud${hidden_units_dec}_huw${hidden_units_wave}_stc${step_count}_st${step_count_wave}_s${spkidtr_dim}_w${n_weight_emb}_de${densities_cycvae_enc}_dd${densities_cycvae_dec}_nb${n_bands}_sc${s_conv_flag}_ss${seg_conv_flag}_ssw${seg_conv_flag_wave}_${min_idx_cycvae}-${min_idx_wave}
 fi
 expdir_ft=exp/tr_${setting_ft}
 echo $expdir_ft
@@ -308,7 +311,7 @@ fi
 
 echo $mdl_name_sp
 if [ $mdl_name_sp == "cycmelspspkvae-ftdec-gauss-smpl_sparse_wemb_mwdlp_smpl_v2" ]; then
-    setting_sp=${mdl_name_sp}_${data_name}_lr${lr}_bs${batch_size_wave}_lat${lat_dim}_late${lat_dim_e}_hue${hidden_units_enc}_hud${hidden_units_dec}_huw${hidden_units_wave}_stc${step_count}_st${step_count_wave}_nhcyc${n_half_cyc}_s${spkidtr_dim}_w${n_weight_emb}_tsc${t_start_cycvae}_tec${t_end_cycvae}_ic${interval_cycvae}_ts${t_start}_te${t_end}_i${interval}_de${densities_cycvae_enc}_dd${densities_cycvae_dec}_nsc${n_stage_cycvae}_ns${n_stage}_nb${n_bands}_sd${s_dim}_${min_idx_cycvae}-${min_idx_wave}-${min_idx_ft}
+    setting_sp=${mdl_name_sp}_${data_name}_lr${lr}_bs${batch_size_wave}_lat${lat_dim}_late${lat_dim_e}_hue${hidden_units_enc}_hud${hidden_units_dec}_huw${hidden_units_wave}_stc${step_count}_st${step_count_wave}_s${spkidtr_dim}_w${n_weight_emb}_de${densities_cycvae_enc}_dd${densities_cycvae_dec}_nb${n_bands}_sc${s_conv_flag}_ss${seg_conv_flag}_ssw${seg_conv_flag_wave}_${min_idx_cycvae}-${min_idx_wave}-${min_idx_ft}
 fi
 expdir_sp=exp/tr_${setting_sp}
 echo $expdir_sp

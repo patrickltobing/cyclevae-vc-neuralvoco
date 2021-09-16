@@ -24,7 +24,7 @@
    NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
    SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-/* Modified by Patrick Lumban Tobing (Nagoya University) on Sep. 2020 - Aug. 2021,
+/* Modified by Patrick Lumban Tobing (Nagoya University) on Sep. 2020 - Sep. 2021,
    marked by PLT_<MonthYear> */
 
 #ifndef _NNET_H_
@@ -129,21 +129,25 @@ typedef struct {
   int dim;
 } EmbeddingLayer;
 
-//PLT_Jul21
-typedef struct {
+//PLT_Sep21
+#if defined(WINDOWS_SYS) || defined (GNU_EXT)
+    typedef struct {
 #ifdef WINDOWS_SYS
-    BCRYPT_ALG_HANDLE rng_prov;
+        BCRYPT_ALG_HANDLE rng_prov;
 #else
-    unsigned short int xsubi[3];
-    struct drand48_data drand_buffer[1];
+    #ifdef GNU_EXT
+       unsigned short int xsubi[3];
+       struct drand48_data drand_buffer[1];
+    #endif
 #endif
-} RNGState;
+    } RNGState;
+#endif
 
 //PLT_Aug21
 void sgemv_accum16_(float *out, const float *weights, int rows, int cols, const float *x);
 void sgemv_accum(float *out, const float *weights, int rows, int cols, const float *x);
 
-void compute_activation(float *output, float *input, int N, int activation);
+void compute_activation(float *output, const float *input, int N, int activation);
 
 void compute_dense(const DenseLayer *layer, float *output, const float *input);
 
@@ -161,7 +165,7 @@ void compute_mdense_mwdlp10_nodlpc(const MDenseLayerMWDLP10 *layer, const DenseL
 void compute_gru3(const GRULayer *gru, float *state, const float *input);
 
 //PLT_Aug21
-void compute_sparse_gru(const SparseGRULayer *gru, float *zrh, float *recur, float *state, const float *input);
+void compute_sparse_gru(const SparseGRULayer *gru, float *state, const float *input);
 
 //PLT_Jun21
 void compute_conv1d_linear_enc_melsp(const Conv1DLayer *layer, float *output, float *mem, const float *input);
@@ -170,23 +174,31 @@ void compute_conv1d_linear_spk(const Conv1DLayer *layer, float *output, float *m
 void compute_conv1d_linear_dec_melsp(const Conv1DLayer *layer, float *output, float *mem, const float *input);
 void compute_conv1d_linear_frame_in(const Conv1DLayer *layer, float *output, float *mem, const float *input);
 
-//PLT_Jul21
-int sample_from_pdf_mwdlp(const float *pdf, int N, RNGState *rng_state);
+//PLT_Sep21
+#if defined(WINDOWS_SYS) || defined (GNU_EXT)
+    int sample_from_pdf_mwdlp(const float *pdf, int N, RNGState *rng_state);
+#else
+    int sample_from_pdf_mwdlp(const float *pdf, int N);
+#endif
 
 //PLT_Dec20
 void compute_normalize(const NormStats *norm_stats, float *input_output);
 void compute_denormalize(const NormStats *norm_stats, float *input_output);
 
 //PLT_Aug21
-void compute_sparse_gru_enc_melsp(const SparseFrameGRULayer *gru, float *zrh, float *recur, float *state, const float *input);
-void compute_sparse_gru_enc_excit(const SparseFrameGRULayer *gru, float *zrh, float *recur, float *state, const float *input);
+void compute_sparse_gru_enc_melsp(const SparseFrameGRULayer *gru, float *state, const float *input);
+void compute_sparse_gru_enc_excit(const SparseFrameGRULayer *gru, float *state, const float *input);
 
 void compute_gru_spk(const FrameGRULayer *gru, float *state, const float *input);
 
-void compute_sparse_gru_dec_melsp(const SparseFrameGRULayer *gru, float *zrh, float *recur, float *state, const float *input);
+void compute_sparse_gru_dec_melsp(const SparseFrameGRULayer *gru, float *state, const float *input);
 
-//PLT_Jul21
-void compute_sampling_gauss(float *loc, const float *scale, int dim, RNGState *rng_state);
+//PLT_Sep21
+#if defined(WINDOWS_SYS) || defined (GNU_EXT)
+    void compute_sampling_gauss(float *loc, const float *scale, int dim, RNGState *rng_state);
+#else
+    void compute_sampling_gauss(float *loc, const float *scale, int dim);
+#endif
 
 void compute_spkidtr(const DenseLayer *in_emb_layer, const DenseLayer *in_layer, const DenseLayer *out_layer,
         float *output, float *coeff, const float *input);

@@ -1,13 +1,5 @@
 # Low-latency real-time multispeaker voice conversion (VC) with cyclic variational autoencoder (CycleVAE) and multiband WaveRNN using data-driven linear prediction (MWDLP)
 
-- VC Paper can be found here: 
-
-[Low-latency real-time non-parallel voice conversion based on cyclic variational autoencoder and multiband WaveRNN with data-driven linear prediction](https://arxiv.org/pdf/2105.09858.pdf)
-
-- Neural vocoder paper can be found here:
-
-[High-Fidelity and Low-Latency Universal Neural Vocoder based on Multiband WaveRNN with Data-Driven Linear Prediction for Discrete Waveform Modeling](https://arxiv.org/abs/2105.09856.pdf)
-
 
 ## Requirements:
 - UNIX
@@ -28,11 +20,16 @@ $ cd ..
 
 
 ## Latest version
-- 3.1
+- 3.1 (2021/09/21)
     - Finalize VC and MWDLP Python implementations (impl.)
     - Bug fixes on C impl. to match the output of Python impl.
-    - Fix input segmental convolution to output 128 dimension to reduce parameters load
-    - Add one more FC layer after segmental convolution for VC module as in original MWDLP
+    - Fix input segmental convolution impl. as in original papers while allowing usage in real-time demo
+    - Update MWDLP demo and samples with VCC20 dataset
+
+
+## Compilable MWDLP neural vocoder demo
+
+[demo_mwdlp-10bit_emb-v2_vcc20](https://drive.google.com/file/d/1hR7N-iCSUMNx9P-pDVxftGIIKLLyXsnt/view?usp=sharing)
 
 
 ## Steps to build the models:
@@ -56,6 +53,13 @@ Please see **egs/cycvae_mwdlp_vcc20/README.md** for more details on VC + neural 
 or
 
 **egs/mwdlp_vcc20/README.md** for more details on neural vocoder only.
+
+
+## References
+
+[1] [High-Fidelity and Low-Latency Universal Neural Vocoder based on Multiband WaveRNN with Data-Driven Linear Prediction for Discrete Waveform Modeling](https://arxiv.org/abs/2105.09856.pdf)
+
+[2] [Low-latency real-time non-parallel voice conversion based on cyclic variational autoencoder and multiband WaveRNN with data-driven linear prediction](https://arxiv.org/pdf/2105.09858.pdf)
 
 
 ## Contact
