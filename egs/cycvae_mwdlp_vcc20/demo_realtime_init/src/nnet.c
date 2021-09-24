@@ -677,7 +677,7 @@ void compute_sparse_gru_dec_melsp(const SparseFrameGRULayer *gru, float *state, 
 #if defined(WINDOWS_SYS) || defined (GNU_EXT)
 void compute_sampling_gauss(float *mu, const float *std, int dim, RNGState *rng_state)
 #else
-void compute_sampling_gauss(float *mu, const float *std, int dim);
+void compute_sampling_gauss(float *mu, const float *std, int dim)
 #endif
 {
     float u1, u2 = 0, mag = 0;
@@ -711,12 +711,9 @@ void compute_sampling_gauss(float *mu, const float *std, int dim);
         } else mu[i] += 0.675*std[i]*mag*sin(u2);
     }
     #else
-    long int rand_num = 0;
     for (int i=0;i<dim;i++) {
         if (i % 2 == 0) {
-            nrand48_r(rng_state->xsubi, rng_state->drand_buffer, &rand_num); // res ~ [0,2^31-1]
             u1 = ((float) random() + FLT_MIN) / RAND_MAX_FLT_MIN_FLT_MIN; //u1 ~ (0,1)
-            nrand48_r(rng_state->xsubi, rng_state->drand_buffer, &rand_num); // res ~ [0,2^31-1]
             u2 = ((float) random() + FLT_MIN) / RAND_MAX_FLT_MIN_FLT_MIN; //u2 ~ (0,1)
             mag = sqrt(-2*log(u1));
             u2 *= 6.283185307179586476925286766559;

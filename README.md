@@ -20,16 +20,26 @@ $ cd ..
 
 
 ## Latest version
-- 3.1 (2021/09/21)
+- 3.1 (2021/09/25)
     - Finalize VC and MWDLP Python implementations (impl.)
     - Bug fixes on C impl. to match the output of Python impl.
     - Fix input segmental convolution impl. as in original papers while allowing usage in real-time demo
     - Update MWDLP demo and samples with VCC20 dataset
+    - Update VC demo and samples with VCC20 dataset
 
 
-## Compilable MWDLP neural vocoder demo
+## Compilable demo
 
-[demo_mwdlp-10bit_emb-v2_vcc20](https://drive.google.com/file/d/1hR7N-iCSUMNx9P-pDVxftGIIKLLyXsnt/view?usp=sharing)
+- MWDLP: [demo_mwdlp-10bit_emb-v2_vcc20](https://drive.google.com/file/d/1hR7N-iCSUMNx9P-pDVxftGIIKLLyXsnt/view?usp=sharing)
+
+- VC: [demo_sparse-cyclevae-weightembv2-smpl_jnt_mwdlp-10bit_emb_vcc20](https://drive.google.com/file/d/1LtuQmnUP45iWoREbPK0vBTdu2tDZKYeT/view?usp=sharing)
+
+
+## Samples from compilable demo
+
+- MWDLP: [samples_demo_mwdlp-10bit_emb-v2_vcc20](https://drive.google.com/drive/folders/1by_BO-fkeouDgTZBWEeu6EnzaX8UgHL8?usp=sharing)
+
+- VC: [samples_demo_sparse-cyclevae-weightembv2-smpl_jnt_mwdlp-10bit_emb_vcc20](https://drive.google.com/drive/folders/1PanNaqsOccCImHECywzsaX6mFwausznz?usp=sharing)
 
 
 ## Steps to build the models:

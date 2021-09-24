@@ -184,7 +184,9 @@ def main():
                     dilation_size=config.dilation_size_enc,
                     causal_conv=config.causal_conv_enc,
                     pad_first=True,
-                    right_size=config.right_size_enc)
+                    right_size=config.right_size_enc,
+                    s_conv_flag=config.s_conv_flag,
+                    seg_conv_flag=config.seg_conv_flag)
                 logging.info(model_encoder_melsp)
                 model_decoder_melsp = GRU_SPEC_DECODER(
                     feat_dim=config.lat_dim+config.lat_dim_e,
@@ -199,6 +201,8 @@ def main():
                     pad_first=True,
                     right_size=config.right_size_dec,
                     red_dim_upd=config.mel_dim,
+                    s_conv_flag=config.s_conv_flag,
+                    seg_conv_flag=config.seg_conv_flag,
                     pdf_gauss=True)
                 logging.info(model_decoder_melsp)
                 model_encoder_excit = GRU_VAE_ENCODER(
@@ -211,7 +215,9 @@ def main():
                     dilation_size=config.dilation_size_enc,
                     causal_conv=config.causal_conv_enc,
                     pad_first=True,
-                    right_size=config.right_size_enc)
+                    right_size=config.right_size_enc,
+                    s_conv_flag=config.s_conv_flag,
+                    seg_conv_flag=config.seg_conv_flag)
                 logging.info(model_encoder_excit)
                 model_spkidtr = SPKID_TRANSFORM_LAYER(
                     n_spk=n_spk,
@@ -230,7 +236,9 @@ def main():
                     causal_conv=config.causal_conv_spk,
                     pad_first=True,
                     right_size=config.right_size_spk,
-                    red_dim=config.mel_dim)
+                    red_dim=config.mel_dim,
+                    s_conv_flag=config.s_conv_flag,
+                    seg_conv_flag=config.seg_conv_flag)
                 logging.info(model_spk)
                 model_encoder_melsp.load_state_dict(torch.load(args.model)["model_encoder_melsp"])
                 model_decoder_melsp.load_state_dict(torch.load(args.model)["model_decoder_melsp"])

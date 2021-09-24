@@ -1154,7 +1154,8 @@ def main():
                     (float(round(Decimal(str(eval_loss_ce_avg+eval_loss_ce_avg_std-(min_eval_loss_ce_avg+min_eval_loss_ce_avg_std))),2)) <= 0.01 or \
                         float(round(Decimal(str(eval_loss_ce_avg-min_eval_loss_ce_avg)),2)) <= 0.01)):
                 round_eval_loss_min_eval_err_avg = float(round(Decimal(str(eval_loss_err_avg-min_eval_loss_err_avg)),2))
-                if (round_eval_loss_min_eval_err_avg <= 0) or not err_flag or (not sparse_min_flag and sparse_check_flag):
+                if (round_eval_loss_min_eval_err_avg <= 0) or not err_flag or (not sparse_min_flag and sparse_check_flag) \
+                    or (not converge_checkpoint_flag and iter_idx + 1 >= converge_checkpoint_step):
                     if sparse_min_flag:
                         if round_eval_loss_min_eval_err_avg > 0:
                             err_flag = True
